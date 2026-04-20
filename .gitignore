@@ -5,6 +5,8 @@ coverage/
 .codex-tools/
 .xdg.config/
 .tools/
+package-lock.json
+eng.traineddata
 .DS_Store
 *.log
 .env*
