@@ -1,0 +1,8 @@
+name = "precision-inventory"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-04-09"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "precision-inventory-db"
+database_id = "b02d92df-dfaf-458c-bc73-688bdda20e7e"

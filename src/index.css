@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f8f9ff;
+  --color-surface-container-highest: #d3e4fa;
+  --color-secondary-fixed: #e1e2e9;
+  --color-secondary: #5d5f65;
+  --color-on-tertiary-container: #4c4c67;
+  --color-on-tertiary: #fbf7ff;
+  --color-inverse-on-surface: #989da5;
+  --color-inverse-surface: #0a0f14;
+  --color-on-error-container: #752121;
+  --color-on-secondary-container: #505257;
+  --color-on-secondary: #f8f8ff;
+  --color-primary-fixed: #d6e3ff;
+  --color-on-surface-variant: #516073;
+  --color-on-primary-container: #315285;
+  --color-primary-dim: #315385;
+  --color-secondary-container: #e1e2e9;
+  --color-on-tertiary-fixed-variant: #555571;
+  --color-error: #9f403d;
+  --color-surface-dim: #c8dcf6;
+  --color-secondary-fixed-dim: #d3d4db;
+  --color-outline: #6c7c90;
+  --color-on-secondary-fixed-variant: #595b61;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-primary-fixed: #1b3f71;
+  --color-on-primary: #f6f7ff;
+  --color-surface-container: #e5effe;
+  --color-tertiary-fixed: #dbdafb;
+  --color-tertiary-container: #dbdafb;
+  --color-primary-container: #d6e3ff;
+  --color-surface-bright: #f8f9ff;
+  --color-surface: #f8f9ff;
+  --color-error-container: #fe8983;
+  --color-tertiary: #5d5d78;
+  --color-surface-container-high: #dce9fc;
+  --color-outline-variant: #a3b3c9;
+  --color-on-secondary-fixed: #3d3f45;
+  --color-surface-variant: #d3e4fa;
+  --color-surface-tint: #3e5f92;
+  --color-primary: #3e5f92;
+  --color-primary-fixed-dim: #c0d5ff;
+  --color-error-dim: #4e0309;
+  --color-on-primary-fixed-variant: #3b5c8f;
+  --color-secondary-dim: #515359;
+  --color-on-surface: #243445;
+  --color-surface-container-low: #eef4ff;
+  --color-on-error: #fff7f6;
+  --color-on-tertiary-fixed: #393953;
+  --color-on-background: #243445;
+  --color-tertiary-dim: #51516c;
+  --color-tertiary-fixed-dim: #cdccec;
+
+  --font-headline: "Work Sans", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-label: "Inter", sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-background);
+  color: var(--color-on-background);
+  min-height: max(884px, 100dvh);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-headline);
+}

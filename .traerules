@@ -1,0 +1,7 @@
+# Regras de Eficiência Trae
+- Seja conciso. Não explique código óbvio.
+- Sempre use TypeScript estrito e React funcional.
+- Antes de criar funções de formatação, verifique `src/textUtils.ts`.
+- Priorize economia de tokens: responda apenas o bloco de código alterado, não o arquivo todo, a menos que solicitado.
+- Use o contexto de `MaterialSeparationProps` para qualquer componente de inventário.
+- Use o código com cuidado.
