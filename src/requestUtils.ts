@@ -2,6 +2,9 @@ import {
   InventoryItem,
   InventorySettings,
   MaterialRequest,
+  MaterialRequestAuditActor,
+  MaterialRequestAuditEntry,
+  MaterialRequestAuditEvent,
   MaterialRequestItem,
   MaterialRequestStatus
 } from './types';
@@ -25,6 +28,8 @@ export function createEmptyRequest(): MaterialRequest {
     status: 'Aberta',
     createdAt: now,
     updatedAt: now,
+    deletedAt: undefined,
+    auditTrail: [],
     items: []
   };
 }
@@ -45,6 +50,7 @@ export function createRequestItem(item: InventoryItem): MaterialRequestItem {
 
 export function createRequestCode(existingRequests: MaterialRequest[]) {
   const highestCode = existingRequests.reduce((highest, request) => {
+    if (request?.deletedAt) return highest;
     const match = request.code.match(/SOL-(\d+)/i);
     const current = match ? Number(match[1]) : 0;
     return Math.max(highest, current);
@@ -59,6 +65,7 @@ export function recalculateRequestStatus(request: MaterialRequest): MaterialRequ
   const totalRequested = request.items.reduce((sum, item) => sum + normalizeQuantity(item.requestedQuantity), 0);
   const totalSeparated = request.items.reduce((sum, item) => sum + normalizeQuantity(item.separatedQuantity), 0);
 
+  if (request.reversedAt) return 'Estornada';
   if (request.fulfilledAt) return 'Atendida';
   if (totalRequested > 0 && totalSeparated >= totalRequested) return 'Separada';
   if (totalSeparated > 0) return 'Em separação';
@@ -93,10 +100,13 @@ export function upsertRequestState(
   };
 
   const status = recalculateRequestStatus(baseRequest);
+  const fulfilledAt = status === 'Atendida' ? (draft.fulfilledAt || now) : draft.fulfilledAt;
+  const reversedAt = status === 'Estornada' ? (draft.reversedAt || now) : draft.reversedAt;
   return {
     ...baseRequest,
     status,
-    fulfilledAt: status === 'Atendida' ? (draft.fulfilledAt || now) : undefined
+    fulfilledAt,
+    reversedAt
   };
 }
 
@@ -220,24 +230,30 @@ function sanitizeSingleRequest(value: unknown): MaterialRequest | null {
   const request: MaterialRequest = {
     id: String(candidate.id || ''),
     code: String(candidate.code || ''),
-    vehiclePlate: String(candidate.vehiclePlate || ''),
-    costCenter: String(candidate.costCenter || ''),
-    vehicleDescription: candidate.vehicleDescription ? String(candidate.vehicleDescription) : '',
+    vehiclePlate: String(candidate.vehiclePlate || '').trim().toUpperCase(),
+    costCenter: normalizeUserFacingText(candidate.costCenter || ''),
+    vehicleDescription: candidate.vehicleDescription ? normalizeUserFacingText(candidate.vehicleDescription) : '',
     vehicleDetails:
       candidate.vehicleDetails && typeof candidate.vehicleDetails === 'object'
         ? Object.fromEntries(
-            Object.entries(candidate.vehicleDetails).map(([key, detailValue]) => [String(key), String(detailValue)])
+            Object.entries(candidate.vehicleDetails).map(([key, detailValue]) => [
+              normalizeUserFacingText(key),
+              normalizeUserFacingText(detailValue)
+            ])
           )
         : {},
-    requester: String(candidate.requester || ''),
-    sector: String(candidate.sector || ''),
-    destination: String(candidate.destination || ''),
-    notes: String(candidate.notes || ''),
+    requester: normalizeUserFacingText(candidate.requester || ''),
+    sector: normalizeUserFacingText(candidate.sector || ''),
+    destination: normalizeUserFacingText(candidate.destination || ''),
+    notes: normalizeUserFacingText(candidate.notes || ''),
     priority: normalizePriority(candidate.priority),
     status: 'Aberta',
     createdAt: String(candidate.createdAt || now),
     updatedAt: String(candidate.updatedAt || now),
     fulfilledAt: candidate.fulfilledAt ? String(candidate.fulfilledAt) : undefined,
+    reversedAt: candidate.reversedAt ? String(candidate.reversedAt) : undefined,
+    deletedAt: candidate.deletedAt ? String(candidate.deletedAt) : undefined,
+    auditTrail: sanitizeRequestAuditTrail(candidate.auditTrail),
     items
   };
 
@@ -247,6 +263,52 @@ function sanitizeSingleRequest(value: unknown): MaterialRequest | null {
     ...request,
     status: recalculateRequestStatus(request)
   };
+}
+
+function sanitizeRequestAuditTrail(input: unknown): MaterialRequestAuditEntry[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((value): MaterialRequestAuditEntry | null => {
+      if (!value || typeof value !== 'object') return null;
+      const entry = value as Partial<MaterialRequestAuditEntry>;
+      const actorCandidate = entry.actor && typeof entry.actor === 'object' ? (entry.actor as Record<string, unknown>) : {};
+      const at = typeof entry.at === 'string' ? entry.at : '';
+      const event = entry.event;
+      if (!at || !isMaterialRequestAuditEvent(event)) return null;
+
+      const id = typeof entry.id === 'string' && entry.id ? entry.id : `${event}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const detail = typeof entry.detail === 'string' ? normalizeUserFacingText(entry.detail) : undefined;
+      const actor: MaterialRequestAuditActor = {};
+
+      if (typeof actorCandidate.id === 'string' && actorCandidate.id) {
+        actor.id = actorCandidate.id;
+      }
+      if (typeof actorCandidate.matricula === 'string' && actorCandidate.matricula) {
+        actor.matricula = actorCandidate.matricula;
+      }
+      if (typeof actorCandidate.name === 'string' && actorCandidate.name) {
+        actor.name = normalizeUserFacingText(actorCandidate.name);
+      }
+      if (typeof actorCandidate.role === 'string' && actorCandidate.role) {
+        actor.role = actorCandidate.role;
+      }
+
+      return { id, at: String(at), event, actor, detail };
+    })
+    .filter((value): value is MaterialRequestAuditEntry => value !== null)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .slice(-200);
+}
+
+function isMaterialRequestAuditEvent(value: unknown): value is MaterialRequestAuditEvent {
+  return (
+    value === 'request_created' ||
+    value === 'request_updated' ||
+    value === 'separation_updated' ||
+    value === 'separation_fulfilled' ||
+    value === 'separation_reversed'
+  );
 }
 
 function sanitizeRequestItem(value: unknown): MaterialRequestItem | null {

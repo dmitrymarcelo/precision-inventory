@@ -83,7 +83,18 @@ export function listVehicleModels(vehicles: VehicleRecord[]) {
 }
 
 export function parseVehicleRows(rows: unknown[][]) {
-  const headerIndex = rows.findIndex(row => {
+  const normalizedRows = rows.map(row => {
+    if (row.length !== 1) return row;
+    const cell = toText(row[0]);
+    if (!cell) return row;
+    if (cell.includes('\t') || cell.includes(';') || cell.includes(',') || cell.includes('|')) {
+      const delimiter = detectDelimiter(cell);
+      return parseDelimitedLine(cell, delimiter);
+    }
+    return row;
+  });
+
+  const headerIndex = normalizedRows.findIndex(row => {
     const headers = row.map(normalizeHeader);
     return headers.some(header => plateHeaders.includes(header)) &&
       headers.some(header => costCenterHeaders.includes(header));
@@ -93,12 +104,13 @@ export function parseVehicleRows(rows: unknown[][]) {
     throw new Error('Não encontrei as colunas de placa e centro de custo nessa base.');
   }
 
-  const headers = rows[headerIndex].map(normalizeHeader);
+  const headerRow = normalizedRows[headerIndex] || [];
+  const headers = headerRow.map(normalizeHeader);
   const plateIndex = findColumn(headers, plateHeaders);
   const costCenterIndex = findColumn(headers, costCenterHeaders);
   const descriptionIndex = findOptionalColumn(headers, descriptionHeaders);
 
-  return rows
+  return normalizedRows
     .slice(headerIndex + 1)
     .map<VehicleRecord | null>((row, rowIndex) => {
       const plate = toText(row[plateIndex]).toUpperCase();
@@ -165,6 +177,7 @@ function sanitizeVehicleRecord(value: unknown): VehicleRecord | null {
 
 function normalizeHeader(value: unknown) {
   return toText(value)
+    .replace(/\u00A0/g, ' ')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -227,9 +240,23 @@ function toText(value: unknown) {
 }
 
 function detectDelimiter(line: string) {
+  const tabs = countDelimiter(line, '\t');
   const semicolons = countDelimiter(line, ';');
   const commas = countDelimiter(line, ',');
-  return semicolons >= commas ? ';' : ',';
+  const pipes = countDelimiter(line, '|');
+
+  const candidates = [
+    { delimiter: '\t', count: tabs },
+    { delimiter: ';', count: semicolons },
+    { delimiter: ',', count: commas },
+    { delimiter: '|', count: pipes }
+  ].sort((a, b) => b.count - a.count);
+
+  const best = candidates[0];
+  if (!best || best.count === 0) {
+    return ',';
+  }
+  return best.delimiter;
 }
 
 function countDelimiter(line: string, delimiter: string) {

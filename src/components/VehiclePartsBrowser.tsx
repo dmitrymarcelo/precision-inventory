@@ -1,26 +1,46 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronRight, Package, Search, Truck } from 'lucide-react';
 import { InventoryItem } from '../types';
-import { getVehicleTypeFromModel, listVehicleCatalogByType } from '../vehicleCatalog';
+import { ProductImage } from '../productVisuals';
+import { getVehicleTypeFromModel, listVehicleCatalogByType, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 
 interface VehiclePartsBrowserProps {
   items: InventoryItem[];
   onSelectSku: (sku: string) => void;
+  presetType?: string;
+  presetModel?: string;
+  presetVersion?: number;
 }
 
 const EMPTY_MODEL_KEY = '__sem_modelo__';
 
-export default function VehiclePartsBrowser({ items, onSelectSku }: VehiclePartsBrowserProps) {
+export default function VehiclePartsBrowser({ items, onSelectSku, presetType, presetModel, presetVersion }: VehiclePartsBrowserProps) {
   const [selectedType, setSelectedType] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [itemQuery, setItemQuery] = useState('');
 
   const getEffectiveVehicleType = (item: InventoryItem) =>
-    normalizeUserFacingText(item.vehicleType || getVehicleTypeFromModel(item.vehicleModel || ''));
+    normalizeOperationalVehicleType(item.vehicleType || getVehicleTypeFromModel(item.vehicleModel || ''));
   const getEffectiveVehicleModel = (item: InventoryItem) => normalizeUserFacingText(item.vehicleModel || '');
 
-  const vehicleGroups = useMemo(() => listVehicleCatalogByType(), []);
+  const vehicleGroups = useMemo(() => {
+    const catalogGroups = listVehicleCatalogByType();
+    const itemTypes = Array.from(
+      new Set(items.map(item => getEffectiveVehicleType(item)).filter(Boolean))
+    );
+    const mergedTypes = Array.from(
+      new Set([...catalogGroups.map(group => group.type), ...itemTypes])
+    ).sort((first, second) => first.localeCompare(second, 'pt-BR'));
+
+    return mergedTypes.map(type => {
+      const catalogGroup = catalogGroups.find(group => group.type === type);
+      return {
+        type,
+        entries: catalogGroup?.entries ?? []
+      };
+    });
+  }, [items]);
   const typeCards = useMemo(
     () =>
       vehicleGroups.map(group => {
@@ -53,6 +73,19 @@ export default function VehiclePartsBrowser({ items, onSelectSku }: VehicleParts
         model: modelEntry.model,
         itemCount: modelItems.length
       };
+    });
+
+    const itemOnlyModels = Array.from(
+      new Set(selectedTypeItems.map(item => getEffectiveVehicleModel(item)).filter(Boolean))
+    ).filter(model => !cards.some(card => card.key === model));
+
+    itemOnlyModels.forEach(model => {
+      const modelItems = selectedTypeItems.filter(item => getEffectiveVehicleModel(item) === model);
+      cards.push({
+        key: model,
+        model,
+        itemCount: modelItems.length
+      });
     });
 
     const withoutModelCount = selectedTypeItems.filter(item => !getEffectiveVehicleModel(item)).length;
@@ -116,6 +149,16 @@ export default function VehiclePartsBrowser({ items, onSelectSku }: VehicleParts
     setSelectedModel('');
     setItemQuery('');
   };
+
+  useEffect(() => {
+    if (!presetVersion) return;
+    if (presetType) {
+      openType(presetType);
+      if (presetModel) {
+        openModel(presetModel);
+      }
+    }
+  }, [presetModel, presetType, presetVersion]);
 
   return (
     <>
@@ -214,7 +257,7 @@ export default function VehiclePartsBrowser({ items, onSelectSku }: VehicleParts
                   {selectedType} <span className="text-outline">/</span> {selectedModelLabel}
                 </h2>
                 <p className="mt-2 text-sm text-on-surface-variant">
-                  Toque em uma peca para abrir o SKU direto em Atualziar Estoque.
+                  Toque em uma peca para abrir o SKU direto na area de Estoque.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -258,7 +301,9 @@ export default function VehiclePartsBrowser({ items, onSelectSku }: VehicleParts
                   className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 text-left shadow-sm hover:bg-surface-container-low transition-colors"
                 >
                   <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex gap-3">
+                      <ProductImage item={item} size="card" />
+                      <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         <Package className="text-primary shrink-0" size={18} />
                         <span className="font-mono text-xs font-bold text-outline">{item.sku}</span>
@@ -267,6 +312,7 @@ export default function VehiclePartsBrowser({ items, onSelectSku }: VehicleParts
                       <p className="mt-1 text-sm text-on-surface-variant">
                         {normalizeUserFacingText(item.category)} • {normalizeLocationText(item.location)}
                       </p>
+                    </div>
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-2xl font-headline font-bold text-primary">{item.quantity}</p>

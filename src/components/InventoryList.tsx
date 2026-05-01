@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Circle,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -16,14 +18,15 @@ import {
 import { readSheet } from 'read-excel-file/browser';
 import { openBarcodePrintWindow } from '../barcodeLabels';
 import { classifyInventoryCategory } from '../categoryCatalog';
+import { ProductImage } from '../productVisuals';
 import { InventoryItem, InventorySettings } from '../types';
-import { calculateInventoryStatus } from '../inventoryRules';
-import { getVehicleTypeFromModel, normalizeOfficialVehicleModel } from '../vehicleCatalog';
-import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { calculateInventoryStatus, calculateItemStatus } from '../inventoryRules';
+import { getVehicleTypeFromModel, normalizeOfficialVehicleModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
+import { normalizeInventoryStatus, normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 
 interface InventoryListProps {
-  setActiveTab: (tab: string) => void;
   showToast: (message: string, type?: 'success' | 'info') => void;
+  canEdit: boolean;
   items: InventoryItem[];
   setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
   onSelectSku: (sku: string) => void;
@@ -32,8 +35,11 @@ interface InventoryListProps {
   onExternalSearchQueryChange?: (value: string) => void;
 }
 
+const ACTIVE_ONLY_FILTER_TOKEN = 'active-only';
+
 export default function InventoryList({
   showToast,
+  canEdit,
   items,
   setItems,
   onSelectSku,
@@ -43,9 +49,10 @@ export default function InventoryList({
 }: InventoryListProps) {
   const MAX_VISIBLE_LABEL_SELECTION_ITEMS = 160;
   const getEffectiveVehicleType = (item: InventoryItem) =>
-    normalizeUserFacingText(item.vehicleType || getVehicleTypeFromModel(item.vehicleModel || ''));
+    normalizeOperationalVehicleType(item.vehicleType || getVehicleTypeFromModel(item.vehicleModel || ''));
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeOnly, setActiveOnly] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [selectedLabelSkus, setSelectedLabelSkus] = useState<string[]>([]);
   const [labelSelectionQuery, setLabelSelectionQuery] = useState('');
@@ -53,17 +60,29 @@ export default function InventoryList({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const itemsPerPage = 100;
 
+  const activeItems = useMemo(() => items.filter(item => item.isActiveInWarehouse === true), [items]);
+  const activeSkuCount = activeItems.length;
+  const activeUnitTotal = useMemo(
+    () => activeItems.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0),
+    [activeItems]
+  );
+
   const filteredItems = useMemo(
     () =>
-      items.filter(item =>
-        normalizeUserFacingText(item.name).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        normalizeUserFacingText(item.vehicleModel).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        getEffectiveVehicleType(item).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.location.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [items, searchQuery]
+      items.filter(item => {
+        if (activeOnly && item.isActiveInWarehouse !== true) return false;
+
+        const query = searchQuery.toLowerCase();
+        return (
+          normalizeUserFacingText(item.name).toLowerCase().includes(query) ||
+          item.sku.toLowerCase().includes(query) ||
+          item.category.toLowerCase().includes(query) ||
+          normalizeUserFacingText(item.vehicleModel).toLowerCase().includes(query) ||
+          getEffectiveVehicleType(item).toLowerCase().includes(query) ||
+          item.location.toLowerCase().includes(query)
+        );
+      }),
+    [activeOnly, items, searchQuery]
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
@@ -94,9 +113,20 @@ export default function InventoryList({
   }, [totalPages]);
 
   useEffect(() => {
+    if (externalSearchQuery === ACTIVE_ONLY_FILTER_TOKEN) {
+      setActiveOnly(true);
+      setSearchQuery('');
+      setPage(1);
+      return;
+    }
+
     setSearchQuery(externalSearchQuery);
     setPage(1);
   }, [externalSearchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeOnly]);
 
   useEffect(() => {
     if (!isLabelsOpen) return;
@@ -136,27 +166,20 @@ export default function InventoryList({
         const existingSkuSet = new Set(items.map(item => item.sku));
 
         const updatedSkus = Array.from(importedBySku.keys()).filter(sku => existingSkuSet.has(sku));
-        const ignoredSkus = Array.from(importedBySku.keys()).filter(sku => !existingSkuSet.has(sku));
+        const newItems = Array.from(importedBySku.values()).filter(item => !existingSkuSet.has(item.sku));
 
-        setItems(previous =>
-          previous.map(item => {
+        setItems(previous => [
+          ...previous.map(item => {
             const incoming = importedBySku.get(item.sku);
             if (!incoming) return item;
 
-            const nextQuantity = incoming.quantity;
-            const nextStatus = calculateInventoryStatus(nextQuantity, settings);
-
-            return {
-              ...item,
-              quantity: nextQuantity,
-              status: nextStatus,
-              name: item.name || incoming.name
-            };
-          })
-        );
+            return mergeInventoryConferenceItem(item, incoming, settings);
+          }),
+          ...newItems
+        ]);
 
         showToast(
-          `Quantidades atualizadas para ${updatedSkus.length} SKUs. ${ignoredSkus.length} SKUs do arquivo não estavam na base e foram ignorados.`,
+          `Conferencia aplicada: ${updatedSkus.length} SKUs atualizados e ${newItems.length} novos SKUs adicionados ao estoque.`,
           'success'
         );
       } else {
@@ -183,6 +206,7 @@ export default function InventoryList({
     const headers = [
       'SKU',
       'Nome do Item',
+      'Imagem URL',
       'Modelo do Veiculo',
       'Tipo do Veiculo',
       'Quantidade Atual',
@@ -196,6 +220,7 @@ export default function InventoryList({
     const rows = filteredItems.map(item => [
       item.sku,
       item.name,
+      item.imageUrl || '',
       normalizeUserFacingText(item.vehicleModel),
       getEffectiveVehicleType(item),
       String(item.quantity),
@@ -245,8 +270,8 @@ export default function InventoryList({
     }
 
     const title = searchQuery
-      ? `Etiquetas do inventário - filtro ${searchQuery}`
-      : 'Etiquetas do inventário';
+      ? `Etiquetas do estoque - filtro ${searchQuery}`
+      : 'Etiquetas do estoque';
 
     const subtitle = `Seleção atual com ${selectedLabelItems.length} etiquetas em QR Code`;
 
@@ -290,20 +315,30 @@ export default function InventoryList({
   return (
     <>
       <header className="mb-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
+          <div className="xl:max-w-3xl">
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-on-background mb-2">
-              Central de Inventário
+              Central de Estoque
             </h1>
             <p className="text-on-surface-variant font-medium">
               Importe o modelo mata225, consulte os SKUs e gere etiquetas prontas para impressão.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-wrap items-start xl:items-center gap-3 xl:justify-end">
             <div className="bg-primary-container text-on-primary-container px-4 py-2 rounded-xl flex items-center gap-2">
               <span className="text-xs font-label font-bold uppercase tracking-widest">Contagem de SKUs</span>
               <span className="text-2xl font-headline font-bold">{items.length}</span>
+            </div>
+
+            <div className="bg-surface-container-highest text-primary px-4 py-2 rounded-xl flex items-center gap-2">
+              <CheckCircle2 size={18} />
+              <div className="flex flex-col">
+                <span className="text-xs font-label font-bold uppercase tracking-widest">Ativos</span>
+                <span className="text-sm font-semibold text-on-surface">
+                  {activeSkuCount} SKUs • {activeUnitTotal} un
+                </span>
+              </div>
             </div>
 
             <input
@@ -316,8 +351,15 @@ export default function InventoryList({
 
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-surface-container-highest text-primary px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-surface-container-high transition-colors font-semibold shadow-sm"
+              onClick={() => {
+                if (!canEdit) {
+                  showToast('Modo consulta: sem permissão para importar planilhas.', 'info');
+                  return;
+                }
+                fileInputRef.current?.click();
+              }}
+              disabled={!canEdit}
+              className="bg-surface-container-highest text-primary px-4 py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-surface-container-high transition-colors font-semibold shadow-sm whitespace-nowrap disabled:opacity-60 disabled:hover:bg-surface-container-highest"
             >
               <Upload size={18} />
               Importar XLSX/CSV
@@ -326,7 +368,7 @@ export default function InventoryList({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="bg-surface-container-highest text-primary px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-surface-container-high transition-colors font-semibold shadow-sm"
+              className="bg-surface-container-highest text-primary px-4 py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-surface-container-high transition-colors font-semibold shadow-sm whitespace-nowrap"
             >
               <Download size={18} />
               Exportar CSV
@@ -335,7 +377,7 @@ export default function InventoryList({
             <button
               type="button"
               onClick={handleOpenLabels}
-              className="bg-primary text-on-primary px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-primary/90 transition-colors font-semibold shadow-sm"
+              className="bg-primary text-on-primary px-4 py-2 rounded-xl flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors font-semibold shadow-sm whitespace-nowrap"
             >
               <Tag size={18} />
               Etiquetas
@@ -510,8 +552,8 @@ export default function InventoryList({
       )}
 
       <section className="mb-6">
-        <div className="bg-surface-container-low rounded-xl p-3 flex flex-col md:flex-row gap-3 items-center">
-          <div className="relative w-full md:flex-1">
+        <div className="bg-surface-container-low rounded-2xl p-3 lg:p-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
+          <div className="relative w-full">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-outline" size={20} />
             <input
               className="w-full pl-12 pr-4 py-3 bg-surface-container-lowest border-none rounded-lg focus:ring-2 focus:ring-primary/40 placeholder:text-outline text-on-surface font-body shadow-sm"
@@ -526,11 +568,11 @@ export default function InventoryList({
             />
           </div>
 
-          <div className="flex gap-2 w-full md:w-auto">
+          <div className="grid grid-cols-3 gap-2 w-full xl:w-auto">
             <button
               type="button"
               onClick={handleFilterClick}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-surface-container-highest px-4 py-3 rounded-lg text-on-surface-variant font-semibold hover:bg-surface-container-high transition-colors"
+              className="flex items-center justify-center gap-2 bg-surface-container-highest px-4 py-3 rounded-lg text-on-surface-variant font-semibold hover:bg-surface-container-high transition-colors whitespace-nowrap"
             >
               <Filter size={20} />
               Categoria
@@ -538,18 +580,38 @@ export default function InventoryList({
             <button
               type="button"
               onClick={handleFilterClick}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-surface-container-highest px-4 py-3 rounded-lg text-on-surface-variant font-semibold hover:bg-surface-container-high transition-colors"
+              className="flex items-center justify-center gap-2 bg-surface-container-highest px-4 py-3 rounded-lg text-on-surface-variant font-semibold hover:bg-surface-container-high transition-colors whitespace-nowrap"
             >
               <MapPin size={20} />
               Seção
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveOnly(current => {
+                  const next = !current;
+                  onExternalSearchQueryChange?.(next ? ACTIVE_ONLY_FILTER_TOKEN : searchQuery);
+                  return next;
+                });
+                const message = `Ativos apontados: ${activeSkuCount} SKUs (total ${activeUnitTotal} unidades).`;
+                showToast(message, 'success');
+              }}
+              className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap ${
+                activeOnly
+                  ? 'bg-primary text-on-primary hover:bg-primary/90'
+                  : 'bg-surface-container-highest text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              <CheckCircle2 size={20} />
+              Ativo
             </button>
           </div>
         </div>
       </section>
 
       <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-2xl bg-surface-container-low">
-        <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-surface-container-high text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
-          <div className="col-span-2">SKU</div>
+        <div className="hidden md:grid md:grid-cols-12 xl:grid-cols-[120px_minmax(0,1.7fr)_150px_minmax(220px,1fr)_170px] xl:[&>div]:col-span-1 gap-4 px-6 py-4 bg-surface-container-high text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
+          <div className="col-span-2 xl:col-span-1">SKU</div>
           <div className="col-span-4">Identificação do Item</div>
           <div className="col-span-2">Quantidade</div>
           <div className="col-span-2">Localização / Prateleira</div>
@@ -561,17 +623,15 @@ export default function InventoryList({
             <div
               key={`${item.sku}-${index}`}
               onClick={() => onSelectSku(item.sku)}
-              className="grid grid-cols-1 md:grid-cols-12 gap-3 px-4 md:px-5 py-4 bg-surface-container-lowest hover:bg-surface-container/30 transition-colors cursor-pointer group border-b border-outline-variant/10 last:border-0"
+              className="grid grid-cols-1 md:grid-cols-12 xl:grid-cols-[120px_minmax(0,1.7fr)_150px_minmax(220px,1fr)_170px] gap-3 px-4 md:px-5 py-4 bg-surface-container-lowest hover:bg-surface-container/30 transition-colors cursor-pointer group border-b border-outline-variant/10 last:border-0"
             >
-              <div className="col-span-2 flex items-center">
+              <div className="col-span-2 xl:col-span-1 flex items-center">
                 <span className="font-body text-xs font-bold text-outline uppercase">{item.sku}</span>
               </div>
 
-              <div className="col-span-4 flex items-center gap-4">
-                <div className="w-9 h-9 rounded-lg bg-surface-container overflow-hidden shrink-0 flex items-center justify-center">
-                  <Package className="text-outline-variant" size={20} />
-                </div>
-                <div>
+              <div className="col-span-4 xl:col-span-1 flex items-center gap-4 min-w-0">
+                <ProductImage item={item} size="list" />
+                <div className="min-w-0">
                   <h3 className="font-bold text-on-surface group-hover:text-primary transition-colors line-clamp-1">
                     {normalizeUserFacingText(item.name)}
                   </h3>
@@ -585,26 +645,67 @@ export default function InventoryList({
                 </div>
               </div>
 
-              <div className="col-span-2 flex items-center">
+              <div className="col-span-2 xl:col-span-1 flex items-center">
                 <div className={getStatusQuantityTone(item.status)}>
                   <span className="text-xl font-headline font-bold">{item.quantity}</span>
                   <span className="text-xs font-label text-outline block opacity-70">UNIDADES</span>
                 </div>
               </div>
 
-              <div className="col-span-2 flex items-center gap-3">
+              <div className="col-span-2 xl:col-span-1 flex items-center gap-3">
                 <Warehouse className="text-primary/60 shrink-0" size={20} />
                 <div>
                   <p className="text-sm font-semibold text-on-surface">{normalizeLocationText(item.location)}</p>
                 </div>
               </div>
 
-              <div className="col-span-2 flex items-center justify-end">
-                <span
-                  className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${getStatusBadgeTone(item.status)}`}
-                >
-                  {normalizeUserFacingText(item.status)}
-                </span>
+              <div className="col-span-2 xl:col-span-1 flex items-center justify-start xl:justify-end">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={event => {
+                      event.stopPropagation();
+                      if (!canEdit) {
+                        showToast('Modo consulta: sem permissão para apontar itens ativos.', 'info');
+                        return;
+                      }
+                      const now = new Date().toISOString();
+                      const nextActive = item.isActiveInWarehouse !== true;
+                      setItems(previous =>
+                        previous.map(current =>
+                          current.sku === item.sku
+                            ? {
+                                ...current,
+                                isActiveInWarehouse: nextActive,
+                                updatedAt: now
+                              }
+                            : current
+                        )
+                      );
+                      showToast(
+                        nextActive
+                          ? `SKU ${item.sku} marcado como ativo no armazém.`
+                          : `SKU ${item.sku} removido dos ativos do armazém.`,
+                        'success'
+                      );
+                    }}
+                    disabled={!canEdit}
+                    className={`inline-flex items-center gap-3 h-12 px-5 rounded-full text-base font-extrabold transition-colors ${
+                      item.isActiveInWarehouse
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-surface-container-highest text-on-surface-variant'
+                    } disabled:opacity-60`}
+                    title={item.isActiveInWarehouse ? 'Remover dos ativos' : 'Marcar como ativo'}
+                  >
+                    {item.isActiveInWarehouse ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+                    Ativo
+                  </button>
+                  <span
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${getStatusBadgeTone(item.status)}`}
+                  >
+                    {normalizeUserFacingText(item.status)}
+                  </span>
+                </div>
               </div>
             </div>
           ))
@@ -688,13 +789,14 @@ async function readXlsxInventoryFile(file: File) {
   }
 }
 
-function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
+function parseInventoryRows(rows: unknown[][], settings: InventorySettings): { format: 'browse' | 'export'; items: InventoryItem[] } {
   const headerIndex = rows.findIndex(row => detectInventoryImportFormat(row.map(normalizeHeader)) !== null);
 
   if (headerIndex < 0) {
     throw new Error('Não encontrei o cabeçalho esperado. Use o modelo mata225 ou um CSV exportado pelo sistema.');
   }
 
+  const now = new Date().toISOString();
   const headers = rows[headerIndex].map(normalizeHeader);
   const format = detectInventoryImportFormat(headers);
   if (!format) {
@@ -725,6 +827,8 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
       'aplicação'
     ]);
 
+    const imageUrlIndex = findOptionalColumn(headers, ['imagem url', 'url imagem', 'imagem', 'foto', 'foto url', 'image url']);
+
     const items = rows
       .slice(headerIndex + 1)
       .map(row => {
@@ -737,6 +841,7 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
         const location = extraLocation || 'Sem localização';
         const vehicleModel = vehicleModelIndex >= 0 ? normalizeOfficialVehicleModel(row[vehicleModelIndex]) : '';
         const vehicleType = getVehicleTypeFromModel(vehicleModel);
+        const imageUrl = imageUrlIndex >= 0 ? normalizeImageUrl(row[imageUrlIndex]) : '';
         const { category, sourceCategory } = classifyInventoryCategory(name, rawGroup);
         const status = calculateInventoryStatus(quantity, settings);
 
@@ -744,8 +849,10 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
           sku,
           name,
           quantity,
+          updatedAt: now,
           category,
           sourceCategory,
+          imageUrl,
           vehicleModel,
           vehicleType,
           location,
@@ -763,6 +870,7 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
   const nameIndex = findColumn(headers, ['nome do item', 'nome', 'descricao', 'descrição']);
   const vehicleModelIndex = findOptionalColumn(headers, ['modelo do veiculo', 'modelo veiculo', 'modelo', 'marca_modelo']);
   const vehicleTypeIndex = findOptionalColumn(headers, ['tipo do veiculo', 'tipo veiculo', 'tipo']);
+  const imageUrlIndex = findOptionalColumn(headers, ['imagem url', 'url imagem', 'imagem', 'foto', 'foto url', 'image url']);
   const quantityIndex = findColumn(headers, ['quantidade atual', 'saldo atual', 'quantidade', 'saldo']);
   const categoryIndex = findOptionalColumn(headers, ['categoria']);
   const locationIndex = findColumn(headers, ['localizacao', 'locacao', 'localizacao / prateleira', 'local']);
@@ -779,10 +887,14 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
       const extraLocation = normalizeLocationText(row[locationIndex]);
       const location = extraLocation || 'Sem localização';
       const vehicleModel = vehicleModelIndex >= 0 ? normalizeOfficialVehicleModel(row[vehicleModelIndex]) : '';
-      const vehicleType = vehicleTypeIndex >= 0 ? normalizeUserFacingText(row[vehicleTypeIndex]) : getVehicleTypeFromModel(vehicleModel);
+      const vehicleType =
+        vehicleTypeIndex >= 0
+          ? normalizeOperationalVehicleType(row[vehicleTypeIndex])
+          : getVehicleTypeFromModel(vehicleModel);
+      const imageUrl = imageUrlIndex >= 0 ? normalizeImageUrl(row[imageUrlIndex]) : '';
       const resolvedCategory = categoryIndex >= 0 ? normalizeUserFacingText(row[categoryIndex]) : '';
       const { category, sourceCategory } = classifyInventoryCategory(name, resolvedCategory || 'Sem grupo');
-      const status = statusIndex >= 0 ? normalizeUserFacingText(row[statusIndex]) : calculateInventoryStatus(quantity, settings);
+      const status = statusIndex >= 0 ? normalizeInventoryStatus(row[statusIndex]) : calculateInventoryStatus(quantity, settings);
       const alertCriticalLimit =
         criticalIndex >= 0 ? parseNumber(row[criticalIndex]) : settings.criticalLimit;
       const alertReorderLimit =
@@ -792,8 +904,10 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
         sku,
         name,
         quantity,
+        updatedAt: now,
         category,
         sourceCategory,
+        imageUrl,
         vehicleModel,
         vehicleType,
         location,
@@ -805,6 +919,34 @@ function parseInventoryRows(rows: unknown[][], settings: InventorySettings) {
     .filter(item => item.sku && item.name);
 
   return { format, items };
+}
+
+function mergeInventoryConferenceItem(
+  current: InventoryItem,
+  incoming: InventoryItem,
+  settings: InventorySettings
+): InventoryItem {
+  const now = new Date().toISOString();
+  const nextItem: InventoryItem = {
+    ...current,
+    name: incoming.name || current.name,
+    quantity: incoming.quantity,
+    category: incoming.category || current.category,
+    sourceCategory: incoming.sourceCategory || current.sourceCategory,
+    imageUrl: incoming.imageUrl || current.imageUrl,
+    imageHint: incoming.imageHint || current.imageHint,
+    vehicleModel: incoming.vehicleModel || current.vehicleModel,
+    vehicleType: incoming.vehicleType || current.vehicleType,
+    location: normalizeLocationText(incoming.location || current.location),
+    alertCriticalLimit: current.alertCriticalLimit ?? incoming.alertCriticalLimit ?? settings.criticalLimit,
+    alertReorderLimit: current.alertReorderLimit ?? incoming.alertReorderLimit ?? settings.reorderLimit,
+    updatedAt: incoming.updatedAt || current.updatedAt || now
+  };
+
+  return {
+    ...nextItem,
+    status: calculateItemStatus(nextItem, settings)
+  };
 }
 
 function detectInventoryImportFormat(headers: string[]) {
@@ -870,6 +1012,12 @@ function toText(value: unknown) {
   }
 
   return text.replace(/""/g, '"').trim();
+}
+
+function normalizeImageUrl(value: unknown) {
+  const url = toText(value);
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) || url.startsWith('/') ? url : '';
 }
 
 function formatSku(value: unknown) {

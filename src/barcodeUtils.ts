@@ -1,4 +1,4 @@
-import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { InventoryItem } from './types';
 
@@ -13,6 +13,20 @@ type ScanTarget = {
   statusMessage: string;
 };
 
+type ScannerDecodeCallback = Parameters<BrowserMultiFormatReader['decodeFromConstraints']>[2];
+
+export function getScannerVideoConstraints(): MediaStreamConstraints {
+  return {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9 }
+    }
+  };
+}
+
 export function getScannerReader(readerRef: { current: BrowserMultiFormatReader | null }) {
   if (!readerRef.current) {
     readerRef.current = new BrowserMultiFormatReader(buildScannerHints(), {
@@ -23,6 +37,76 @@ export function getScannerReader(readerRef: { current: BrowserMultiFormatReader 
   }
 
   return readerRef.current;
+}
+
+export async function prepareScannerVideo(video: HTMLVideoElement, timeoutMs = 2600) {
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+
+  await video.play().catch(() => undefined);
+
+  if (isScannerVideoReady(video)) {
+    return true;
+  }
+
+  await new Promise<void>(resolve => {
+    let finished = false;
+    let timeoutId = 0;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeoutId);
+      video.removeEventListener('loadedmetadata', finish);
+      video.removeEventListener('loadeddata', finish);
+      video.removeEventListener('canplay', finish);
+      video.removeEventListener('playing', finish);
+      resolve();
+    };
+
+    timeoutId = window.setTimeout(finish, timeoutMs);
+    video.addEventListener('loadedmetadata', finish, { once: true });
+    video.addEventListener('loadeddata', finish, { once: true });
+    video.addEventListener('canplay', finish, { once: true });
+    video.addEventListener('playing', finish, { once: true });
+  });
+
+  await video.play().catch(() => undefined);
+  return isScannerVideoReady(video);
+}
+
+export function isScannerVideoReady(video: HTMLVideoElement) {
+  return video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+}
+
+export async function startPreparedScanner(
+  reader: BrowserMultiFormatReader,
+  video: HTMLVideoElement,
+  callback: ScannerDecodeCallback,
+  setStatus?: (value: string) => void
+): Promise<IScannerControls> {
+  const start = () => reader.decodeFromConstraints(getScannerVideoConstraints(), video, callback);
+  let controls = await start();
+  let isReady = await prepareScannerVideo(video);
+
+  if (isReady) {
+    return controls;
+  }
+
+  setStatus?.('Câmera sem imagem. Reabrindo automaticamente...');
+  controls.stop();
+  BrowserMultiFormatReader.cleanVideoSource(video);
+  await new Promise(resolve => window.setTimeout(resolve, 220));
+
+  controls = await start();
+  isReady = await prepareScannerVideo(video, 3200);
+
+  if (!isReady) {
+    setStatus?.('Aguardando imagem da câmera. Se ficar preto, o sistema continua tentando ler.');
+  }
+
+  return controls;
 }
 
 export async function decodeFileCode(

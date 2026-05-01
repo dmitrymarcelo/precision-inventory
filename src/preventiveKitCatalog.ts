@@ -81,7 +81,7 @@ export const preventiveKitCatalog: PreventiveKitDefinition[] = [
     id: 'moto',
     name: 'MOTO',
     items: [
-      { sku: '18002', description: 'FILTRO DE COMBUSTIVEL', requiredQuantity: 1 },
+      { sku: '18000', description: 'FILTRO DE COMBUSTIVEL', requiredQuantity: 1 },
       { sku: '17902', description: 'OLEO 20W50 MOTO - LITRO', requiredQuantity: 1 }
     ]
   },

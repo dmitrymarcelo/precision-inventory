@@ -7,11 +7,14 @@ import {
   Loader2,
   Minus,
   PackageCheck,
+  Pencil,
+  RotateCcw,
   Search,
   ShieldAlert,
+  Trash2,
   X
 } from 'lucide-react';
-import { InventoryItem, InventoryLog, InventorySettings, MaterialRequest } from '../types';
+import { InventoryItem, InventoryLog, InventorySettings, MaterialRequest, MaterialRequestAuditActor, MaterialRequestAuditEntry } from '../types';
 import { calculateItemStatus } from '../inventoryRules';
 import {
   bumpSeparatedQuantity,
@@ -25,7 +28,9 @@ import {
   getScannerReader,
   isExpectedScannerError,
   playConfirmTone,
-  resolveScannedCode
+  prepareScannerVideo,
+  resolveScannedCode,
+  startPreparedScanner
 } from '../barcodeUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 
@@ -36,8 +41,13 @@ interface MaterialSeparationProps {
   setLogs: React.Dispatch<React.SetStateAction<InventoryLog[]>>;
   requests: MaterialRequest[];
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
+  canEdit: boolean;
+  canDeleteRequests: boolean;
+  canReverseRequests: boolean;
+  auditActor: MaterialRequestAuditActor;
   selectedRequestId: string | null;
   setSelectedRequestId: (requestId: string | null) => void;
+  onEditRequest: (requestId: string) => void;
   settings: InventorySettings;
   showToast: (message: string, type?: 'success' | 'info') => void;
   ocrAliases: Record<string, string>;
@@ -52,8 +62,13 @@ export default function MaterialSeparation({
   setLogs,
   requests,
   setRequests,
+  canEdit,
+  canDeleteRequests,
+  canReverseRequests,
+  auditActor,
   selectedRequestId,
   setSelectedRequestId,
+  onEditRequest,
   settings,
   showToast,
   ocrAliases,
@@ -66,25 +81,69 @@ export default function MaterialSeparation({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isScannerBusy, setIsScannerBusy] = useState(false);
   const [lastConfirmedSku, setLastConfirmedSku] = useState<string | null>(null);
+  const [quantityConfirmation, setQuantityConfirmation] = useState<{
+    requestId: string;
+    sku: string;
+    itemName: string;
+    location: string;
+    expectedRemaining: number | null;
+    separatedAfter: number;
+  } | null>(null);
+  const [quantityConfirmationValue, setQuantityConfirmationValue] = useState('');
+  const [reportedRemainingBySku, setReportedRemainingBySku] = useState<Record<string, number>>({});
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const scanLockedRef = useRef(false);
   const releaseTimerRef = useRef<number | null>(null);
+  const canMutate = canEdit;
   const audioContextRef = useRef<AudioContext | null>(null);
   const itemsRef = useRef(items);
   const requestRef = useRef<MaterialRequest | null>(null);
   const aliasRef = useRef(ocrAliases);
   const assistBusyRef = useRef(false);
+  const appendAuditEntry = (
+    request: MaterialRequest,
+    entry: Omit<MaterialRequestAuditEntry, 'id'>,
+    toleranceMs = 60_000
+  ) => {
+    const trail = Array.isArray(request.auditTrail) ? request.auditTrail : [];
+    const last = trail.length > 0 ? trail[trail.length - 1] : null;
+    const lastAt = last ? new Date(last.at).getTime() : 0;
+    const nextAt = new Date(entry.at).getTime();
+    const isDuplicate =
+      last &&
+      last.event === entry.event &&
+      (last.actor?.matricula || '') === (entry.actor?.matricula || '') &&
+      (last.detail || '') === (entry.detail || '') &&
+      Math.abs(nextAt - lastAt) <= toleranceMs;
+
+    if (isDuplicate) return request;
+
+    const nextTrail: MaterialRequestAuditEntry[] = [
+      ...trail,
+      {
+        id: `${entry.event}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        ...entry
+      }
+    ].slice(-200);
+
+    return { ...request, auditTrail: nextTrail };
+  };
 
   const filteredRequests = useMemo(() => {
     const query = requestQuery.trim().toLowerCase();
     const sorted = [...requests].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const openOnly = sorted.filter(request => {
+      if (request.deletedAt) return false;
+      const status = normalizeUserFacingText(request.status);
+      return status !== 'Atendida' && status !== 'Estornada';
+    });
 
-    if (!query) return sorted;
+    if (!query) return openOnly;
 
-    return sorted.filter(request =>
+    return openOnly.filter(request =>
       request.code.toLowerCase().includes(query) ||
       normalizeUserFacingText(request.vehiclePlate).toLowerCase().includes(query) ||
       normalizeUserFacingText(request.costCenter).toLowerCase().includes(query) ||
@@ -97,12 +156,20 @@ export default function MaterialSeparation({
   }, [requestQuery, requests]);
 
   const currentRequest = useMemo(
-    () => requests.find(request => request.id === selectedRequestId) || null,
+    () => requests.find(request => request.id === selectedRequestId && !request.deletedAt) || null,
     [requests, selectedRequestId]
   );
 
+  useEffect(() => {
+    setQuantityConfirmation(null);
+    setQuantityConfirmationValue('');
+    setReportedRemainingBySku({});
+  }, [currentRequest?.id]);
+
   const requestProgress = currentRequest ? getRequestProgress(currentRequest) : null;
-  const isCurrentRequestLocked = normalizeUserFacingText(currentRequest?.status) === 'Atendida';
+  const currentStatus = normalizeUserFacingText(currentRequest?.status);
+  const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
+  const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
 
   useEffect(() => {
     itemsRef.current = items;
@@ -117,9 +184,15 @@ export default function MaterialSeparation({
   }, [currentRequest]);
 
   useEffect(() => {
-    if (!selectedRequestId || !requests.some(request => request.id === selectedRequestId)) {
+    if (!selectedRequestId || !requests.some(request => request.id === selectedRequestId && !request.deletedAt)) {
       const firstOpenRequest =
-        requests.find(request => normalizeUserFacingText(request.status) !== 'Atendida') || requests[0] || null;
+        requests.find(request => {
+          if (request.deletedAt) return false;
+          const status = normalizeUserFacingText(request.status);
+          return status !== 'Atendida' && status !== 'Estornada';
+        }) ||
+        requests[0] ||
+        null;
       setSelectedRequestId(firstOpenRequest ? firstOpenRequest.id : null);
     }
   }, [requests, selectedRequestId, setSelectedRequestId]);
@@ -140,15 +213,8 @@ export default function MaterialSeparation({
         setScannerFeedback('neutral');
         scanLockedRef.current = false;
 
-        const controls = await reader.decodeFromConstraints(
-          {
-            audio: false,
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            }
-          },
+        const controls = await startPreparedScanner(
+          reader,
           video,
           (result, error) => {
             if (cancelled || scanLockedRef.current) return;
@@ -161,6 +227,9 @@ export default function MaterialSeparation({
             if (error && !isExpectedScannerError(error)) {
               setScannerStatus('Ajuste o enquadramento do código para continuar.');
             }
+          },
+          value => {
+            if (!cancelled) setScannerStatus(value);
           }
         );
 
@@ -170,8 +239,14 @@ export default function MaterialSeparation({
         }
 
         scannerControlsRef.current = controls;
+        const videoReady = await prepareScannerVideo(video, 200);
+        if (!videoReady && !cancelled) {
+          setScannerStatus('Aguardando imagem da câmera. Se ficar preto, o sistema vai continuar tentando ler.');
+        }
         setIsScannerBusy(false);
-        setScannerStatus('Leitor ativo. Mire a etiqueta e aguarde o bip.');
+        if (videoReady) {
+          setScannerStatus('Leitor ativo. Mire a etiqueta e aguarde o bip.');
+        }
         setScannerFeedback('neutral');
 
         const assistTimer = window.setInterval(async () => {
@@ -266,8 +341,9 @@ export default function MaterialSeparation({
       return;
     }
 
-    if (normalizeUserFacingText(requestRef.current.status) === 'Atendida') {
-      showToast('Esta solicitação já foi entregue e está bloqueada para consulta.', 'info');
+    const status = normalizeUserFacingText(requestRef.current.status);
+    if (status === 'Atendida' || status === 'Estornada') {
+      showToast('Esta solicitação está fechada e está disponível somente para consulta.', 'info');
       return;
     }
 
@@ -278,6 +354,8 @@ export default function MaterialSeparation({
 
     setScannerStatus('Preparando leitor...');
     setScannerFeedback('neutral');
+    stopScannerSession();
+    setIsScannerBusy(true);
     setIsScannerOpen(true);
   };
 
@@ -315,10 +393,11 @@ export default function MaterialSeparation({
       return;
     }
 
-    if (normalizeUserFacingText(activeRequest.status) === 'Atendida') {
+    const activeStatus = normalizeUserFacingText(activeRequest.status);
+    if (activeStatus === 'Atendida' || activeStatus === 'Estornada') {
       setScannerFeedback('error');
-      setScannerStatus('Solicitação entregue. O histórico está liberado somente para consulta.');
-      showToast('Esta solicitação já foi entregue e está bloqueada para consulta.', 'info');
+      setScannerStatus('Solicitação fechada. O histórico está liberado somente para consulta.');
+      showToast('Esta solicitação está fechada e está bloqueada para consulta.', 'info');
       return;
     }
 
@@ -360,7 +439,17 @@ export default function MaterialSeparation({
       previous.map(request => (request.id === nextRequest.id ? nextRequest : request))
     );
     setLastConfirmedSku(detected.matchedSku);
-    setScannerStatus(`SKU ${detected.matchedSku} confirmado para ${normalizeUserFacingText(requestItem.itemName)}.`);
+    const matchedSkuKey = normalizeSku(detected.matchedSku);
+    const stockItem =
+      itemsRef.current.find(item => normalizeSku(item.sku) === matchedSkuKey) || null;
+    const location = normalizeLocationText(stockItem?.location || requestItem.location);
+    const expectedRemaining = stockItem ? Math.max(0, stockItem.quantity - nextSeparated) : null;
+    const expectedMessage =
+      expectedRemaining === null
+        ? `SKU ${detected.matchedSku} confirmado para ${normalizeUserFacingText(requestItem.itemName)}. Confira o saldo real na localização ${location}.`
+        : buildRemainingMessage(detected.matchedSku, requestItem.itemName, expectedRemaining, location);
+    setScannerStatus(expectedMessage);
+    showToast(expectedMessage, 'success');
     setOcrAliases(current => {
       const next = { ...current };
       detected.candidates.forEach(candidate => {
@@ -372,6 +461,25 @@ export default function MaterialSeparation({
     if ('vibrate' in navigator) {
       navigator.vibrate?.(60);
     }
+    if (activeRequest) {
+      if (releaseTimerRef.current) {
+        window.clearTimeout(releaseTimerRef.current);
+        releaseTimerRef.current = null;
+      }
+      scanLockedRef.current = true;
+      setScannerFeedback('success');
+      setQuantityConfirmation({
+        requestId: activeRequest.id,
+        sku: detected.matchedSku,
+        itemName: requestItem.itemName,
+        location,
+        expectedRemaining,
+        separatedAfter: nextSeparated
+      });
+      setQuantityConfirmationValue(expectedRemaining === null ? '' : String(expectedRemaining));
+      return;
+    }
+
     lockScannerBriefly('success', 900);
   };
 
@@ -390,14 +498,29 @@ export default function MaterialSeparation({
   };
 
   const updateCurrentRequest = (updater: (request: MaterialRequest) => MaterialRequest) => {
-    if (!currentRequest || normalizeUserFacingText(currentRequest.status) === 'Atendida') return;
+    if (!currentRequest || isCurrentRequestLocked) return;
+    if (!canMutate) {
+      showToast('Modo consulta: sem permissão para alterar solicitações.', 'info');
+      return;
+    }
 
     const nextRequest = updater(currentRequest);
-    nextRequest.updatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    nextRequest.updatedAt = now;
     nextRequest.status = recalculateRequestStatus(nextRequest);
+    const withAudit = appendAuditEntry(
+      nextRequest,
+      {
+        at: now,
+        event: 'separation_updated',
+        actor: auditActor,
+        detail: 'Separação em andamento'
+      },
+      120_000
+    );
 
     setRequests(previous =>
-      previous.map(request => (request.id === nextRequest.id ? nextRequest : request))
+      previous.map(request => (request.id === withAudit.id ? withAudit : request))
     );
   };
 
@@ -407,8 +530,13 @@ export default function MaterialSeparation({
       return;
     }
 
-    if (normalizeUserFacingText(currentRequest.status) === 'Atendida') {
-      showToast('Esta solicitação já foi entregue e está bloqueada para consulta.', 'info');
+    if (isCurrentRequestLocked) {
+      showToast('Esta solicitação está fechada e está bloqueada para consulta.', 'info');
+      return;
+    }
+
+    if (!canMutate) {
+      showToast('Modo consulta: sem permissão para concluir a separação.', 'info');
       return;
     }
 
@@ -438,9 +566,15 @@ export default function MaterialSeparation({
         const requestItem = requestItemsBySku.get(item.sku);
         if (!requestItem) return item;
 
+        const reportedRemaining = reportedRemainingBySku[item.sku];
+        const nextQuantity = Number.isFinite(reportedRemaining)
+          ? Math.max(0, Math.floor(reportedRemaining))
+          : Math.max(0, item.quantity - requestItem.separatedQuantity);
+
         const updatedItem = {
           ...item,
-          quantity: Math.max(0, item.quantity - requestItem.separatedQuantity)
+          quantity: nextQuantity,
+          updatedAt: now
         };
 
         return {
@@ -452,13 +586,17 @@ export default function MaterialSeparation({
 
     const generatedLogs: InventoryLog[] = currentRequest.items.map(requestItem => {
       const stockItem = stockMap.get(requestItem.sku)!;
+      const expectedAfter = Math.max(0, stockItem.quantity - requestItem.separatedQuantity);
+      const reportedRemaining = reportedRemainingBySku[requestItem.sku];
+      const quantityAfter = Number.isFinite(reportedRemaining) ? Math.max(0, Math.floor(reportedRemaining)) : expectedAfter;
+
       return {
         id: `${currentRequest.code}-${requestItem.sku}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         sku: requestItem.sku,
         itemName: requestItem.itemName,
         previousQuantity: stockItem.quantity,
-        delta: requestItem.separatedQuantity * -1,
-        quantityAfter: Math.max(0, stockItem.quantity - requestItem.separatedQuantity),
+        delta: quantityAfter - stockItem.quantity,
+        quantityAfter,
         location: requestItem.location,
         date: now,
         source: 'solicitacao',
@@ -470,36 +608,153 @@ export default function MaterialSeparation({
     setRequests(previous =>
       previous.map(request =>
         request.id === currentRequest.id
-          ? {
-              ...request,
-              status: 'Atendida',
-              fulfilledAt: now,
-              updatedAt: now
-            }
+          ? appendAuditEntry(
+              {
+                ...request,
+                status: 'Atendida',
+                fulfilledAt: now,
+                updatedAt: now
+              },
+              {
+                at: now,
+                event: 'separation_fulfilled',
+                actor: auditActor,
+                detail: 'Concluiu e baixou estoque'
+              }
+            )
           : request
       )
     );
 
     showToast(`Solicitação ${currentRequest.code} concluída e baixada do estoque.`, 'success');
     closeScanner();
+    setReportedRemainingBySku({});
+    setQuantityConfirmation(null);
+    setQuantityConfirmationValue('');
+  };
+
+  const reverseRequest = () => {
+    if (!currentRequest) {
+      showToast('Abra uma solicitação para estornar.', 'info');
+      return;
+    }
+    if (!canReverseRequests) {
+      showToast('Somente administradores podem estornar solicitações atendidas.', 'info');
+      return;
+    }
+    if (normalizeUserFacingText(currentRequest.status) !== 'Atendida') {
+      showToast('Somente solicitações atendidas podem ser estornadas.', 'info');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Estornar a solicitação ${currentRequest.code}? Isso devolve ao estoque as quantidades baixadas.`
+    );
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+    const requestCode = currentRequest.code;
+
+    const latestRequestLogBySku = new Map<string, InventoryLog>();
+    logs.forEach(log => {
+      if (log.source !== 'solicitacao') return;
+      if (String(log.referenceCode || '') !== requestCode) return;
+      const existing = latestRequestLogBySku.get(log.sku);
+      if (!existing) {
+        latestRequestLogBySku.set(log.sku, log);
+        return;
+      }
+      const existingAt = new Date(existing.date).getTime();
+      const candidateAt = new Date(log.date).getTime();
+      if (candidateAt >= existingAt) {
+        latestRequestLogBySku.set(log.sku, log);
+      }
+    });
+
+    const requestItemBySku = new Map(currentRequest.items.map(item => [item.sku, item]));
+    const restockAmountBySku = new Map<string, number>();
+
+    currentRequest.items.forEach(requestItem => {
+      const log = latestRequestLogBySku.get(requestItem.sku);
+      const fromLog = log ? Math.max(0, Math.floor(Math.abs(Number(log.delta) || 0))) : 0;
+      const fallback = Math.max(0, Math.floor(requestItem.separatedQuantity || 0));
+      const amount = fromLog > 0 ? fromLog : fallback;
+      if (amount > 0) {
+        restockAmountBySku.set(requestItem.sku, amount);
+      }
+    });
+
+    setItems(previous =>
+      previous.map(item => {
+        const amount = restockAmountBySku.get(item.sku);
+        if (!amount) return item;
+        const updatedItem = {
+          ...item,
+          quantity: Math.max(0, item.quantity + amount),
+          updatedAt: now
+        };
+        return { ...updatedItem, status: calculateItemStatus(updatedItem, settings) };
+      })
+    );
+
+    setLogs(previous => {
+      const nextLogs: InventoryLog[] = [];
+      const stockMap = new Map(itemsRef.current.map(item => [item.sku, item]));
+
+      restockAmountBySku.forEach((amount, sku) => {
+        const requestItem = requestItemBySku.get(sku);
+        if (!requestItem) return;
+        const stockItem = stockMap.get(sku);
+        if (!stockItem) return;
+
+        nextLogs.push({
+          id: `estorno-${requestCode}-${sku}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sku,
+          itemName: requestItem.itemName,
+          previousQuantity: stockItem.quantity,
+          delta: amount,
+          quantityAfter: stockItem.quantity + amount,
+          location: requestItem.location,
+          date: now,
+          source: 'recebimento',
+          referenceCode: `ESTORNO ${requestCode}`
+        });
+      });
+
+      return [...nextLogs, ...previous];
+    });
+
+    setRequests(previous =>
+      previous.map(request =>
+        request.id === currentRequest.id
+          ? appendAuditEntry(
+              {
+                ...request,
+                status: 'Estornada',
+                reversedAt: now,
+                updatedAt: now
+              },
+              {
+                at: now,
+                event: 'separation_reversed',
+                actor: auditActor,
+                detail: 'Estorno realizado'
+              }
+            )
+          : request
+      )
+    );
+
+    closeScanner();
+    setReportedRemainingBySku({});
+    setQuantityConfirmation(null);
+    setQuantityConfirmationValue('');
+    showToast(`Solicitação ${currentRequest.code} estornada. Estoque devolvido.`, 'success');
   };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-6">
       <aside className="space-y-4">
-        <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
-          <span className="text-primary font-label text-[11px] font-semibold uppercase tracking-wider">
-            Separação de material
-          </span>
-          <h2 className="text-2xl font-extrabold text-on-surface font-headline tracking-tight mt-1">
-            Operação guiada por etiqueta
-          </h2>
-          <p className="text-sm text-on-surface-variant mt-2">
-            Escolha uma solicitação e use o leitor como coletor. Cada leitura confirma o código certo e soma
-            na separação em tempo real.
-          </p>
-        </section>
-
         <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-outline" size={18} />
@@ -516,37 +771,89 @@ export default function MaterialSeparation({
               filteredRequests.map(request => {
                 const progress = getRequestProgress(request);
                 const selected = request.id === currentRequest?.id;
+                const editableStatus = normalizeUserFacingText(request.status) !== 'Atendida' && normalizeUserFacingText(request.status) !== 'Estornada';
 
                 return (
-                  <button
+                  <div
                     key={request.id}
-                    type="button"
-                    onClick={() => setSelectedRequestId(request.id)}
-                    className={`w-full text-left rounded-xl border p-4 transition-colors ${
+                    className={`w-full rounded-xl border transition-colors ${
                       selected
                         ? 'border-primary bg-primary-container/15'
                         : 'border-outline-variant/15 bg-surface-container-low hover:bg-surface-container-high'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-on-surface">{request.code}</p>
-                        <p className="text-xs text-on-surface-variant mt-1 truncate">
-                          {normalizeUserFacingText(request.vehiclePlate) || 'Sem placa'} • {normalizeUserFacingText(request.costCenter) || 'Sem centro de custo'}
-                        </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestId(request.id)}
+                      className="w-full text-left p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-on-surface">{request.code}</p>
+                          <p className="text-xs text-on-surface-variant mt-1 truncate">
+                            {normalizeUserFacingText(request.vehiclePlate) || 'Sem placa'} •{' '}
+                            {normalizeUserFacingText(request.costCenter) || 'Sem centro de custo'}
+                          </p>
+                        </div>
+                        <span className={statusClassName(request.status)}>{normalizeUserFacingText(request.status)}</span>
                       </div>
-                      <span className={statusClassName(request.status)}>{normalizeUserFacingText(request.status)}</span>
-                    </div>
 
-                    <div className="mt-3 h-2 rounded-full bg-surface-container-high overflow-hidden">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${progress.percent}%` }} />
-                    </div>
+                      <div className="mt-3 h-2 rounded-full bg-surface-container-high overflow-hidden">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${progress.percent}%` }} />
+                      </div>
 
-                    <div className="mt-3 flex items-center justify-between text-xs text-on-surface-variant">
-                      <span>{progress.separated}/{progress.requested} separados</span>
-                      <span>{request.items.length} itens</span>
-                    </div>
-                  </button>
+                      <div className="mt-3 flex items-center justify-between text-xs text-on-surface-variant">
+                        <span>
+                          {progress.separated}/{progress.requested} separados
+                        </span>
+                        <span>{request.items.length} itens</span>
+                      </div>
+                    </button>
+
+                    {editableStatus && (canEdit || canDeleteRequests) && (
+                      <div className="px-4 pb-4 flex gap-2">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onEditRequest(request.id)}
+                            className="flex-1 h-10 rounded-lg bg-surface-container-lowest text-on-surface font-semibold text-sm flex items-center justify-center gap-2"
+                          >
+                            <Pencil size={16} />
+                            Editar
+                          </button>
+                        )}
+                        {canDeleteRequests && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const confirmed = window.confirm(`Remover a solicitação ${request.code}?`);
+                              if (!confirmed) return;
+                              const now = new Date().toISOString();
+                              setRequests(previous =>
+                                previous.map(entry =>
+                                  entry.id === request.id
+                                    ? {
+                                        ...entry,
+                                        deletedAt: now,
+                                        updatedAt: now
+                                      }
+                                    : entry
+                                )
+                              );
+                              if (selectedRequestId === request.id) {
+                                setSelectedRequestId(null);
+                              }
+                              showToast(`Solicitação ${request.code} removida.`, 'success');
+                            }}
+                            className="h-10 px-3 rounded-lg bg-error-container/40 text-error font-semibold text-sm flex items-center justify-center gap-2"
+                          >
+                            <Trash2 size={16} />
+                            Remover
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })
             ) : (
@@ -594,10 +901,24 @@ export default function MaterialSeparation({
                 <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
                   <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-on-surface">Solicitação concluída</p>
-                    <p className="text-sm text-on-surface-variant mt-1">
-                      Este pedido já foi entregue. A tela fica disponível somente para consulta do histórico e das quantidades separadas.
+                    <p className="font-semibold text-on-surface">
+                      {currentStatus === 'Estornada' ? 'Solicitação estornada' : 'Solicitação concluída'}
                     </p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      {currentStatus === 'Estornada'
+                        ? 'Este pedido foi estornado. O histórico fica disponível somente para consulta.'
+                        : 'Este pedido já foi entregue. A tela fica disponível somente para consulta do histórico e das quantidades separadas.'}
+                    </p>
+                    {canReverseCurrentRequest && (
+                      <button
+                        type="button"
+                        onClick={reverseRequest}
+                        className="mt-3 h-11 w-full px-4 rounded-lg bg-sky-100 text-sky-950 font-bold flex items-center justify-center gap-2"
+                      >
+                        <RotateCcw size={18} />
+                        Estornar solicitação
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -681,8 +1002,8 @@ export default function MaterialSeparation({
                     </button>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px] gap-3 items-center">
-                    <div className="relative h-28 rounded-lg overflow-hidden bg-black">
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-3 items-center">
+                    <div className="relative h-56 sm:h-64 md:h-60 rounded-xl overflow-hidden bg-black">
                       <video
                         ref={videoRef}
                         className="w-full h-full object-cover"
@@ -691,7 +1012,7 @@ export default function MaterialSeparation({
                         autoPlay
                       />
                       <div
-                        className={`absolute inset-x-5 top-1/2 -translate-y-1/2 h-10 rounded-md shadow-[0_0_0_999px_rgba(0,0,0,0.22)] ${
+                        className={`absolute left-1/2 top-1/2 h-[min(62vw,220px)] w-[min(62vw,220px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 shadow-[0_0_0_999px_rgba(0,0,0,0.24)] ${
                           scannerFeedback === 'error'
                             ? 'border border-red-400'
                             : scannerFeedback === 'success'
@@ -828,7 +1149,7 @@ export default function MaterialSeparation({
                 })}
               </div>
 
-              {normalizeUserFacingText(currentRequest.status) !== 'Atendida' && requestProgress && requestProgress.pending > 0 && (
+              {!isCurrentRequestLocked && requestProgress && requestProgress.pending > 0 && (
                 <div className="mt-4 rounded-xl bg-error-container/20 border border-error-container/20 px-4 py-3 flex items-start gap-3">
                   <ShieldAlert size={18} className="text-error shrink-0 mt-0.5" />
                   <p className="text-sm text-on-surface">
@@ -844,6 +1165,146 @@ export default function MaterialSeparation({
           </section>
         )}
       </section>
+
+      {quantityConfirmation ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-xl p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">Conferência de saldo</p>
+            <h3 className="font-headline font-bold text-xl text-on-surface mt-2">
+              {normalizeUserFacingText(quantityConfirmation.itemName)}
+            </h3>
+            <p className="text-sm text-on-surface-variant mt-2">
+              SKU {quantityConfirmation.sku} • Localização {quantityConfirmation.location}
+            </p>
+
+            <div className="mt-4 rounded-xl bg-surface-container-low p-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-outline">Sistema (após retirar 1)</p>
+              <p className="text-2xl font-headline font-bold text-on-surface mt-2">
+                {quantityConfirmation.expectedRemaining === null ? '--' : `${quantityConfirmation.expectedRemaining} un`}
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-xs font-bold uppercase tracking-widest text-outline mb-2">
+                Quantidade real na locação
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                className="w-full h-12 rounded-lg bg-surface-container-highest border border-outline-variant/20 px-4 text-on-surface font-bold"
+                value={quantityConfirmationValue}
+                onChange={event => setQuantityConfirmationValue(event.target.value)}
+              />
+              {quantityConfirmation.expectedRemaining !== null &&
+              Number.isFinite(Number(quantityConfirmationValue)) &&
+              Math.floor(Number(quantityConfirmationValue)) !== quantityConfirmation.expectedRemaining ? (
+                <p className="text-[11px] text-error mt-2 font-semibold">
+                  Divergência detectada: valor diferente do sistema.
+                </p>
+              ) : null}
+            </div>
+
+            <form
+              className="mt-5 flex flex-col-reverse sm:flex-row gap-2 justify-end"
+              onSubmit={event => {
+                event.preventDefault();
+
+                const active = quantityConfirmation;
+                if (!active || !currentRequest || active.requestId !== currentRequest.id) {
+                  setQuantityConfirmation(null);
+                  setQuantityConfirmationValue('');
+                  lockScannerBriefly('neutral', 250);
+                  return;
+                }
+
+                const parsed = Number(quantityConfirmationValue);
+                if (!Number.isFinite(parsed) || parsed < 0) {
+                  showToast('Informe uma quantidade válida (0 ou maior).', 'info');
+                  return;
+                }
+
+                const reportedRemaining = Math.floor(parsed);
+                const expectedRemaining = active.expectedRemaining;
+                const isDivergent = expectedRemaining !== null && reportedRemaining !== expectedRemaining;
+
+                setReportedRemainingBySku(previous => ({
+                  ...previous,
+                  [active.sku]: reportedRemaining
+                }));
+
+                if (isDivergent) {
+                  const now = new Date().toISOString();
+                  setLogs(previous => [
+                    {
+                      id: `div-${currentRequest.code}-${active.sku}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      sku: active.sku,
+                      itemName: active.itemName,
+                      previousQuantity: expectedRemaining,
+                      delta: reportedRemaining - expectedRemaining,
+                      quantityAfter: reportedRemaining,
+                      location: active.location,
+                      date: now,
+                      source: 'divergencia',
+                      referenceCode: currentRequest.code,
+                      expectedQuantityAfter: expectedRemaining,
+                      reportedQuantityAfter: reportedRemaining
+                    },
+                    ...previous
+                  ]);
+                }
+
+                const confirmationMessage = buildRemainingMessage(active.sku, active.itemName, reportedRemaining, active.location);
+                setScannerStatus(confirmationMessage);
+                showToast(confirmationMessage, 'success');
+                setQuantityConfirmation(null);
+                setQuantityConfirmationValue('');
+                lockScannerBriefly('success', 900);
+              }}
+            >
+              <button
+                type="button"
+                className="h-11 px-4 rounded-lg bg-surface-container-highest text-on-surface font-bold"
+                onClick={() => {
+                  const active = quantityConfirmation;
+                  if (active?.expectedRemaining !== null && active?.expectedRemaining !== undefined) {
+                    setReportedRemainingBySku(previous => ({
+                      ...previous,
+                      [active.sku]: active.expectedRemaining as number
+                    }));
+                    const confirmationMessage = buildRemainingMessage(
+                      active.sku,
+                      active.itemName,
+                      active.expectedRemaining,
+                      active.location
+                    );
+                    setScannerStatus(confirmationMessage);
+                    showToast(confirmationMessage, 'success');
+                  }
+                  setQuantityConfirmation(null);
+                  setQuantityConfirmationValue('');
+                  lockScannerBriefly('success', 900);
+                }}
+              >
+                Usar saldo do sistema
+              </button>
+              <button
+                type="submit"
+                className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold"
+              >
+                {quantityConfirmation.expectedRemaining !== null &&
+                Number.isFinite(Number(quantityConfirmationValue)) &&
+                Math.floor(Number(quantityConfirmationValue)) !== quantityConfirmation.expectedRemaining
+                  ? 'Registrar divergência'
+                  : 'Confirmar'}
+              </button>
+            </form>
+
+            <p className="text-[11px] text-on-surface-variant mt-3">
+              Se estiver diferente do sistema, digite o valor real e confirme. A divergência fica registrada e será aplicada ao baixar o estoque.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -857,11 +1318,19 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function buildRemainingMessage(sku: string, itemName: string, remaining: number, location: string) {
+  return `SKU ${sku} confirmado para ${normalizeUserFacingText(itemName)}. Restam ${remaining} na localização ${location}.`;
+}
+
 function statusClassName(status: MaterialRequest['status']) {
   const normalized = normalizeUserFacingText(status);
   switch (normalized) {
     case 'Atendida':
-      return 'inline-flex items-center rounded-full bg-primary-container px-3 py-1 text-[11px] font-bold text-on-primary-container';
+      return 'inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-950';
+    case 'Estornada':
+      return 'inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-[11px] font-bold text-sky-950';
+    case 'Aberta':
+      return 'inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-[11px] font-bold text-yellow-950';
     case 'Separada':
       return 'inline-flex items-center rounded-full bg-surface-container-high px-3 py-1 text-[11px] font-bold text-primary';
     case 'Em separação':
@@ -869,4 +1338,12 @@ function statusClassName(status: MaterialRequest['status']) {
     default:
       return 'inline-flex items-center rounded-full bg-surface-container-highest px-3 py-1 text-[11px] font-bold text-on-surface-variant';
   }
+}
+
+function normalizeSku(value: string | null | undefined) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/[^\d]/g, '');
+  if (digits) return digits.replace(/^0+/, '') || '0';
+  return raw.toLowerCase().replace(/\s+/g, '');
 }

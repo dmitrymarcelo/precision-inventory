@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "deploy": "npm run build && npx wrangler pages deploy dist --project-name precision-inventory",
+    "deploy": "npm run build && npx --yes wrangler pages deploy dist --project-name precision-inventory",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },

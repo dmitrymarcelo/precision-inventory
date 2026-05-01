@@ -27,11 +27,12 @@ export async function loadCloudState() {
   return response.json() as Promise<{ state: CloudInventoryState | null; updatedAt: string | null }>;
 }
 
-export async function saveCloudState(state: CloudInventoryState) {
+export async function saveCloudState(state: CloudInventoryState, token?: string) {
   const response = await fetch('/api/state', {
     method: 'PUT',
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {})
     },
     body: JSON.stringify(state)
   });

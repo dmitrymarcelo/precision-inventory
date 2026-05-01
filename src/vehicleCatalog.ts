@@ -1,5 +1,7 @@
 import { normalizeUserFacingText } from './textUtils';
 
+export const EXTRA_OPERATIONAL_VEHICLE_TYPES = ['FUNILARIA E PINTURA', 'BATERIA', 'ADITIVOS'];
+
 export interface VehicleCatalogEntry {
   model: string;
   type: string;
@@ -67,7 +69,7 @@ export function normalizeOfficialVehicleModel(value: unknown) {
 }
 
 export function getVehicleTypeFromModel(value: unknown) {
-  return findVehicleCatalogEntry(value)?.type || '';
+  return normalizeOperationalVehicleType(findVehicleCatalogEntry(value)?.type || '');
 }
 
 export function listOfficialVehicleModels() {
@@ -75,7 +77,12 @@ export function listOfficialVehicleModels() {
 }
 
 export function listVehicleTypes() {
-  return Array.from(new Set(vehicleCatalog.map(entry => entry.type))).sort((first, second) =>
+  return Array.from(
+    new Set([
+      ...vehicleCatalog.map(entry => normalizeOperationalVehicleType(entry.type)),
+      ...EXTRA_OPERATIONAL_VEHICLE_TYPES
+    ])
+  ).sort((first, second) =>
     first.localeCompare(second, 'pt-BR')
   );
 }
@@ -83,6 +90,18 @@ export function listVehicleTypes() {
 export function listVehicleCatalogByType() {
   return listVehicleTypes().map(type => ({
     type,
-    entries: vehicleCatalog.filter(entry => entry.type === type)
+    entries: vehicleCatalog.filter(entry => normalizeOperationalVehicleType(entry.type) === type)
   }));
+}
+
+export function normalizeOperationalVehicleType(value: unknown) {
+  const normalized = normalizeUserFacingText(value);
+  const comparable = normalized
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (comparable === 'OLEO') return '';
+  if (normalized === 'VW') return 'SAVEIRO/GOL';
+  if (normalized === 'CHEVROLET') return 'S-10';
+  return normalized;
 }

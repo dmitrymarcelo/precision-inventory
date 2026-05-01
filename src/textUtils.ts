@@ -1,8 +1,65 @@
 import { InventoryItem } from './types';
 
-const FALLBACK_LOCATION = 'Sem localiza\u00e7\u00e3o';
-const CRITICAL_STATUS = 'Estoque Cr\u00edtico';
-const HEALTHY_STATUS = 'Estoque Saud\u00e1vel';
+const FALLBACK_LOCATION = 'Sem localização';
+const CRITICAL_STATUS = 'Estoque Crítico';
+const HEALTHY_STATUS = 'Estoque Saudável';
+
+const EXACT_WORD_REPAIRS = new Map<string, string>([
+  ['NAO', 'não'],
+  ['LOCALIZACAO', 'localização'],
+  ['REPOSICAO', 'reposição'],
+  ['OLEO', 'óleo'],
+  ['HIDRAULICA', 'hidráulica'],
+  ['HIDRAULICO', 'hidráulico'],
+  ['TRANSMISSAO', 'transmissão'],
+  ['TUBARAO', 'tubarão'],
+  ['ILUMINACAO', 'iluminação'],
+  ['DIRECAO', 'direção'],
+  ['SUSPENSAO', 'suspensão'],
+  ['MAO', 'mão'],
+  ['CONEXAO', 'conexão'],
+  ['TRACAO', 'tração'],
+  ['PISTAO', 'pistão'],
+  ['ARTICULACAO', 'articulação'],
+  ['PROTECAO', 'proteção'],
+  ['VEDACAO', 'vedação'],
+  ['VALVULA', 'válvula'],
+  ['SEGURANCA', 'segurança'],
+  ['IGNICAO', 'ignição'],
+  ['EXTENSAO', 'extensão'],
+  ['FLEXIVEL', 'flexível'],
+  ['SUCCAO', 'sucção'],
+  ['ELETRICA', 'elétrica'],
+  ['ELETRICO', 'elétrico'],
+  ['MECANICA', 'mecânica'],
+  ['MODULO', 'módulo'],
+  ['LAMPADA', 'lâmpada'],
+  ['CAMINHAO', 'caminhão'],
+  ['BOTAO', 'botão'],
+  ['PINGAO', 'pingão'],
+  ['GRAO', 'grão'],
+  ['PRECISAO', 'precisão'],
+  ['SOLUCAO', 'solução'],
+  ['REVISAO', 'revisão'],
+  ['REMOCAO', 'remoção'],
+  ['BRACO', 'braço'],
+  ['BRAAO', 'braço'],
+  ['GUARNICAO', 'guarnição'],
+  ['REFRIGERACAO', 'refrigeração'],
+  ['LIGACAO', 'ligação'],
+  ['FIXACAO', 'fixação'],
+  ['IDENTIFICACAO', 'identificação'],
+  ['REDUCAO', 'redução'],
+  ['ALGODAO', 'algodão'],
+  ['BLUSAO', 'blusão'],
+  ['CARVAO', 'carvão'],
+  ['PINHAO', 'pinhão'],
+  ['ACAO', 'ação']
+]);
+
+const PHRASE_REPAIRS = [
+  { pattern: /\bL(?:Ã|\uFFFD|A)\s+CARNEIRO\b/gi, replacement: 'lã carneiro' }
+];
 
 export function normalizeUserFacingText(value: unknown) {
   if (value === null || value === undefined) return '';
@@ -14,7 +71,7 @@ export function normalizeUserFacingText(value: unknown) {
   text = fixCommonMojibake(text);
   text = applyCommonTextFixes(text);
 
-  return text.trim();
+  return text.normalize('NFC').trim();
 }
 
 export function normalizeLocationText(value: unknown) {
@@ -25,18 +82,13 @@ export function normalizeLocationText(value: unknown) {
     return FALLBACK_LOCATION;
   }
 
-  if (/^armaz[e\u00e9]m\s+\d+$/i.test(text)) {
-    return FALLBACK_LOCATION;
-  }
-
-  const cleaned = text.replace(/^armaz[e\u00e9]m\s+\d+\s*-\s*/i, '').trim();
-  return cleaned || FALLBACK_LOCATION;
+  return text;
 }
 
 export function normalizeInventoryStatus(value: unknown): InventoryItem['status'] {
   const text = normalizeUserFacingText(value).toLowerCase();
 
-  if (text.includes('cr\u00edtico') || text.includes('critico')) {
+  if (text.includes('crítico') || text.includes('critico')) {
     return CRITICAL_STATUS;
   }
 
@@ -66,7 +118,7 @@ function decodeLiteralUnicode(text: string) {
 }
 
 function fixCommonMojibake(text: string) {
-  if (!/[\u00c3\u00c2]/.test(text)) return text;
+  if (!looksLikeMojibake(text)) return text;
 
   try {
     const bytes = Uint8Array.from(Array.from(text).map(character => character.charCodeAt(0) & 0xff));
@@ -77,71 +129,139 @@ function fixCommonMojibake(text: string) {
   }
 }
 
+function looksLikeMojibake(text: string) {
+  return /Ã[\u0080-\u00BF\u00D0-\u00FF]|Â[\u0080-\u00BF\u00D0-\u00FF]|Ãƒ|Ã‚|ï¿½|â€¢|â€“|â€”|â€œ|â€|\\u00/.test(text);
+}
+
 function suspiciousScore(text: string) {
   return (
     text.match(
-      /[\u00c3\u00c2\u00ef\u00bf\u00bd]|\u00e2\u20ac\u00a2|\u00e2\u20ac\u201c|\u00e2\u20ac\u201d|\u00e2\u20ac\u0153|\u00e2\u20ac|\\u00/g
+      /[\u00C3\u00C2\u00EF\u00BF\u00BD]|\u00E2\u20AC\u00A2|\u00E2\u20AC\u201C|\u00E2\u20AC\u201D|\u00E2\u20AC\u0153|\u00E2\u20AC|\\u00/g
     ) || []
   ).length;
 }
 
 function applyCommonTextFixes(text: string) {
-  return text
-    .replace(/\bSem Loca..o\b/gi, FALLBACK_LOCATION)
-    .replace(/\bSem loca..o\b/gi, FALLBACK_LOCATION)
-    .replace(/\bNao\b/g, 'N\u00e3o')
-    .replace(/\bLocalizacao\b/g, 'Localiza\u00e7\u00e3o')
-    .replace(/\bReposicao\b/g, 'Reposi\u00e7\u00e3o')
-    .replace(/\bOLEO\b/gi, 'ÓLEO')
-    .replace(/\bHIDRAULICA\b/gi, 'HIDRÁULICA')
-    .replace(/\bHIDRAULICO\b/gi, 'HIDRÁULICO')
-    .replace(/\bTRANSMISSAO\b/gi, 'TRANSMISSÃO')
-    .replace(/\bTRANSMISS[ÃA�]{0,4}O\b/gi, 'TRANSMISSÃO')
-    .replace(/\bTRANSMISS\uFFFD+O\b/gi, 'TRANSMISSÃO')
-    .replace(/\bTUBARAO\b/gi, 'TUBARÃO')
-    .replace(/\bTUBAR[ÃA�]{0,3}O\b/gi, 'TUBARÃO')
-    .replace(/\bTUBAR\uFFFD+O\b/gi, 'TUBARÃO')
-    .replace(/\bILUMINACAO\b/gi, 'ILUMINAÇÃO')
-    .replace(/\bILUMINAC[ÃA�]{0,3}O\b/gi, 'ILUMINAÇÃO')
-    .replace(/\bILUMINA\uFFFD+O\b/gi, 'ILUMINAÇÃO')
-    .replace(/\bILUMINAC\uFFFD+O\b/gi, 'ILUMINAÇÃO')
-    .replace(/\bDIRECAO\b/gi, 'DIREÇÃO')
-    .replace(/\bDIREC[ÃA�]{0,3}O\b/gi, 'DIREÇÃO')
-    .replace(/\bDIRE\uFFFD+O\b/gi, 'DIREÇÃO')
-    .replace(/\bDIREC\uFFFD+O\b/gi, 'DIREÇÃO')
-    .replace(/\bSUSPENSAO\b/gi, 'SUSPENSÃO')
-    .replace(/\bSUSPENS[ÃA�]{0,3}O\b/gi, 'SUSPENSÃO')
-    .replace(/\bSUSPENS\uFFFD+O\b/gi, 'SUSPENSÃO')
-    .replace(/\bMAO\b/gi, 'MÃO')
-    .replace(/\bM[ÃA�]{0,2}O\b/gi, 'MÃO')
-    .replace(/\bMA\uFFFD+O\b/gi, 'MÃO')
-    .replace(/\bCONEXAO\b/gi, 'CONEXÃO')
-    .replace(/\bCONEX[ÃA�]{0,3}O\b/gi, 'CONEXÃO')
-    .replace(/\bCONEX\uFFFD+O\b/gi, 'CONEXÃO')
-    .replace(/\bTRACAO\b/gi, 'TRAÇÃO')
-    .replace(/\bTRAC[ÃA�]{0,3}O\b/gi, 'TRAÇÃO')
-    .replace(/\bTRA\uFFFD+O\b/gi, 'TRAÇÃO')
-    .replace(/\bTRAC\uFFFD+O\b/gi, 'TRAÇÃO')
-    .replace(/\bPISTAO\b/gi, 'PISTÃO')
-    .replace(/\bPIST[ÃA�]{0,3}O\b/gi, 'PISTÃO')
-    .replace(/\bPISTA\uFFFD+O\b/gi, 'PISTÃO')
-    .replace(/\bPIST\uFFFD+O\b/gi, 'PISTÃO')
-    .replace(/\bARTICULACAO\b/gi, 'ARTICULAÇÃO')
-    .replace(/\bARTICULAC[ÃA�]{0,3}O\b/gi, 'ARTICULAÇÃO')
-    .replace(/\bARTICULA\uFFFD+O\b/gi, 'ARTICULAÇÃO')
-    .replace(/\bARTICULAC\uFFFD+O\b/gi, 'ARTICULAÇÃO')
-    .replace(/\bPROTECAO\b/gi, 'PROTEÇÃO')
-    .replace(/\bPROTEC[ÃA�]{0,3}O\b/gi, 'PROTEÇÃO')
-    .replace(/\bPROTE\uFFFD+O\b/gi, 'PROTEÇÃO')
-    .replace(/\bPROTEC\uFFFD+O\b/gi, 'PROTEÇÃO')
-    .replace(/\bVEDACAO\b/gi, 'VEDAÇÃO')
-    .replace(/\bVEDA\uFFFD+O\b/gi, 'VEDAÇÃO')
-    .replace(/\bVEDAC\uFFFD+O\b/gi, 'VEDAÇÃO')
-    .replace(/\bVEDAC[ÃA�]{0,3}O\b/gi, 'VEDAÇÃO')
-    .replace(/\uFFFDVEL\b/gi, 'ÍVEL')
-    .replace(/S\uFFFD{2,}ES\b/gi, 'SÕES')
-    .replace(/S\uFFFD{2,}O\b/gi, 'SÃO')
-    .replace(/\uFFFD{2,}ES\b/gi, 'ÇÕES')
-    .replace(/\uFFFD{2,}O\b/gi, 'ÇÃO')
-    .replace(/\uFFFD+O\b/gi, 'ÃO');
+  let next = text
+    .replace(/\s*[\u0000-\u001F\u007F]+\s*/g, ' - ')
+    .replace(/\s+-\s+/g, ' - ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\s{2,}/g, ' ');
+
+  for (const repair of PHRASE_REPAIRS) {
+    next = next.replace(repair.pattern, match => applyReplacementCase(match, repair.replacement));
+  }
+
+  next = next.replace(/[\p{L}\uFFFD]+/gu, maybeRepairWord);
+
+  return next
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+-\s+/g, ' - ')
+    .trim();
+}
+
+function maybeRepairWord(word: string) {
+  const key = canonicalizeWord(word);
+  if (!key) return word;
+
+  const exactMatch = EXACT_WORD_REPAIRS.get(key);
+  if (exactMatch) {
+    return applyReplacementCase(word, exactMatch);
+  }
+
+  if (!isSuspiciousWord(word) || key.length < 3) {
+    return word;
+  }
+
+  const fuzzyMatch = findClosestRepair(key, word);
+  if (!fuzzyMatch) {
+    return word;
+  }
+
+  return applyReplacementCase(word, fuzzyMatch);
+}
+
+function canonicalizeWord(word: string) {
+  return word
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\uFFFD/g, '')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase();
+}
+
+function isSuspiciousWord(word: string) {
+  return /[\uFFFD\u00C3\u00C2]/.test(word);
+}
+
+function findClosestRepair(key: string, originalWord: string) {
+  const replacementChars = (originalWord.match(/\uFFFD/g) || []).length;
+  const maxDistance = replacementChars > 0 ? Math.min(2, replacementChars + 1) : 1;
+
+  let bestValue = '';
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const [candidateKey, candidateValue] of EXACT_WORD_REPAIRS.entries()) {
+    if (Math.abs(candidateKey.length - key.length) > maxDistance) continue;
+
+    const distance = levenshteinDistance(key, candidateKey);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestValue = candidateValue;
+    }
+  }
+
+  return bestDistance <= maxDistance ? bestValue : '';
+}
+
+function levenshteinDistance(source: string, target: string) {
+  if (source === target) return 0;
+  if (!source.length) return target.length;
+  if (!target.length) return source.length;
+
+  const matrix = Array.from({ length: source.length + 1 }, () => new Array<number>(target.length + 1).fill(0));
+
+  for (let row = 0; row <= source.length; row += 1) {
+    matrix[row][0] = row;
+  }
+
+  for (let column = 0; column <= target.length; column += 1) {
+    matrix[0][column] = column;
+  }
+
+  for (let row = 1; row <= source.length; row += 1) {
+    for (let column = 1; column <= target.length; column += 1) {
+      const substitutionCost = source[row - 1] === target[column - 1] ? 0 : 1;
+      matrix[row][column] = Math.min(
+        matrix[row - 1][column] + 1,
+        matrix[row][column - 1] + 1,
+        matrix[row - 1][column - 1] + substitutionCost
+      );
+    }
+  }
+
+  return matrix[source.length][target.length];
+}
+
+function applyReplacementCase(original: string, replacement: string) {
+  if (original === original.toLocaleUpperCase('pt-BR')) {
+    return replacement.toLocaleUpperCase('pt-BR');
+  }
+
+  if (original === original.toLocaleLowerCase('pt-BR')) {
+    return replacement.toLocaleLowerCase('pt-BR');
+  }
+
+  const lowerOriginal = original.toLocaleLowerCase('pt-BR');
+  const capitalizedOriginal =
+    original.charAt(0) === original.charAt(0).toLocaleUpperCase('pt-BR') &&
+    original.slice(1) === lowerOriginal.slice(1);
+
+  if (capitalizedOriginal) {
+    const lowerReplacement = replacement.toLocaleLowerCase('pt-BR');
+    return `${lowerReplacement.charAt(0).toLocaleUpperCase('pt-BR')}${lowerReplacement.slice(1)}`;
+  }
+
+  return replacement;
 }

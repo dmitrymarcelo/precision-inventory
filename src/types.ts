@@ -7,8 +7,12 @@ export interface InventoryItem {
   sku: string;
   name: string;
   quantity: number;
+  isActiveInWarehouse?: boolean;
+  updatedAt?: string;
   category: string;
   sourceCategory?: string;
+  imageUrl?: string;
+  imageHint?: string;
   vehicleModel?: string;
   vehicleType?: string;
   location: string;
@@ -26,8 +30,10 @@ export interface InventoryLog {
   quantityAfter: number;
   location: string;
   date: string;
-  source?: 'ajuste' | 'solicitacao';
+  source?: 'ajuste' | 'recebimento' | 'solicitacao' | 'divergencia';
   referenceCode?: string;
+  expectedQuantityAfter?: number;
+  reportedQuantityAfter?: number;
 }
 
 export interface InventorySettings {
@@ -49,7 +55,30 @@ export type MaterialRequestStatus =
   | 'Aberta'
   | 'Em separação'
   | 'Separada'
-  | 'Atendida';
+  | 'Atendida'
+  | 'Estornada';
+
+export type MaterialRequestAuditActor = {
+  id?: string;
+  matricula?: string;
+  name?: string;
+  role?: string;
+};
+
+export type MaterialRequestAuditEvent =
+  | 'request_created'
+  | 'request_updated'
+  | 'separation_updated'
+  | 'separation_fulfilled'
+  | 'separation_reversed';
+
+export type MaterialRequestAuditEntry = {
+  id: string;
+  at: string;
+  event: MaterialRequestAuditEvent;
+  actor: MaterialRequestAuditActor;
+  detail?: string;
+};
 
 export interface MaterialRequestItem {
   id: string;
@@ -77,5 +106,8 @@ export interface MaterialRequest {
   createdAt: string;
   updatedAt: string;
   fulfilledAt?: string;
+  reversedAt?: string;
+  deletedAt?: string;
+  auditTrail?: MaterialRequestAuditEntry[];
   items: MaterialRequestItem[];
 }

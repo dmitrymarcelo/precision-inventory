@@ -1,15 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   Bell,
   ClipboardList,
+  ClipboardPlus,
+  Cloud,
+  History,
   LayoutDashboard,
+  LogOut,
+  Maximize2,
+  Minimize2,
   Package,
   PackageCheck,
   PackageSearch,
   ScanLine,
+  Shield,
   ShoppingCart,
-  TriangleAlert
+  TriangleAlert,
+  Users
 } from 'lucide-react';
 import { InventoryItem, InventorySettings, MaterialRequest } from '../types';
 import { calculateItemStatus } from '../inventoryRules';
@@ -23,6 +31,9 @@ interface LayoutProps {
   settings: InventorySettings;
   requests: MaterialRequest[];
   onSelectSku: (sku: string) => void;
+  authRole: 'consulta' | 'operacao' | 'admin';
+  onLogout: () => void;
+  cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
 }
 
 export default function Layout({
@@ -32,35 +43,96 @@ export default function Layout({
   items,
   settings,
   requests,
-  onSelectSku
+  onSelectSku,
+  authRole,
+  onLogout,
+  cloudStatus
 }: LayoutProps) {
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [supportsFullscreen, setSupportsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const roleLabel = authRole === 'admin' ? 'Admin' : authRole === 'operacao' ? 'Operação' : 'Consulta';
+  const cloudLabel =
+    cloudStatus === 'online'
+      ? 'Online'
+      : cloudStatus === 'saving'
+        ? 'Salvando'
+        : cloudStatus === 'loading'
+          ? 'Conectando'
+          : 'Local';
+  const cloudTone =
+    cloudStatus === 'online'
+      ? 'bg-primary-container text-on-primary-container'
+      : cloudStatus === 'saving' || cloudStatus === 'loading'
+        ? 'bg-surface-container-highest text-on-surface-variant'
+        : 'bg-error-container text-on-error-container';
 
   const alertItems = useMemo(
     () =>
       items
+        .filter(item => item.isActiveInWarehouse === true)
         .map(item => ({ item, status: calculateItemStatus(item, settings) }))
         .filter(({ status }) => status === 'Estoque Crítico' || status === 'Repor em Breve'),
     [items, settings]
   );
   const criticalCount = alertItems.filter(({ status }) => status === 'Estoque Crítico').length;
   const reorderCount = alertItems.filter(({ status }) => status === 'Repor em Breve').length;
-  const openRequestCount = requests.filter(request => normalizeUserFacingText(request.status) !== 'Atendida').length;
+  const openRequestCount = requests.filter(request => {
+    if (request.deletedAt) return false;
+    const status = normalizeUserFacingText(request.status);
+    return status !== 'Atendida' && status !== 'Estornada';
+  }).length;
 
   const handleAlertSelect = (sku: string) => {
     setIsAlertsOpen(false);
     onSelectSku(sku);
   };
 
-  const navigationItems = [
-    { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-    { key: 'update', label: 'Atualziar Estoque', icon: PackageSearch },
-    { key: 'vehicle-parts', label: 'Pe\u00e7as/Modelo', icon: Package },
-    { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
-    { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined },
-    { key: 'separation', label: 'Separação', icon: ScanLine },
-    { key: 'inventory', label: 'Inventário', icon: ClipboardList }
-  ];
+  useEffect(() => {
+    const root = document.documentElement;
+    setSupportsFullscreen(Boolean(root?.requestFullscreen) && Boolean(document.exitFullscreen));
+    const handleChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handleChange);
+    handleChange();
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!supportsFullscreen) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      await document.documentElement.requestFullscreen();
+    } catch {
+      return;
+    }
+  };
+
+  const navigationItems =
+    authRole === 'consulta'
+      ? [
+          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+          { key: 'vehicle-parts', label: 'Pe\u00e7as/Modelo', icon: Package },
+          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
+          { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined }
+        ]
+      : [
+          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+          { key: 'vehicle-parts', label: 'Pe\u00e7as/Modelo', icon: Package },
+          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
+          { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined },
+          { key: 'request-history', label: 'Histórico', icon: History }
+        ];
+  if (authRole !== 'consulta') {
+    navigationItems.push({ key: 'separation', label: 'Separação', icon: ScanLine });
+    navigationItems.push({ key: 'inventory', label: 'Estoque', icon: ClipboardList });
+  }
+  if (authRole === 'admin') {
+    navigationItems.push({ key: 'inventory-operations', label: 'Inventário Operacional', icon: ClipboardPlus });
+    navigationItems.push({ key: 'users', label: 'Usuários', icon: Users });
+  }
 
   return (
     <div className="min-h-screen pb-24 md:pb-0 flex flex-col">
@@ -102,7 +174,7 @@ export default function Layout({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative">
+            <div className="relative flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setIsAlertsOpen(current => !current)}
@@ -116,6 +188,17 @@ export default function Layout({
                   </span>
                 )}
               </button>
+
+              {supportsFullscreen && (
+                <button
+                  type="button"
+                  onClick={() => void toggleFullscreen()}
+                  className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-150 text-slate-500"
+                  aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                >
+                  {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                </button>
+              )}
 
               {isAlertsOpen && (
                 <div className="absolute right-0 mt-3 w-[min(calc(100vw-2rem),360px)] bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-[0_18px_48px_rgba(36,52,69,0.18)] overflow-hidden z-[80]">
@@ -182,6 +265,27 @@ export default function Layout({
               )}
             </div>
 
+            <div className="hidden sm:flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-2 h-9 px-3 rounded-xl text-xs font-bold uppercase tracking-wider ${
+                  authRole === 'operacao'
+                    ? 'bg-primary-container text-on-primary-container'
+                    : 'bg-surface-container-highest text-on-surface-variant'
+                }`}
+              >
+                <Shield size={16} />
+                {roleLabel}
+              </span>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold text-xs uppercase tracking-wider hover:bg-surface-container-high transition-colors"
+              >
+                <LogOut size={16} />
+                Sair
+              </button>
+            </div>
+
             <div className="h-8 w-8 rounded-full bg-surface-container-highest overflow-hidden flex items-center justify-center text-on-primary-container font-bold text-xs">
               <img
                 className="w-full h-full object-cover"
@@ -194,7 +298,9 @@ export default function Layout({
         <div className="bg-slate-200/50 dark:bg-slate-800/50 h-[1px] w-full mb-px" />
       </header>
 
-      <main className="flex-grow pt-20 pb-8 px-4 md:px-5 max-w-7xl mx-auto w-full">{children}</main>
+      <main className="flex-grow pt-20 pb-8 px-3 sm:px-4 lg:px-6 xl:px-8 2xl:px-10 max-w-[1720px] 2xl:max-w-[1880px] mx-auto w-full">
+        {children}
+      </main>
 
       <nav className="lg:hidden fixed bottom-0 left-0 w-full overflow-x-auto bg-slate-50/85 dark:bg-slate-900/85 backdrop-blur-xl z-50 shadow-[0_-4px_12px_rgba(36,52,69,0.06)] border-t border-slate-200 dark:border-slate-800">
         <div className="min-w-max px-3 py-3 flex items-center gap-2">
