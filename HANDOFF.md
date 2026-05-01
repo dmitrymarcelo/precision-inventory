@@ -1598,3 +1598,35 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BBbVJ7-y.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Regra de leitura obrigatoria na Separacao em 2026-05-01
+
+- Na aba `Separacao`, foram removidos os controles manuais dos itens:
+  - botao `Completar`
+  - botao de somar item manualmente
+  - botao de reduzir item manualmente
+- A lista de itens agora mostra somente o saldo separado/solicitado e a barra de progresso
+- A separacao passa a avancar apenas pela leitura da etiqueta correta do item
+- O botao `Concluir e baixar estoque` saiu do bloco `Itens para separar`
+- Quando todos os itens estiverem confirmados, o botao `Concluir e baixar estoque` aparece no lugar de `Ler etiqueta`
+- Enquanto houver item pendente, o operador continua vendo apenas `Ler etiqueta` como acao principal
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-Blf-pR9f.js`
+  - `/assets/index-BBbVJ7-y.css`
+
+## Deploy publicado em 2026-05-01 para leitura obrigatoria na Separacao
+
+- Preview publicado:
+  - `https://2cbc8e89.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-Blf-pR9f.js`
+  - `/assets/index-BBbVJ7-y.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

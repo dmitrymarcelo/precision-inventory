@@ -3,9 +3,7 @@ import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import {
   Barcode,
   Camera,
-  ChevronRight,
   Loader2,
-  Minus,
   PackageCheck,
   Pencil,
   RotateCcw,
@@ -18,7 +16,6 @@ import { InventoryItem, InventoryLog, InventorySettings, MaterialRequest, Materi
 import { calculateItemStatus } from '../inventoryRules';
 import {
   bumpSeparatedQuantity,
-  fillPendingQuantity,
   getRequestProgress,
   recalculateRequestStatus
 } from '../requestUtils';
@@ -170,6 +167,8 @@ export default function MaterialSeparation({
   const currentStatus = normalizeUserFacingText(currentRequest?.status);
   const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
   const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
+  const canFinalizeCurrentRequest =
+    Boolean(currentRequest) && !isCurrentRequestLocked && Boolean(requestProgress) && requestProgress?.pending === 0;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -495,33 +494,6 @@ export default function MaterialSeparation({
       scanLockedRef.current = false;
       setScannerFeedback('neutral');
     }, resetDelay);
-  };
-
-  const updateCurrentRequest = (updater: (request: MaterialRequest) => MaterialRequest) => {
-    if (!currentRequest || isCurrentRequestLocked) return;
-    if (!canMutate) {
-      showToast('Modo consulta: sem permissão para alterar solicitações.', 'info');
-      return;
-    }
-
-    const nextRequest = updater(currentRequest);
-    const now = new Date().toISOString();
-    nextRequest.updatedAt = now;
-    nextRequest.status = recalculateRequestStatus(nextRequest);
-    const withAudit = appendAuditEntry(
-      nextRequest,
-      {
-        at: now,
-        event: 'separation_updated',
-        actor: auditActor,
-        detail: 'Separação em andamento'
-      },
-      120_000
-    );
-
-    setRequests(previous =>
-      previous.map(request => (request.id === withAudit.id ? withAudit : request))
-    );
   };
 
   const finalizeRequest = () => {
@@ -933,17 +905,28 @@ export default function MaterialSeparation({
                   </p>
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={startScanner}
-                    disabled={isCurrentRequestLocked}
-                    className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2"
-                  >
-                    {isScannerBusy ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
-                    Ler etiqueta
-                  </button>
-                  {isScannerOpen && (
+                <div className="flex flex-wrap gap-2">
+                  {canFinalizeCurrentRequest ? (
+                    <button
+                      type="button"
+                      onClick={finalizeRequest}
+                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2"
+                    >
+                      <PackageCheck size={18} />
+                      Concluir e baixar estoque
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startScanner}
+                      disabled={isCurrentRequestLocked}
+                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
+                    >
+                      {isScannerBusy ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                      Ler etiqueta
+                    </button>
+                  )}
+                  {isScannerOpen && !canFinalizeCurrentRequest && (
                     <button
                       type="button"
                       onClick={closeScanner}
@@ -1042,18 +1025,9 @@ export default function MaterialSeparation({
                 <div>
                   <h3 className="font-headline font-bold text-xl text-on-surface">Itens para separar</h3>
                   <p className="text-sm text-on-surface-variant mt-1">
-                    O leitor soma as peças automaticamente, mas você também pode ajustar manualmente aqui.
+                    A separação só avança pela leitura da etiqueta correta do item.
                   </p>
                 </div>
-                  <button
-                    type="button"
-                    onClick={finalizeRequest}
-                    disabled={isCurrentRequestLocked}
-                    className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
-                  >
-                  <PackageCheck size={18} />
-                  Concluir e baixar estoque
-                </button>
               </div>
 
               <div className="space-y-3">
@@ -1085,49 +1059,12 @@ export default function MaterialSeparation({
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateCurrentRequest(request =>
-                                bumpSeparatedQuantity(request, requestItem.sku, -1).request
-                              )
-                            }
-                            disabled={isCurrentRequestLocked}
-                            className="h-10 w-10 rounded-lg bg-surface-container-lowest text-on-surface flex items-center justify-center"
-                          >
-                            <Minus size={18} />
-                          </button>
-
                           <div className="min-w-[132px] rounded-lg bg-surface-container-lowest px-4 py-2 text-center">
                             <p className="text-[11px] font-bold uppercase text-outline">Separado</p>
                             <p className="font-headline font-bold text-lg text-on-surface">
                               {requestItem.separatedQuantity}/{requestItem.requestedQuantity}
                             </p>
                           </div>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateCurrentRequest(request =>
-                                bumpSeparatedQuantity(request, requestItem.sku, 1).request
-                              )
-                            }
-                            disabled={isCurrentRequestLocked}
-                            className="h-10 w-10 rounded-lg bg-surface-container-lowest text-on-surface flex items-center justify-center"
-                          >
-                            <ChevronRight size={18} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateCurrentRequest(request => fillPendingQuantity(request, requestItem.id))
-                            }
-                            disabled={isCurrentRequestLocked}
-                            className="h-10 px-4 rounded-lg bg-surface-container-highest text-primary font-semibold text-sm"
-                          >
-                            Completar
-                          </button>
                         </div>
                       </div>
 
