@@ -1568,3 +1568,33 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BBbVJ7-y.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Ajuste do comprovante do Historico em 2026-05-01
+
+- O layout impresso do `Historico` deixou de mostrar `Movimentacoes de estoque vinculadas`
+- Os logs continuam disponiveis na tela do `Historico` para consulta interna, mas nao saem no comprovante impresso
+- O comprovante impresso agora fica focado em:
+  - dados da solicitacao
+  - itens solicitados/separados
+  - auditoria operacional
+  - assinaturas
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-DJNTeYS7.js`
+  - `/assets/index-BBbVJ7-y.css`
+
+## Deploy publicado em 2026-05-01 para ajuste do comprovante
+
+- Preview publicado:
+  - `https://2ceb23bf.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-DJNTeYS7.js`
+  - `/assets/index-BBbVJ7-y.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

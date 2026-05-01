@@ -617,7 +617,6 @@ export default function RequestHistory({
       .slice()
       .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
       .slice(-80);
-    const logsRows = relatedLogs.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const now = new Date().toISOString();
 
     const itemRowsHtml = selectedRequest.items
@@ -648,23 +647,6 @@ export default function RequestHistory({
               ${entry.actor?.matricula ? `<span>${escapeHtml(entry.actor.matricula)}</span>` : ''}
             </td>
             <td>${escapeHtml(normalizeUserFacingText(entry.detail) || '-')}</td>
-          </tr>
-        `
-      )
-      .join('');
-
-    const logsRowsHtml = logsRows
-      .map(
-        log => `
-          <tr>
-            <td>${escapeHtml(formatTimestamp(log.date))}</td>
-            <td>${escapeHtml(sourceLabel(log.source))}</td>
-            <td class="mono">${escapeHtml(log.sku)}</td>
-            <td>${escapeHtml(normalizeUserFacingText(log.itemName))}</td>
-            <td>${escapeHtml(normalizeLocationText(log.location))}</td>
-            <td class="number">${escapeHtml(log.previousQuantity)}</td>
-            <td class="number ${log.delta < 0 ? 'negative' : 'positive'}">${escapeHtml(log.delta > 0 ? `+${log.delta}` : log.delta)}</td>
-            <td class="number strong">${escapeHtml(log.quantityAfter)}</td>
           </tr>
         `
       )
@@ -889,29 +871,6 @@ export default function RequestHistory({
               <tbody>${auditRowsHtml}</tbody>
             </table>`
           : '<div class="empty">Nenhum registro de auditoria encontrado.</div>'
-      }
-    </section>
-
-    <section class="section">
-      <div class="section-title">Movimentações de estoque vinculadas <span>${escapeHtml(logsRows.length)} registros</span></div>
-      ${
-        logsRowsHtml
-          ? `<table>
-              <thead>
-                <tr>
-                  <th>Data/hora</th>
-                  <th>Tipo</th>
-                  <th>SKU</th>
-                  <th>Item</th>
-                  <th>Localização</th>
-                  <th class="number">Anterior</th>
-                  <th class="number">Delta</th>
-                  <th class="number">Final</th>
-                </tr>
-              </thead>
-              <tbody>${logsRowsHtml}</tbody>
-            </table>`
-          : '<div class="empty">Nenhum log de estoque encontrado para esta solicitação.</div>'
       }
     </section>
 
