@@ -1411,3 +1411,35 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BDmkK1DN.css`
 - Observacao:
   - o Vite manteve o aviso conhecido de chunk grande, sem falha de build
+
+## Ajuste da ordem do Historico em 2026-04-30
+
+- A aba `Historico` foi reposicionada na navegacao
+- Para usuario `admin`, a ordem operacional agora fica:
+  - `Estoque`
+  - `Inventario Operacional`
+  - `Historico`
+  - `Usuarios`
+- Para usuario `operacao`, como nao existe `Inventario Operacional`, o `Historico` fica depois de `Estoque`
+- A navegacao foi simplificada para evitar duas listas duplicadas entre consulta e operacao/admin
+- Durante a revisao, foi identificado que ainda existem textos antigos com risco de mojibake em telas internas; isso deve virar uma etapa separada de revisao visual/textual para nao misturar risco com esta mudanca pequena
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-BNbqLCeP.js`
+  - `/assets/index-BDmkK1DN.css`
+
+## Deploy publicado em 2026-04-30 para ordem do Historico
+
+- Preview publicado:
+  - `https://cebae76d.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-BNbqLCeP.js`
+  - `/assets/index-BDmkK1DN.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

@@ -110,27 +110,23 @@ export default function Layout({
     }
   };
 
-  const navigationItems =
-    authRole === 'consulta'
-      ? [
-          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-          { key: 'vehicle-parts', label: 'Pe\u00e7as/Modelo', icon: Package },
-          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
-          { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined }
-        ]
-      : [
-          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-          { key: 'vehicle-parts', label: 'Pe\u00e7as/Modelo', icon: Package },
-          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
-          { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined },
-          { key: 'request-history', label: 'Histórico', icon: History }
-        ];
+  const navigationItems = [
+    { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+    { key: 'vehicle-parts', label: 'Peças/Modelo', icon: Package },
+    { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
+    { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined }
+  ];
   if (authRole !== 'consulta') {
     navigationItems.push({ key: 'separation', label: 'Separação', icon: ScanLine });
     navigationItems.push({ key: 'inventory', label: 'Estoque', icon: ClipboardList });
   }
   if (authRole === 'admin') {
     navigationItems.push({ key: 'inventory-operations', label: 'Inventário Operacional', icon: ClipboardPlus });
+  }
+  if (authRole !== 'consulta') {
+    navigationItems.push({ key: 'request-history', label: 'Histórico', icon: History });
+  }
+  if (authRole === 'admin') {
     navigationItems.push({ key: 'users', label: 'Usuários', icon: Users });
   }
 
