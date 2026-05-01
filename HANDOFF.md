@@ -1503,3 +1503,35 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BDmkK1DN.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Painel com atendimentos do dia em 2026-04-30
+
+- No `Painel`, o bloco `Ultimas solicitacoes` foi trocado por `Solicitacoes atendidas hoje`
+- O novo bloco mostra:
+  - contagem total de solicitacoes atendidas no dia operacional
+  - ate 4 solicitacoes atendidas no dia, com horario de atendimento
+- A data operacional usa o fuso `America/Manaus`
+- A contagem considera solicitacoes com status `Atendida`
+- Para a data do atendimento, usa `fulfilledAt`; quando registros antigos nao tiverem esse campo, usa `updatedAt` como fallback
+- O texto de `Separacoes em andamento` foi esclarecido:
+  - agora indica que sao pedidos com separacao iniciada ou ja separados, aguardando atendimento final
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-DLrF0qSi.js`
+  - `/assets/index-DzfljRmC.css`
+
+## Deploy publicado em 2026-04-30 para painel de atendimentos do dia
+
+- Preview publicado:
+  - `https://58364635.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-DLrF0qSi.js`
+  - `/assets/index-DzfljRmC.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

@@ -16,6 +16,7 @@ import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../veh
 
 type AlertList = 'critical' | 'reorder';
 const ALERT_LIST_PREVIEW_LIMIT = 10;
+const APP_TIME_ZONE = 'America/Manaus';
 
 const fluidLevelDefinitions = [
   { sku: '66640', capacityLiters: 200, storageLabel: 'Tambor 200 L' },
@@ -137,12 +138,15 @@ export default function Dashboard({
   const totalFluidLiters = fluidLevels.reduce((total, level) => total + level.liters, 0);
   const criticalFluidLevels = fluidLevels.filter(level => level.percent <= 30).length;
 
-  const recentRequests = useMemo(
+  const todayFulfilledRequests = useMemo(
     () =>
       [...requests]
-        .filter(request => !request.deletedAt)
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-        .slice(0, 4),
+        .filter(request => {
+          if (request.deletedAt) return false;
+          if (normalizeUserFacingText(request.status) !== 'Atendida') return false;
+          return isSameOperationalDay(request.fulfilledAt || request.updatedAt, new Date());
+        })
+        .sort((a, b) => new Date(b.fulfilledAt || b.updatedAt).getTime() - new Date(a.fulfilledAt || a.updatedAt).getTime()),
     [requests]
   );
 
@@ -450,7 +454,9 @@ export default function Dashboard({
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="font-headline font-bold text-xl md:text-2xl tracking-tight">Separações em andamento</h2>
-                <p className="text-sm text-on-surface-variant">Pedidos já em operação para o time do estoque.</p>
+                <p className="text-sm text-on-surface-variant">
+                  Pedidos com separação iniciada ou já separada, aguardando atendimento final.
+                </p>
               </div>
               <span className="inline-flex items-center rounded-full bg-secondary-container px-3 py-1 text-[11px] font-bold text-on-secondary-container">
                 {separatingRequests.length} ativas
@@ -497,12 +503,24 @@ export default function Dashboard({
           <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <ClipboardList size={18} className="text-primary" />
-              <h2 className="font-headline font-bold text-xl tracking-tight">Últimas solicitações</h2>
+              <h2 className="font-headline font-bold text-xl tracking-tight">Solicitações atendidas hoje</h2>
+            </div>
+
+            <div className="rounded-xl bg-primary-container/35 border border-primary/10 p-5 mb-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Total do dia</p>
+              <div className="mt-2 flex items-end justify-between gap-4">
+                <strong className="font-headline text-5xl font-extrabold text-primary">
+                  {todayFulfilledRequests.length}
+                </strong>
+                <span className="text-sm font-semibold text-on-surface-variant text-right">
+                  solicitações atendidas
+                </span>
+              </div>
             </div>
 
             <div className="space-y-3">
-              {recentRequests.length > 0 ? (
-                recentRequests.map(request => {
+              {todayFulfilledRequests.length > 0 ? (
+                todayFulfilledRequests.slice(0, 4).map(request => {
                   const progress = getRequestProgress(request);
 
                   return (
@@ -522,14 +540,14 @@ export default function Dashboard({
                         <span className="text-xs font-bold text-on-surface-variant">{normalizeUserFacingText(request.status)}</span>
                       </div>
                       <p className="text-xs text-on-surface-variant mt-3">
-                        {progress.separated}/{progress.requested} unidades separadas
+                        {progress.separated}/{progress.requested} unidades separadas • {formatOperationalTime(request.fulfilledAt || request.updatedAt)}
                       </p>
                     </button>
                   );
                 })
               ) : (
                 <div className="rounded-xl bg-surface-container-low p-8 text-center text-on-surface-variant">
-                  Nenhuma solicitação registrada ainda.
+                  Nenhuma solicitação atendida hoje.
                 </div>
               )}
             </div>
@@ -543,6 +561,33 @@ export default function Dashboard({
 function findItemBySku(items: InventoryItem[], sku: string) {
   const candidates = getSkuCandidates(sku);
   return items.find(item => candidates.has(String(item.sku).trim()));
+}
+
+function isSameOperationalDay(value: string | undefined, referenceDate: Date) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return formatOperationalDate(date) === formatOperationalDate(referenceDate);
+}
+
+function formatOperationalDate(date: Date) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function formatOperationalTime(value: string | undefined) {
+  if (!value) return 'sem hora';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'sem hora';
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: APP_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
 }
 
 function getSkuCandidates(sku: string) {
