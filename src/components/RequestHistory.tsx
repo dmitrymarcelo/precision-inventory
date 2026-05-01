@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
-import { Barcode, Camera, History, LoaderCircle, RotateCcw, Search, X } from 'lucide-react';
+import { Barcode, Camera, History, LoaderCircle, Printer, RotateCcw, Search, X } from 'lucide-react';
 import {
   decodeFileCode,
   decodeVideoSnapshotCode,
@@ -600,6 +600,345 @@ export default function RequestHistory({
     }
   };
 
+  const printSelectedRequest = () => {
+    if (!selectedRequest) {
+      showToast('Selecione uma solicitação para imprimir.', 'info');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1120,height=780');
+    if (!printWindow) {
+      showToast('O navegador bloqueou a janela de impressão. Libere pop-ups para imprimir o comprovante.', 'info');
+      return;
+    }
+
+    const progress = getRequestProgress(selectedRequest);
+    const auditRows = [...(selectedRequest.auditTrail || [])]
+      .slice()
+      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+      .slice(-80);
+    const logsRows = relatedLogs.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const now = new Date().toISOString();
+
+    const itemRowsHtml = selectedRequest.items
+      .map(
+        item => `
+          <tr>
+            <td class="mono">${escapeHtml(item.sku)}</td>
+            <td>
+              <strong>${escapeHtml(normalizeUserFacingText(item.itemName))}</strong>
+              <span>${escapeHtml(normalizeUserFacingText(item.category) || 'Sem categoria')}</span>
+            </td>
+            <td>${escapeHtml(normalizeLocationText(item.location))}</td>
+            <td class="number">${escapeHtml(item.requestedQuantity)}</td>
+            <td class="number strong">${escapeHtml(item.separatedQuantity)}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const auditRowsHtml = auditRows
+      .map(
+        entry => `
+          <tr>
+            <td>${escapeHtml(formatTimestamp(entry.at))}</td>
+            <td>${escapeHtml(formatAuditEvent(entry.event))}</td>
+            <td>
+              ${escapeHtml(normalizeUserFacingText(entry.actor?.name) || 'Usuario')}
+              ${entry.actor?.matricula ? `<span>${escapeHtml(entry.actor.matricula)}</span>` : ''}
+            </td>
+            <td>${escapeHtml(normalizeUserFacingText(entry.detail) || '-')}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const logsRowsHtml = logsRows
+      .map(
+        log => `
+          <tr>
+            <td>${escapeHtml(formatTimestamp(log.date))}</td>
+            <td>${escapeHtml(sourceLabel(log.source))}</td>
+            <td class="mono">${escapeHtml(log.sku)}</td>
+            <td>${escapeHtml(normalizeUserFacingText(log.itemName))}</td>
+            <td>${escapeHtml(normalizeLocationText(log.location))}</td>
+            <td class="number">${escapeHtml(log.previousQuantity)}</td>
+            <td class="number ${log.delta < 0 ? 'negative' : 'positive'}">${escapeHtml(log.delta > 0 ? `+${log.delta}` : log.delta)}</td>
+            <td class="number strong">${escapeHtml(log.quantityAfter)}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Comprovante ${escapeHtml(selectedRequest.code)}</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #13233a;
+      background: #ffffff;
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .page { width: 100%; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      padding: 18px;
+      border: 1px solid #d7e2f3;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #f8fbff 0%, #edf5ff 100%);
+    }
+    .brand { text-transform: uppercase; letter-spacing: 0.14em; color: #315f9b; font-weight: 800; font-size: 10px; }
+    h1 { margin: 6px 0 0; font-size: 24px; line-height: 1.05; letter-spacing: -0.04em; color: #10213b; }
+    .subtitle { margin: 8px 0 0; color: #4a5d78; font-size: 12px; }
+    .status-card {
+      min-width: 168px;
+      padding: 14px;
+      border-radius: 14px;
+      background: #173b70;
+      color: #ffffff;
+      text-align: right;
+    }
+    .status-card span { display: block; text-transform: uppercase; letter-spacing: 0.12em; font-size: 9px; opacity: 0.78; }
+    .status-card strong { display: block; margin-top: 4px; font-size: 17px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .tile {
+      min-height: 66px;
+      padding: 12px;
+      border: 1px solid #dbe5f2;
+      border-radius: 14px;
+      background: #ffffff;
+      break-inside: avoid;
+    }
+    .tile span, .section-title span {
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #60728d;
+      font-size: 8px;
+      font-weight: 800;
+    }
+    .tile strong { display: block; margin-top: 5px; font-size: 12px; color: #10213b; }
+    .wide { grid-column: span 2; }
+    .note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-left: 4px solid #315f9b;
+      border-radius: 12px;
+      background: #f8fbff;
+      color: #283d5b;
+      break-inside: avoid;
+    }
+    .section { margin-top: 16px; break-inside: avoid; }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: #10213b;
+      font-weight: 900;
+      font-size: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid #dbe5f2;
+      border-radius: 12px;
+      break-inside: auto;
+    }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+    th {
+      padding: 9px 8px;
+      background: #173b70;
+      color: #ffffff;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 8px;
+    }
+    td {
+      padding: 9px 8px;
+      border-top: 1px solid #e7eef8;
+      vertical-align: top;
+      color: #1c2e49;
+    }
+    td span { display: block; margin-top: 2px; color: #667991; font-size: 9px; }
+    tbody tr:nth-child(even) td { background: #f8fbff; }
+    .number { text-align: right; white-space: nowrap; }
+    .mono { font-family: "Consolas", "Courier New", monospace; font-weight: 800; }
+    .strong { font-weight: 900; }
+    .positive { color: #176b47; font-weight: 900; }
+    .negative { color: #9b2c2c; font-weight: 900; }
+    .empty {
+      padding: 16px;
+      border: 1px dashed #cbd8e9;
+      border-radius: 12px;
+      color: #60728d;
+      text-align: center;
+      background: #fbfdff;
+    }
+    .signatures {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 24px;
+      break-inside: avoid;
+    }
+    .signature {
+      padding-top: 28px;
+      border-top: 1px solid #8190a6;
+      color: #3a4d68;
+      text-align: center;
+      font-weight: 800;
+    }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 18px;
+      padding-top: 10px;
+      border-top: 1px solid #dbe5f2;
+      color: #60728d;
+      font-size: 9px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+    @media screen {
+      body { background: #eaf1fb; padding: 22px; }
+      .page { max-width: 980px; margin: 0 auto; padding: 20px; border-radius: 22px; background: #ffffff; box-shadow: 0 18px 50px rgba(20, 43, 77, 0.18); }
+      .no-print { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+      .no-print button { border: 0; border-radius: 999px; background: #173b70; color: #ffffff; padding: 10px 16px; font-weight: 800; cursor: pointer; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="no-print">
+      <button type="button" onclick="window.print()">Imprimir agora</button>
+    </div>
+
+    <section class="hero">
+      <div>
+        <div class="brand">Precision Inventory</div>
+        <h1>Comprovante de solicitação de peças</h1>
+        <p class="subtitle">Documento operacional gerado a partir do Histórico para conferência, assinatura e arquivamento.</p>
+      </div>
+      <div class="status-card">
+        <span>${escapeHtml(selectedRequest.code)}</span>
+        <strong>${escapeHtml(normalizeUserFacingText(selectedRequest.status))}</strong>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="tile"><span>Placa</span><strong>${escapeHtml(normalizeUserFacingText(selectedRequest.vehiclePlate) || 'Sem placa')}</strong></div>
+      <div class="tile"><span>Centro de custo</span><strong>${escapeHtml(normalizeUserFacingText(selectedRequest.costCenter) || 'Sem centro de custo')}</strong></div>
+      <div class="tile"><span>Criada</span><strong>${escapeHtml(formatTimestamp(selectedRequest.createdAt))}</strong></div>
+      <div class="tile"><span>Atualizada</span><strong>${escapeHtml(formatTimestamp(selectedRequest.updatedAt))}</strong></div>
+      <div class="tile"><span>Itens</span><strong>${escapeHtml(selectedRequest.items.length)} itens</strong></div>
+      <div class="tile"><span>Progresso</span><strong>${escapeHtml(progress.separated)}/${escapeHtml(progress.requested)} separados (${escapeHtml(progress.percent)}%)</strong></div>
+      <div class="tile"><span>Fechamento</span><strong>${escapeHtml(selectedRequest.reversedAt ? formatTimestamp(selectedRequest.reversedAt) : selectedRequest.fulfilledAt ? formatTimestamp(selectedRequest.fulfilledAt) : '-')}</strong></div>
+      <div class="tile"><span>Impresso em</span><strong>${escapeHtml(formatTimestamp(now))}</strong></div>
+      ${
+        selectedRequest.vehicleDescription
+          ? `<div class="tile wide"><span>Veiculo</span><strong>${escapeHtml(normalizeUserFacingText(selectedRequest.vehicleDescription))}</strong></div>`
+          : ''
+      }
+      ${selectedRequest.notes ? `<div class="tile wide"><span>Observacoes</span><strong>${escapeHtml(normalizeUserFacingText(selectedRequest.notes))}</strong></div>` : ''}
+    </section>
+
+    <section class="section">
+      <div class="section-title">Itens da solicitação <span>${escapeHtml(selectedRequest.items.length)} registros</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Descrição</th>
+            <th>Localização</th>
+            <th class="number">Solicitado</th>
+            <th class="number">Separado</th>
+          </tr>
+        </thead>
+        <tbody>${itemRowsHtml}</tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-title">Auditoria da solicitação <span>${escapeHtml(auditRows.length)} registros</span></div>
+      ${
+        auditRowsHtml
+          ? `<table>
+              <thead><tr><th>Data/hora</th><th>Evento</th><th>Usuário</th><th>Detalhe</th></tr></thead>
+              <tbody>${auditRowsHtml}</tbody>
+            </table>`
+          : '<div class="empty">Nenhum registro de auditoria encontrado.</div>'
+      }
+    </section>
+
+    <section class="section">
+      <div class="section-title">Movimentações de estoque vinculadas <span>${escapeHtml(logsRows.length)} registros</span></div>
+      ${
+        logsRowsHtml
+          ? `<table>
+              <thead>
+                <tr>
+                  <th>Data/hora</th>
+                  <th>Tipo</th>
+                  <th>SKU</th>
+                  <th>Item</th>
+                  <th>Localização</th>
+                  <th class="number">Anterior</th>
+                  <th class="number">Delta</th>
+                  <th class="number">Final</th>
+                </tr>
+              </thead>
+              <tbody>${logsRowsHtml}</tbody>
+            </table>`
+          : '<div class="empty">Nenhum log de estoque encontrado para esta solicitação.</div>'
+      }
+    </section>
+
+    <section class="signatures">
+      <div class="signature">Separação / Almoxarifado</div>
+      <div class="signature">Solicitante / Recebedor</div>
+    </section>
+
+    <footer>
+      <span>Documento gerado pelo Precision Inventory.</span>
+      <span>${escapeHtml(selectedRequest.code)} - ${escapeHtml(formatTimestamp(now))}</span>
+    </footer>
+  </main>
+  <script>
+    window.addEventListener('load', () => {
+      window.setTimeout(() => window.print(), 250);
+    });
+  </script>
+</body>
+</html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-6">
       <aside className="space-y-4">
@@ -845,16 +1184,27 @@ export default function RequestHistory({
                 </div>
               </div>
 
-              {normalizeUserFacingText(selectedRequest.status) === 'Atendida' && canReverseRequests && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={reverseSelectedRequest}
-                  className="mt-4 h-11 w-full px-4 rounded-lg bg-sky-100 text-sky-950 font-bold flex items-center justify-center gap-2"
+                  onClick={printSelectedRequest}
+                  className="h-11 w-full px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center justify-center gap-2 shadow-sm"
                 >
-                  <RotateCcw size={18} />
-                  Estornar solicitação
+                  <Printer size={18} />
+                  Imprimir comprovante
                 </button>
-              )}
+
+                {normalizeUserFacingText(selectedRequest.status) === 'Atendida' && canReverseRequests && (
+                  <button
+                    type="button"
+                    onClick={reverseSelectedRequest}
+                    className="h-11 w-full px-4 rounded-lg bg-sky-100 text-sky-950 font-bold flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw size={18} />
+                    Estornar solicitação
+                  </button>
+                )}
+              </div>
             </section>
 
             <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
@@ -982,4 +1332,23 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-sm font-extrabold text-on-surface leading-tight">{value}</p>
     </div>
   );
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '').replace(/[&<>"']/g, char => {
+    switch (char) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return char;
+    }
+  });
 }

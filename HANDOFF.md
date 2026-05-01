@@ -1535,3 +1535,36 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-DzfljRmC.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Impressao de comprovante no Historico em 2026-04-30
+
+- A aba `Historico` ganhou o botao `Imprimir comprovante` no detalhe da solicitacao selecionada
+- A impressao abre uma janela propria, sem menus/filtros da tela, para gerar um comprovante limpo em A4
+- O layout impresso inclui:
+  - cabecalho com `Precision Inventory`, codigo e status da solicitacao
+  - placa, centro de custo, datas, progresso e fechamento
+  - tabela de itens solicitados e separados
+  - auditoria da solicitacao
+  - movimentacoes de estoque vinculadas pelo codigo da solicitacao
+  - campos de assinatura para separacao/almoxarifado e solicitante/recebedor
+- Os textos e dados dinamicos da impressao passam por escape de HTML para evitar quebrar o comprovante com caracteres especiais de itens ou observacoes
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-B_HJB-nI.js`
+  - `/assets/index-BBbVJ7-y.css`
+
+## Deploy publicado em 2026-04-30 para comprovante do Historico
+
+- Preview publicado:
+  - `https://a2766f2f.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-B_HJB-nI.js`
+  - `/assets/index-BBbVJ7-y.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`
