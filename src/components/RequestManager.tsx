@@ -56,6 +56,7 @@ interface RequestManagerProps {
   vehicles: VehicleRecord[];
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
   externalRequestId?: string | null;
+  onClearExternalRequest?: () => void;
   canCreateRequests: boolean;
   canEditExistingRequests: boolean;
   canDeleteRequests: boolean;
@@ -74,6 +75,7 @@ export default function RequestManager({
   vehicles,
   setRequests,
   externalRequestId = null,
+  onClearExternalRequest,
   canCreateRequests,
   canEditExistingRequests,
   canDeleteRequests,
@@ -837,6 +839,7 @@ export default function RequestManager({
     setItemQuery('');
     setIsPlateSuggestionOpen(false);
     setOpenRequestMenuId(null);
+    onClearExternalRequest?.();
   };
 
   const startNewRequest = () => {

@@ -1443,3 +1443,33 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BDmkK1DN.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Fluxo limpo entre Separacao e Solicitacoes em 2026-04-30
+
+- Foi corrigido o comportamento em que um pedido selecionado na aba `Separacao` abria automaticamente o formulario de `Solicitacoes` em modo edicao
+- A selecao operacional da `Separacao` agora fica separada da intencao de editar uma solicitacao
+- Regra nova:
+  - clicar diretamente na aba `Solicitacoes` abre o formulario limpo para `Nova solicitacao`
+  - clicar no botao `Editar` de uma solicitacao abre aquela solicitacao em modo edicao
+  - links diretos com `tab=requests&request=...` continuam abrindo a solicitacao em edicao
+- Ao salvar ou clicar em `Nova solicitacao`, o sistema limpa tambem o pedido externo de edicao para evitar reabrir a ultima solicitacao ao voltar para a aba
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-1lAPLmOl.js`
+  - `/assets/index-BDmkK1DN.css`
+
+## Deploy publicado em 2026-04-30 para fluxo limpo de Solicitacoes
+
+- Preview publicado:
+  - `https://c1c2ceda.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-1lAPLmOl.js`
+  - `/assets/index-BDmkK1DN.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

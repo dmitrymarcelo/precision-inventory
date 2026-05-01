@@ -496,7 +496,12 @@ export default function App() {
     }
   });
   const [selectedSku, setSelectedSku] = useState<string | null>(getInitialSku);
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(getInitialRequestId);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(() =>
+    getInitialTab() === 'separation' ? getInitialRequestId() : null
+  );
+  const [requestEditorRequestId, setRequestEditorRequestId] = useState<string | null>(() =>
+    getInitialTab() === 'requests' ? getInitialRequestId() : null
+  );
   const [inventoryFilter, setInventoryFilter] = useState(getInitialInventoryFilter);
   const [vehiclePartsPresetType, setVehiclePartsPresetType] = useState('');
   const [vehiclePartsPresetModel, setVehiclePartsPresetModel] = useState('');
@@ -1090,6 +1095,12 @@ export default function App() {
       if (!candidate) return null;
       return String(candidate.code || '').toUpperCase().startsWith('SOL-') ? null : current;
     });
+    setRequestEditorRequestId(current => {
+      if (!current) return current;
+      const candidate = requests.find(request => request.id === current) || null;
+      if (!candidate) return null;
+      return String(candidate.code || '').toUpperCase().startsWith('SOL-') ? null : current;
+    });
     showToast('Solicitações de teste removidas.', 'success');
   }, [requests, role, setRequestsGuarded, showToast]);
 
@@ -1128,53 +1139,73 @@ export default function App() {
     const nextTab = tab === 'search' || tab === 'update' ? 'inventory' : tab;
     if (!validTabs.includes(nextTab)) return;
 
+    const nextRequestId = nextTab === 'separation' ? selectedRequestId : null;
+    if (nextTab !== 'separation') {
+      setRequestEditorRequestId(null);
+    }
     setActiveTabState(nextTab);
-    syncUrl(nextTab, selectedSku, selectedRequestId, inventoryFilter);
+    syncUrl(nextTab, selectedSku, nextRequestId, inventoryFilter);
   };
 
   const handleSelectSku = (sku: string) => {
     setSelectedSku(sku);
+    setRequestEditorRequestId(null);
     setActiveTabState('inventory');
-    syncUrl('inventory', sku, selectedRequestId, inventoryFilter);
+    syncUrl('inventory', sku, null, inventoryFilter);
   };
 
   const handleOpenSeparation = (requestId: string) => {
     setSelectedRequestId(requestId);
+    setRequestEditorRequestId(null);
     setActiveTabState('separation');
     syncUrl('separation', selectedSku, requestId, inventoryFilter);
   };
 
   const handleEditRequest = (requestId: string) => {
     flushSync(() => {
-      setSelectedRequestId(null);
+      setRequestEditorRequestId(null);
     });
-    setSelectedRequestId(requestId);
+    setRequestEditorRequestId(requestId);
     setActiveTabState('requests');
     syncUrl('requests', selectedSku, requestId, inventoryFilter);
   };
 
   const handleSelectRequest = (requestId: string | null) => {
     setSelectedRequestId(requestId);
-    syncUrl(activeTab, selectedSku, requestId, inventoryFilter);
+    syncUrl(activeTab, selectedSku, activeTab === 'separation' ? requestId : null, inventoryFilter);
+  };
+
+  const handleClearRequestEditor = () => {
+    setRequestEditorRequestId(null);
+    if (activeTab === 'requests') {
+      syncUrl('requests', selectedSku, null, inventoryFilter);
+    }
   };
 
   const handleOpenInventoryFilter = (filter: string) => {
     setInventoryFilter(filter);
+    setRequestEditorRequestId(null);
     setActiveTabState('inventory');
-    syncUrl('inventory', selectedSku, selectedRequestId, filter);
+    syncUrl('inventory', selectedSku, null, filter);
   };
 
   const handleInventoryFilterChange = (filter: string) => {
     setInventoryFilter(filter);
-    syncUrl(activeTab, selectedSku, selectedRequestId, filter);
+    syncUrl(
+      activeTab,
+      selectedSku,
+      activeTab === 'separation' ? selectedRequestId : activeTab === 'requests' ? requestEditorRequestId : null,
+      filter
+    );
   };
 
   const handleOpenVehicleParts = (type?: string) => {
     setVehiclePartsPresetType(type ? normalizeUserFacingText(type) : '');
     setVehiclePartsPresetModel('');
     setVehiclePartsPresetVersion(previous => previous + 1);
+    setRequestEditorRequestId(null);
     setActiveTabState('vehicle-parts');
-    syncUrl('vehicle-parts', selectedSku, selectedRequestId, inventoryFilter);
+    syncUrl('vehicle-parts', selectedSku, null, inventoryFilter);
   };
 
   if (!authSession) {
@@ -1254,7 +1285,8 @@ export default function App() {
             requests={requests}
             vehicles={vehicles}
             setRequests={setRequestsGuarded}
-            externalRequestId={selectedRequestId}
+            externalRequestId={requestEditorRequestId}
+            onClearExternalRequest={handleClearRequestEditor}
             canCreateRequests={canCreateRequests}
             canEditExistingRequests={canEditExistingRequests}
             canDeleteRequests={canDeleteRequests}
