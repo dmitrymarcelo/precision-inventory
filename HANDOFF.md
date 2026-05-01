@@ -1473,3 +1473,33 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BDmkK1DN.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Indicador de solicitacoes abertas movido para Separacao em 2026-04-30
+
+- O contador vermelho de solicitacoes abertas saiu da aba `Solicitacoes`
+- O contador agora aparece na aba `Separacao`, pois e ali que a equipe precisa agir para atender os pedidos
+- A contagem manteve a mesma regra:
+  - ignora solicitacoes excluidas
+  - ignora status `Atendida`
+  - ignora status `Estornada`
+- A lista de navegacao recebeu tipagem explicita para manter o campo opcional `badge` sem erro de TypeScript
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando o Node portatil
+- `vite build` passou usando o Node portatil
+- Build gerou os assets:
+  - `/assets/index-CMksguU4.js`
+  - `/assets/index-BDmkK1DN.css`
+
+## Deploy publicado em 2026-04-30 para contador na Separacao
+
+- Preview publicado:
+  - `https://12c7a53a.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Assets validados em producao:
+  - `/assets/index-CMksguU4.js`
+  - `/assets/index-BDmkK1DN.css`
+- `/api/state` respondeu `200`
+- `Cache-Control` do HTML em producao respondeu `no-store`

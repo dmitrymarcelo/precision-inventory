@@ -19,6 +19,7 @@ import {
   TriangleAlert,
   Users
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { InventoryItem, InventorySettings, MaterialRequest } from '../types';
 import { calculateItemStatus } from '../inventoryRules';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
@@ -35,6 +36,13 @@ interface LayoutProps {
   onLogout: () => void;
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
 }
+
+type NavigationItem = {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  badge?: number;
+};
 
 export default function Layout({
   children,
@@ -110,14 +118,19 @@ export default function Layout({
     }
   };
 
-  const navigationItems = [
+  const navigationItems: NavigationItem[] = [
     { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
     { key: 'vehicle-parts', label: 'Peças/Modelo', icon: Package },
     { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
-    { key: 'requests', label: 'Solicitações', icon: ShoppingCart, badge: openRequestCount > 0 ? openRequestCount : undefined }
+    { key: 'requests', label: 'Solicitações', icon: ShoppingCart }
   ];
   if (authRole !== 'consulta') {
-    navigationItems.push({ key: 'separation', label: 'Separação', icon: ScanLine });
+    navigationItems.push({
+      key: 'separation',
+      label: 'Separação',
+      icon: ScanLine,
+      badge: openRequestCount > 0 ? openRequestCount : undefined
+    });
     navigationItems.push({ key: 'inventory', label: 'Estoque', icon: ClipboardList });
   }
   if (authRole === 'admin') {
