@@ -13,6 +13,8 @@ import { calculateItemStatus, getItemAlertSettings } from '../inventoryRules';
 import { getRequestProgress } from '../requestUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
+import { getAbcAnalysisForSku, getAbcSortRank, getAbcStockPolicy } from '../abcAnalysis';
+import { ABC_ANALYSIS_UPDATED_AT } from '../abcAnalysisData';
 
 type AlertList = 'critical' | 'reorder';
 const ALERT_LIST_PREVIEW_LIMIT = 10;
@@ -68,6 +70,18 @@ export default function Dashboard({
     () => items.filter(item => item.isActiveInWarehouse === true).length,
     [items]
   );
+  const activeAbcItems = useMemo(
+    () => activeWarehouseItems.filter(item => Boolean(getAbcAnalysisForSku(item.sku))),
+    [activeWarehouseItems]
+  );
+  const activeAbcSummary = useMemo(() => {
+    const summary = { A: 0, B: 0, C: 0 };
+    activeAbcItems.forEach(item => {
+      const record = getAbcAnalysisForSku(item.sku);
+      if (record) summary[record.className] += 1;
+    });
+    return summary;
+  }, [activeAbcItems]);
   const criticalItems = useMemo(
     () => activeWarehouseItems.filter(item => calculateItemStatus(item, settings) === 'Estoque Crítico'),
     [activeWarehouseItems, settings]
@@ -81,6 +95,8 @@ export default function Dashboard({
     return [...listedItems].sort((first, second) => {
       const firstType = getEffectiveVehicleType(first) || 'Sem tipo';
       const secondType = getEffectiveVehicleType(second) || 'Sem tipo';
+      const rankComparison = getAbcSortRank(first.sku) - getAbcSortRank(second.sku);
+      if (rankComparison !== 0) return rankComparison;
       const typeComparison = firstType.localeCompare(secondType, 'pt-BR');
       if (typeComparison !== 0) return typeComparison;
       return normalizeUserFacingText(first.name).localeCompare(normalizeUserFacingText(second.name), 'pt-BR');
@@ -101,8 +117,16 @@ export default function Dashboard({
     });
 
     return Array.from(groups.entries())
-      .map(([type, groupedItems]) => ({ type, items: groupedItems }))
-      .sort((first, second) => first.type.localeCompare(second.type, 'pt-BR'));
+      .map(([type, groupedItems]) => ({
+        type,
+        items: groupedItems,
+        rank: Math.min(...groupedItems.map(item => getAbcSortRank(item.sku)))
+      }))
+      .sort((first, second) => {
+        const rankComparison = first.rank - second.rank;
+        if (rankComparison !== 0) return rankComparison;
+        return first.type.localeCompare(second.type, 'pt-BR');
+      });
   }, [visibleAlertItems]);
   const openRequests = requests.filter(request => {
     if (request.deletedAt) return false;
@@ -180,6 +204,17 @@ export default function Dashboard({
                   <PackageSearch size={16} />
                   <span>Total de itens ativos: {totalActiveItems}</span>
                 </button>
+              </div>
+              <div className="mt-4 rounded-xl bg-primary-container/35 border border-primary/10 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                  Curva ABC 2026 aplicada em {activeAbcItems.length} item(ns) ativo(s)
+                </p>
+                <p className="mt-1 text-sm font-semibold text-on-surface">
+                  Classe A: {activeAbcSummary.A} | Classe B: {activeAbcSummary.B} | Classe C: {activeAbcSummary.C}
+                </p>
+                <p className="mt-1 text-[11px] text-on-surface-variant">
+                  Atualizada em {formatShortDate(ABC_ANALYSIS_UPDATED_AT)}; minimos e maximos automaticos entram nos alertas.
+                </p>
               </div>
             </div>
           </div>
@@ -392,6 +427,8 @@ export default function Dashboard({
                         {group.items.map(item => {
                           const itemStatus = calculateItemStatus(item, settings);
                           const itemSettings = getItemAlertSettings(item, settings);
+                          const abcRecord = getAbcAnalysisForSku(item.sku);
+                          const abcPolicy = getAbcStockPolicy(item.sku);
 
                           return (
                             <button
@@ -412,6 +449,12 @@ export default function Dashboard({
                                 <p className="text-xs text-on-surface-variant truncate">
                                   SKU {item.sku} • {normalizeLocationText(item.location)}
                                 </p>
+                                {abcRecord && abcPolicy ? (
+                                  <p className="mt-1 text-[11px] font-bold text-primary">
+                                    ABC {abcRecord.className} #{abcRecord.rank} | min {abcPolicy.minimumStock} | max{' '}
+                                    {abcPolicy.maximumStock}
+                                  </p>
+                                ) : null}
                               </div>
                               <div className="text-right shrink-0">
                                 <p
@@ -635,4 +678,16 @@ function formatLiters(value: number) {
   return `${value.toLocaleString('pt-BR', {
     maximumFractionDigits: 0
   })} L`;
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString('pt-BR', {
+    timeZone: APP_TIME_ZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
 }

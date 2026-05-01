@@ -1,4 +1,5 @@
 import { InventoryItem, InventorySettings } from './types';
+import { getAbcStockPolicy } from './abcAnalysis';
 
 export const defaultInventorySettings: InventorySettings = {
   criticalLimit: 0,
@@ -18,6 +19,14 @@ export function getItemAlertSettings(
   item: InventoryItem,
   fallback: InventorySettings
 ): InventorySettings {
+  const abcPolicy = getAbcStockPolicy(item.sku);
+  if (abcPolicy) {
+    return {
+      criticalLimit: abcPolicy.criticalLimit,
+      reorderLimit: abcPolicy.reorderLimit
+    };
+  }
+
   const criticalLimit = normalizeLimit(item.alertCriticalLimit, fallback.criticalLimit);
   const reorderLimit = Math.max(criticalLimit, normalizeLimit(item.alertReorderLimit, fallback.reorderLimit));
 

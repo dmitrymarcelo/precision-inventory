@@ -1,6 +1,6 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-04-30
+Ultima atualizacao: 2026-05-01
 
 ## Resumo executivo
 
@@ -23,6 +23,8 @@ O sistema ja tem os modulos principais funcionando:
 - Botoes principais ja ficaram interativos
 - Nao deve voltar a concentrar regra unica de alerta
 - O antigo bloco `Atalhos por veiculo` saiu do painel e virou acesso para uma aba dedicada
+- Usa a Curva ABC 2026 para priorizar o top de alertas criticos/reposicao somente entre SKUs ativos no armazem
+- O resumo ABC mostra quantos itens ativos existem nas classes A/B/C e exibe minimo/maximo automatico nos itens alertados
 
 ### 2. Atualziar Estoque
 
@@ -158,6 +160,22 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Integrada a planilha tratada `Analise_Curva_ABC_Estoque_2026_Atualizada.xlsx` ao projeto:
+  - gerado `src/abcAnalysisData.ts` com 622 registros da aba `ABC_Completa`
+  - criado `src/abcAnalysis.ts` para buscar SKU mesmo com/sem zero a esquerda
+  - `inventoryRules.ts` agora aplica a politica ABC antes dos limites manuais quando o SKU existe na curva
+  - o Painel mostra resumo ABC dos itens ativos e ordena o top de `Alertas criticos/Repor em breve` pelo rank ABC, mantendo a divisao por tipo
+  - politica inicial: Classe A = minimo 0,5 mes e maximo 1,5 mes; Classe B = minimo 0,35 mes e maximo 1 mes; Classe C = minimo 0,2 mes e maximo 0,75 mes
+  - o minimo automatico vira `criticalLimit`; o maximo automatico vira `reorderLimit`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Publicado via Wrangler:
+  - preview: `https://bf2ee852.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` da home em producao: `no-store`
+  - asset principal publicado: `assets/index-DehdCAcT.js`
 - Publicado controle anti-cache no Cloudflare Pages via `public/_headers`:
   - `/` agora responde com `Cache-Control: no-store` (forca o navegador a buscar o HTML sempre)
   - `/assets/*` continua com cache longo (max-age + immutable) porque ja tem hash no nome

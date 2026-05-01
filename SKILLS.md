@@ -166,3 +166,26 @@ Se o deploy travar:
 - nao quebrar o fluxo de operacao para testar uma ideia
 - manter um caminho estavel e outro experimental quando necessario
 - documentar decisoes novas nos arquivos de memoria
+
+## Skill 11 - Curva ABC e limites automaticos
+
+Objetivo:
+
+- usar a base tratada `Analise_Curva_ABC_Estoque_2026_Atualizada.xlsx`
+- classificar somente SKUs ativos do sistema no painel
+- priorizar alertas criticos/reposicao pelo rank da Curva ABC sem perder o agrupamento por tipo
+
+Arquivos principais:
+
+- `src/abcAnalysisData.ts`: base ABC gerada a partir da planilha tratada
+- `src/abcAnalysis.ts`: busca por SKU e politica de minimo/maximo
+- `src/inventoryRules.ts`: aplica a politica ABC antes dos limites manuais do item
+- `src/components/Dashboard.tsx`: mostra resumo ABC e ordena o top de alertas
+
+Regra atual:
+
+- Classe A: minimo = 0,5 mes de demanda media; maximo = 1,5 mes
+- Classe B: minimo = 0,35 mes; maximo = 1 mes
+- Classe C: minimo = 0,2 mes; maximo = 0,75 mes
+- No sistema, minimo alimenta `criticalLimit` e maximo alimenta `reorderLimit`
+- SKU fora da Curva ABC continua usando os limites manuais/fallback ja existentes
