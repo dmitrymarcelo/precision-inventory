@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   ClipboardList,
@@ -48,6 +48,8 @@ export default function Layout({
 }: LayoutProps) {
   const [supportsFullscreen, setSupportsFullscreen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const roleLabel = authRole === 'admin' ? 'Admin' : authRole === 'operacao' ? 'Operação' : 'Consulta';
   const cloudLabel =
     cloudStatus === 'online'
@@ -78,6 +80,28 @@ export default function Layout({
     handleChange();
     return () => document.removeEventListener('fullscreenchange', handleChange);
   }, []);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isProfileMenuOpen]);
 
   const toggleFullscreen = async () => {
     if (!supportsFullscreen) return;
@@ -113,19 +137,12 @@ export default function Layout({
   if (authRole !== 'consulta') {
     navigationItems.push({ key: 'request-history', label: 'Histórico', icon: History });
   }
-  if (authRole === 'admin') {
-    navigationItems.push({ key: 'users', label: 'Usuários', icon: Users });
-  }
-
   return (
     <div className="min-h-screen pb-24 md:pb-0 flex flex-col">
       <header className="fixed top-0 w-full z-50 bg-slate-50/85 dark:bg-slate-950/85 backdrop-blur-xl shadow-sm dark:shadow-none h-14">
         <div className="flex items-center justify-between px-4 md:px-5 py-3 w-full h-full">
-          <div className="flex items-center gap-3">
-            <Archive className="text-blue-900 dark:text-blue-200" size={22} />
-            <h1 className="font-headline font-bold tracking-tight text-lg text-blue-900 dark:text-blue-100">
-              Precision Inventory
-            </h1>
+          <div className="flex items-center">
+            <Archive className="text-blue-900 dark:text-blue-200" size={22} aria-label="Precision Inventory" />
           </div>
 
           <div className="hidden lg:flex items-center gap-2 mr-4">
@@ -170,33 +187,71 @@ export default function Layout({
               )}
             </div>
 
-            <div className="hidden sm:flex items-center gap-2">
-              <span
-                className={`inline-flex items-center gap-2 h-9 px-3 rounded-xl text-xs font-bold uppercase tracking-wider ${
-                  authRole === 'operacao'
-                    ? 'bg-primary-container text-on-primary-container'
-                    : 'bg-surface-container-highest text-on-surface-variant'
-                }`}
-              >
-                <Shield size={16} />
-                {roleLabel}
-              </span>
+            <div className="relative" ref={profileMenuRef}>
               <button
                 type="button"
-                onClick={onLogout}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold text-xs uppercase tracking-wider hover:bg-surface-container-high transition-colors"
+                onClick={() => setIsProfileMenuOpen(current => !current)}
+                className="h-9 w-9 rounded-full bg-surface-container-highest overflow-hidden flex items-center justify-center text-on-primary-container font-bold text-xs ring-2 ring-transparent hover:ring-primary/25 transition-all"
+                aria-label="Abrir menu do usuário"
+                aria-expanded={isProfileMenuOpen}
               >
-                <LogOut size={16} />
-                Sair
+                <img
+                  className="w-full h-full object-cover"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuA53BVqxrhuHCQBP8pavZTZAxJbROOTQlQhmuTSmCwtBKqmcZOcl0kpBR7jDWKQqLhSoHwEqquURsCPMvdogYH2hvrMlzBhi5st5M--BTMV1QUhEHP-vIY1dasbWxaIawKZgWrQd3kHaz_8gF7SVHucQoSb_KPIY-LhcfIoc82I30inE_6G_HSJJukJvrGuH8brjXJCst0cZtvdFsSk-6CMcyDeV64XONOFTPb9ATY5yr4Jsxha093eVfjR4hLj5yhN8GwuzmBqEGoA"
+                  alt="Usuário"
+                />
               </button>
-            </div>
 
-            <div className="h-8 w-8 rounded-full bg-surface-container-highest overflow-hidden flex items-center justify-center text-on-primary-container font-bold text-xs">
-              <img
-                className="w-full h-full object-cover"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuA53BVqxrhuHCQBP8pavZTZAxJbROOTQlQhmuTSmCwtBKqmcZOcl0kpBR7jDWKQqLhSoHwEqquURsCPMvdogYH2hvrMlzBhi5st5M--BTMV1QUhEHP-vIY1dasbWxaIawKZgWrQd3kHaz_8gF7SVHucQoSb_KPIY-LhcfIoc82I30inE_6G_HSJJukJvrGuH8brjXJCst0cZtvdFsSk-6CMcyDeV64XONOFTPb9ATY5yr4Jsxha093eVfjR4hLj5yhN8GwuzmBqEGoA"
-                alt="Usuário"
-              />
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 mt-3 w-64 overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-[0_18px_48px_rgba(36,52,69,0.18)] z-[80]">
+                  <div className="p-4 border-b border-outline-variant/15">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Conta</p>
+                    <div className="mt-3 grid gap-2 text-sm">
+                      <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low px-3 py-2">
+                        <span className="inline-flex items-center gap-2 text-on-surface-variant font-semibold">
+                          <Shield size={16} />
+                          Permissão
+                        </span>
+                        <strong className="text-on-surface">{roleLabel}</strong>
+                      </div>
+                      <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${cloudTone}`}>
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                          <Cloud size={16} />
+                          Sistema
+                        </span>
+                        <strong>{cloudLabel}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2">
+                    {authRole === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          setActiveTab('users');
+                        }}
+                        className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                      >
+                        <Users size={18} className="text-primary" />
+                        Usuários
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileMenuOpen(false);
+                        onLogout();
+                      }}
+                      className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-error hover:bg-error-container/30 transition-colors"
+                    >
+                      <LogOut size={18} />
+                      Sair
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

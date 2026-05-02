@@ -243,3 +243,7 @@ Regra inicial:
 Memoria Obsidian:
 
 - `Precision Inventory/07 - Proposta Compras Automaticas`
+
+Documento tecnico no projeto:
+
+- `docs/COMPRAS_AUTOMATICAS.md`

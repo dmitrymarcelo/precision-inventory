@@ -161,6 +161,25 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Barra superior simplificada novamente:
+  - removido texto visual `Precision Inventory` do canto esquerdo, mantendo apenas o icone
+  - removidos `Admin` e `Sair` da barra
+  - foto do usuario virou menu de conta
+  - menu da foto mostra permissao, status do sistema, `Usuarios` para admin e `Sair`
+  - aba `Usuarios` saiu da navegacao principal e fica acessivel pela foto
+- Proposta de `Compras Automaticas` ficou pronta para implementacao futura:
+  - documento tecnico criado em `docs/COMPRAS_AUTOMATICAS.md`
+  - nota Obsidian `Precision Inventory/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
+  - regra reforcada: compra aprovada/comprada nao altera estoque; entrada continua so por `Recebimento`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Publicado via Wrangler:
+  - preview: `https://ce68c52e.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` da home em producao: `no-store`
+  - asset principal publicado: `assets/index-CI1gM3x2.js`
 - Removido o botao de notificacoes/sino da barra superior:
   - alertas de estoque ficam concentrados no `Painel`
   - removido dropdown duplicado de alertas no `Layout`
