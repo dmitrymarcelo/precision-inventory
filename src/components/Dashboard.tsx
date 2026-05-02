@@ -6,14 +6,15 @@ import {
   PackageSearch,
   ShoppingCart,
   TrendingUp,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from 'lucide-react';
-import { InventoryItem, InventorySettings, MaterialRequest } from '../types';
+import { InventoryItem, InventoryLog, InventorySettings, MaterialRequest } from '../types';
 import { calculateItemStatus, getItemAlertSettings } from '../inventoryRules';
 import { getRequestProgress } from '../requestUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
-import { getAbcAnalysisForSku, getAbcSortRank, getAbcStockPolicy } from '../abcAnalysis';
+import { getAbcAnalysisForSku, getAbcSortRank, getAdaptiveAbcStockPolicy } from '../abcAnalysis';
 import { ABC_ANALYSIS_UPDATED_AT } from '../abcAnalysisData';
 
 type AlertList = 'critical' | 'reorder';
@@ -32,6 +33,7 @@ const fluidLevelDefinitions = [
 
 interface DashboardProps {
   items: InventoryItem[];
+  logs: InventoryLog[];
   settings: InventorySettings;
   requests: MaterialRequest[];
   authRole: 'consulta' | 'operacao' | 'admin';
@@ -43,6 +45,7 @@ interface DashboardProps {
 
 export default function Dashboard({
   items,
+  logs,
   settings,
   requests,
   authRole,
@@ -53,6 +56,7 @@ export default function Dashboard({
 }: DashboardProps) {
   const [activeAlertList, setActiveAlertList] = useState<AlertList>('critical');
   const [isAlertListExpanded, setIsAlertListExpanded] = useState(false);
+  const [reportSku, setReportSku] = useState<string | null>(null);
   const isConsulta = authRole === 'consulta';
   const getEffectiveVehicleType = (item: InventoryItem) =>
     normalizeOperationalVehicleType(item.vehicleType || getVehicleTypeFromModel(item.vehicleModel || ''));
@@ -83,12 +87,16 @@ export default function Dashboard({
     return summary;
   }, [activeAbcItems]);
   const criticalItems = useMemo(
-    () => activeWarehouseItems.filter(item => calculateItemStatus(item, settings) === 'Estoque Crítico'),
-    [activeWarehouseItems, settings]
+    () => activeWarehouseItems.filter(item => calculateItemStatus(item, settings, logs) === 'Estoque Crítico'),
+    [activeWarehouseItems, logs, settings]
   );
   const reorderItems = useMemo(
-    () => activeWarehouseItems.filter(item => calculateItemStatus(item, settings) === 'Repor em Breve'),
-    [activeWarehouseItems, settings]
+    () => activeWarehouseItems.filter(item => calculateItemStatus(item, settings, logs) === 'Repor em Breve'),
+    [activeWarehouseItems, logs, settings]
+  );
+  const reportItem = useMemo(
+    () => (reportSku ? activeWarehouseItems.find(item => item.sku === reportSku) || null : null),
+    [activeWarehouseItems, reportSku]
   );
   const listedItems = activeAlertList === 'critical' ? criticalItems : reorderItems;
   const sortedAlertItems = useMemo(() => {
@@ -173,6 +181,10 @@ export default function Dashboard({
         .sort((a, b) => new Date(b.fulfilledAt || b.updatedAt).getTime() - new Date(a.fulfilledAt || a.updatedAt).getTime()),
     [requests]
   );
+  const reportRecord = reportItem ? getAbcAnalysisForSku(reportItem.sku) : null;
+  const reportPolicy = reportItem ? getAdaptiveAbcStockPolicy(reportItem.sku, logs) : null;
+  const reportSettings = reportItem ? getItemAlertSettings(reportItem, settings, logs) : null;
+  const reportStatus = reportItem ? calculateItemStatus(reportItem, settings, logs) : null;
 
   const handleAlertListChange = (list: AlertList) => {
     setActiveAlertList(list);
@@ -425,16 +437,16 @@ export default function Dashboard({
                       </div>
                       <div className="space-y-2">
                         {group.items.map(item => {
-                          const itemStatus = calculateItemStatus(item, settings);
-                          const itemSettings = getItemAlertSettings(item, settings);
+                          const itemStatus = calculateItemStatus(item, settings, logs);
+                          const itemSettings = getItemAlertSettings(item, settings, logs);
                           const abcRecord = getAbcAnalysisForSku(item.sku);
-                          const abcPolicy = getAbcStockPolicy(item.sku);
+                          const abcPolicy = getAdaptiveAbcStockPolicy(item.sku, logs);
 
                           return (
                             <button
                               key={item.sku}
                               type="button"
-                              onClick={() => onSelectSku(item.sku)}
+                              onClick={() => setReportSku(item.sku)}
                               className="w-full text-left bg-surface-container-lowest p-3 rounded-xl flex items-center gap-3 group hover:bg-surface-container-high transition-colors active:scale-[0.99]"
                             >
                               <div className="w-10 h-10 bg-surface-container-low rounded-lg flex items-center justify-center shadow-sm shrink-0">
@@ -597,6 +609,117 @@ export default function Dashboard({
           </section>
         </aside>
       </div>
+
+      {reportItem && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/50 p-3 sm:p-6">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-surface-container-lowest shadow-2xl border border-outline-variant/20">
+            <div className="sticky top-0 z-10 bg-surface-container-lowest border-b border-outline-variant/15 p-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Relatorio rapido ABC</p>
+                <h3 className="mt-1 text-xl font-headline font-extrabold text-on-surface">
+                  SKU {reportItem.sku}
+                </h3>
+                <p className="mt-1 text-sm text-on-surface-variant line-clamp-2">
+                  {normalizeUserFacingText(reportItem.name)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportSku(null)}
+                className="h-10 w-10 rounded-xl bg-surface-container-low text-on-surface-variant flex items-center justify-center"
+                aria-label="Fechar relatorio"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <ReportMetric label="Status atual" value={normalizeUserFacingText(reportStatus || reportItem.status)} />
+                <ReportMetric label="Saldo atual" value={`${reportItem.quantity} un`} />
+                <ReportMetric
+                  label="Limites usados"
+                  value={`min ${reportSettings?.criticalLimit ?? 0} / max ${reportSettings?.reorderLimit ?? 0}`}
+                />
+              </div>
+
+              {reportRecord && reportPolicy ? (
+                <div className="rounded-2xl bg-primary-container/25 border border-primary/10 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-primary">
+                        Curva ABC {reportRecord.className} | rank #{reportRecord.rank}
+                      </p>
+                      <p className="mt-1 text-sm text-on-surface-variant">
+                        O rank vem da analise tratada de consumo/solicitacao. Quanto menor o rank, maior a prioridade.
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-surface-container-lowest px-4 py-3 text-right">
+                      <p className="text-[10px] font-bold uppercase text-outline">Demanda media</p>
+                      <p className="text-xl font-headline font-extrabold text-primary">
+                        {formatNumber(reportPolicy.averageMonthlyDemand)} un/mes
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <ReportMetric
+                      label="Base da curva"
+                      value={`${formatNumber(reportPolicy.baseAverageMonthlyDemand)} un/mes`}
+                    />
+                    <ReportMetric
+                      label="Saidas recentes"
+                      value={`${formatNumber(reportPolicy.recentOutflowQuantity)} un em 120 dias`}
+                    />
+                    <ReportMetric
+                      label="Entradas recentes"
+                      value={`${formatNumber(reportPolicy.recentInflowQuantity)} un em 120 dias`}
+                    />
+                    <ReportMetric
+                      label="Fonte do calculo"
+                      value={formatDemandSource(reportPolicy.demandSource)}
+                    />
+                  </div>
+
+                  <p className="mt-4 rounded-xl bg-surface-container-lowest px-4 py-3 text-sm text-on-surface-variant">
+                    Este SKU esta em alerta porque o saldo atual ({reportItem.quantity}) esta igual ou abaixo do limite
+                    calculado para a classe ABC dele. Para esta classe, o sistema transforma a demanda media em minimo
+                    e maximo automaticos: minimo {reportPolicy.minimumStock} e maximo {reportPolicy.maximumStock}.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-surface-container-low border border-outline-variant/15 p-4">
+                  <p className="text-sm font-bold text-on-surface">SKU sem registro na Curva ABC tratada.</p>
+                  <p className="mt-1 text-sm text-on-surface-variant">
+                    Neste caso o alerta usa os limites manuais ou o padrao geral do sistema.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sku = reportItem.sku;
+                    setReportSku(null);
+                    onSelectSku(sku);
+                  }}
+                  className="h-11 flex-1 rounded-xl bg-primary text-on-primary font-bold"
+                >
+                  Abrir no Estoque
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportSku(null)}
+                  className="h-11 flex-1 rounded-xl bg-surface-container-high text-on-surface font-bold"
+                >
+                  Fechar relatorio
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -644,6 +767,28 @@ function getSkuCandidates(sku: string) {
   }
 
   return candidates;
+}
+
+function ReportMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-surface-container-low px-4 py-3 border border-outline-variant/15">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-outline">{label}</p>
+      <p className="mt-1 text-sm font-extrabold text-on-surface">{value}</p>
+    </div>
+  );
+}
+
+function formatNumber(value: number) {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1
+  });
+}
+
+function formatDemandSource(value: string) {
+  if (value === 'curva-abc-e-movimentacao') return 'Curva ABC + movimentacao recente';
+  if (value === 'movimentacao') return 'Movimentacao recente';
+  return 'Curva ABC tratada';
 }
 
 function getFluidLevelTone(percent: number) {

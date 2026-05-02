@@ -1242,6 +1242,7 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <Dashboard
             items={items}
+            logs={logs}
             settings={settings}
             requests={requests}
             authRole={role}
@@ -1362,6 +1363,7 @@ export default function App() {
           <InventoryOperation
             items={items}
             logs={logs}
+            settings={settings}
             onSelectSku={handleSelectSku}
             showToast={showToast}
           />

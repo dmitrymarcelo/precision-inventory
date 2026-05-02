@@ -1,5 +1,5 @@
-import { InventoryItem, InventorySettings } from './types';
-import { getAbcStockPolicy } from './abcAnalysis';
+import { InventoryItem, InventoryLog, InventorySettings } from './types';
+import { getAdaptiveAbcStockPolicy } from './abcAnalysis';
 
 export const defaultInventorySettings: InventorySettings = {
   criticalLimit: 0,
@@ -17,9 +17,10 @@ export function calculateInventoryStatus(
 
 export function getItemAlertSettings(
   item: InventoryItem,
-  fallback: InventorySettings
+  fallback: InventorySettings,
+  logs: InventoryLog[] = []
 ): InventorySettings {
-  const abcPolicy = getAbcStockPolicy(item.sku);
+  const abcPolicy = getAdaptiveAbcStockPolicy(item.sku, logs);
   if (abcPolicy) {
     return {
       criticalLimit: abcPolicy.criticalLimit,
@@ -35,9 +36,10 @@ export function getItemAlertSettings(
 
 export function calculateItemStatus(
   item: InventoryItem,
-  fallback: InventorySettings
+  fallback: InventorySettings,
+  logs: InventoryLog[] = []
 ): InventoryItem['status'] {
-  return calculateInventoryStatus(item.quantity, getItemAlertSettings(item, fallback));
+  return calculateInventoryStatus(item.quantity, getItemAlertSettings(item, fallback, logs));
 }
 
 function normalizeLimit(value: number | undefined, fallback: number) {

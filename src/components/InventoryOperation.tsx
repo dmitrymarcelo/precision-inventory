@@ -8,7 +8,9 @@ import {
   PackageSearch,
   RefreshCcw
 } from 'lucide-react';
-import { InventoryItem, InventoryLog } from '../types';
+import { InventoryItem, InventoryLog, InventorySettings } from '../types';
+import { calculateItemStatus } from '../inventoryRules';
+import { getAbcAnalysisForSku, getAbcClassPriority, getAbcSortRank, getAdaptiveAbcStockPolicy } from '../abcAnalysis';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 
@@ -18,6 +20,7 @@ const MAX_VISIBLE_OPERATION_ITEMS = 6;
 interface InventoryOperationProps {
   items: InventoryItem[];
   logs: InventoryLog[];
+  settings: InventorySettings;
   onSelectSku: (sku: string) => void;
   showToast: (message: string, type?: 'success' | 'info') => void;
 }
@@ -27,6 +30,7 @@ type InventoryStatusFilter = 'all' | 'critical' | 'reorder' | 'healthy';
 export default function InventoryOperation({
   items,
   logs,
+  settings,
   onSelectSku,
   showToast
 }: InventoryOperationProps) {
@@ -94,21 +98,28 @@ export default function InventoryOperation({
         const matchesLocation = focusLocation === 'all' || normalizeLocationText(item.location) === focusLocation;
         const matchesVehicleType =
           focusVehicleType === 'all' || getEffectiveVehicleType(item) === focusVehicleType;
-        const matchesStatus = matchesInventoryStatusFilter(item, focusStatus);
+        const matchesStatus = matchesInventoryStatusFilter(calculateItemStatus(item, settings, logs), focusStatus);
 
         return matchesLocation && matchesVehicleType && matchesStatus;
       }),
-    [activeItems, focusLocation, focusStatus, focusVehicleType]
+    [activeItems, focusLocation, focusStatus, focusVehicleType, logs, settings]
   );
 
   const operationRows = useMemo(
     () =>
       filteredItems.map(item => {
         const latestLog = latestLogBySku.get(item.sku) || null;
+        const liveStatus = calculateItemStatus(item, settings, logs);
+        const abcRecord = getAbcAnalysisForSku(item.sku);
+        const abcPolicy = getAdaptiveAbcStockPolicy(item.sku, logs);
+        const abcRank = getAbcSortRank(item.sku);
+        const abcRankScore = Number.isFinite(abcRank) ? Math.max(0, 1000 - Math.min(abcRank, 1000)) : 0;
         const absDelta = latestLog ? Math.abs(latestLog.delta) : 0;
         const needsRecount = latestLog?.source === 'divergencia';
         const priorityScore =
-          getStatusPriority(item.status) * 1000 +
+          getAbcClassPriority(item.sku) * 10000 +
+          abcRankScore +
+          getStatusPriority(liveStatus) * 1000 +
           (isNoLocation(item.location) ? 200 : 0) +
           absDelta * 10 +
           (item.quantity <= 0 ? 50 : 0);
@@ -116,13 +127,16 @@ export default function InventoryOperation({
         return {
           item,
           latestLog,
+          liveStatus,
+          abcRecord,
+          abcPolicy,
           absDelta,
           needsRecount,
           countedToday: Boolean(latestLog),
           priorityScore
         };
       }),
-    [filteredItems, latestLogBySku]
+    [filteredItems, latestLogBySku, logs, settings]
   );
 
   const pendingQueue = useMemo(
@@ -161,6 +175,17 @@ export default function InventoryOperation({
   const countedTodayTotal = operationRows.filter(row => row.countedToday).length;
   const divergenceTotal = operationRows.filter(row => row.needsRecount).length;
   const pendingTotal = Math.max(0, filteredItems.length - countedTodayTotal);
+  const abcSummary = operationRows.reduce(
+    (summary, row) => {
+      if (row.abcRecord) {
+        summary[row.abcRecord.className] += 1;
+        if (!row.countedToday) summary.pendingAbc += 1;
+        if (!row.countedToday && row.abcRecord.className === 'A') summary.pendingA += 1;
+      }
+      return summary;
+    },
+    { A: 0, B: 0, C: 0, pendingAbc: 0, pendingA: 0 }
+  );
   const noLocationTotal = filteredItems.filter(
     item => isNoLocation(item.location)
   ).length;
@@ -227,7 +252,7 @@ export default function InventoryOperation({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4 mb-5">
+      <div className="grid gap-3 md:grid-cols-5 mb-5">
         <SummaryCard
           icon={<ClipboardList size={18} />}
           label="Base do foco"
@@ -253,6 +278,23 @@ export default function InventoryOperation({
           description={`${noLocationTotal} sem localizacao no foco`}
           tone={divergenceTotal > 0 ? 'warning' : 'default'}
         />
+        <SummaryCard
+          icon={<PackageSearch size={18} />}
+          label="ABC prioritario"
+          value={`${abcSummary.pendingA} A`}
+          description={`${abcSummary.pendingAbc} ABC pendentes no foco`}
+          tone={abcSummary.pendingA > 0 ? 'warning' : 'default'}
+        />
+      </div>
+
+      <div className="mb-5 rounded-2xl border border-primary/10 bg-primary-container/20 px-4 py-3">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary">
+          Inventario guiado por Curva ABC
+        </p>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          No foco atual: Classe A {abcSummary.A}, Classe B {abcSummary.B}, Classe C {abcSummary.C}. A fila prioriza
+          classe/rank ABC, itens criticos, divergencias, movimentacao recente e falta de localizacao.
+        </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3 mb-6">
@@ -316,7 +358,7 @@ export default function InventoryOperation({
             <>
               <span>{normalizeLocationText(row.item.location)}</span>
               <span>{formatVehicleType(row.item)}</span>
-              <span>{normalizeUserFacingText(row.item.status)}</span>
+              <span>{normalizeUserFacingText(row.liveStatus)}</span>
             </>
           )}
         />
@@ -446,6 +488,13 @@ function OperationColumn({
                 {renderMeta(row)}
               </div>
 
+              {row.abcRecord && row.abcPolicy ? (
+                <div className="mt-3 rounded-lg bg-primary-container/25 px-3 py-2 text-[11px] font-bold text-primary">
+                  ABC {row.abcRecord.className} #{row.abcRecord.rank} | min {row.abcPolicy.minimumStock} | max{' '}
+                  {row.abcPolicy.maximumStock}
+                </div>
+              ) : null}
+
               <div className="mt-3 text-xs font-bold text-primary">{actionLabel}</div>
             </button>
           ))
@@ -459,10 +508,10 @@ function OperationColumn({
   );
 }
 
-function matchesInventoryStatusFilter(item: InventoryItem, filter: InventoryStatusFilter) {
+function matchesInventoryStatusFilter(status: InventoryItem['status'], filter: InventoryStatusFilter) {
   if (filter === 'all') return true;
 
-  const normalizedStatus = normalizeStatus(item.status);
+  const normalizedStatus = normalizeStatus(status);
   if (filter === 'critical') return normalizedStatus === 'critical';
   if (filter === 'reorder') return normalizedStatus === 'reorder';
   return normalizedStatus === 'healthy';
@@ -537,6 +586,9 @@ function isOperationalInventoryLog(log: InventoryLog) {
 interface OperationRow {
   item: InventoryItem;
   latestLog: InventoryLog | null;
+  liveStatus: InventoryItem['status'];
+  abcRecord: ReturnType<typeof getAbcAnalysisForSku>;
+  abcPolicy: ReturnType<typeof getAdaptiveAbcStockPolicy>;
   absDelta: number;
   needsRecount: boolean;
   countedToday: boolean;

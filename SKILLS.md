@@ -189,3 +189,9 @@ Regra atual:
 - Classe C: minimo = 0,2 mes; maximo = 0,75 mes
 - No sistema, minimo alimenta `criticalLimit` e maximo alimenta `reorderLimit`
 - SKU fora da Curva ABC continua usando os limites manuais/fallback ja existentes
+- Quando existem movimentacoes recentes, a politica usa a maior demanda entre:
+  - media mensal da Curva ABC tratada
+  - saidas recentes dos ultimos 120 dias convertidas em media mensal
+- Entradas recentes aparecem no relatorio explicativo, mas nao reduzem minimo/maximo automaticamente
+- No Painel, clicar em item alertado deve abrir relatorio rapido antes de abrir o SKU
+- No Inventario Operacional, a fila deve priorizar classe/rank ABC, status critico/reposicao, divergencia, movimentacao e falta de localizacao

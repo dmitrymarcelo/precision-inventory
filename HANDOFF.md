@@ -25,6 +25,7 @@ O sistema ja tem os modulos principais funcionando:
 - O antigo bloco `Atalhos por veiculo` saiu do painel e virou acesso para uma aba dedicada
 - Usa a Curva ABC 2026 para priorizar o top de alertas criticos/reposicao somente entre SKUs ativos no armazem
 - O resumo ABC mostra quantos itens ativos existem nas classes A/B/C e exibe minimo/maximo automatico nos itens alertados
+- Ao clicar em um SKU alertado, abre um relatorio rapido explicando classe, rank, demanda media, saidas/entradas recentes e motivo do minimo/maximo
 
 ### 2. Atualziar Estoque
 
@@ -160,6 +161,28 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Evoluida a Curva ABC para modo operacional:
+  - `abcAnalysis.ts` passou a aceitar logs recentes e comparar a demanda media da planilha com as saidas dos ultimos 120 dias
+  - para minimo/maximo, o sistema usa a maior demanda entre Curva ABC tratada e saidas recentes, evitando subestimar item que acelerou consumo
+  - entradas recentes aparecem no relatorio explicativo, mas nao reduzem minimo/maximo automaticamente
+  - SKU fora da Curva ABC tratada continua usando limites manuais/fallback para nao mudar regra sem classificacao
+- Painel:
+  - clicar em item alertado agora abre `Relatorio rapido ABC`
+  - o relatorio mostra status, saldo, min/max usado, classe ABC, rank, demanda media, saidas recentes, entradas recentes e fonte do calculo
+  - o botao `Abrir no Estoque` continua levando ao SKU para ajuste
+- Inventario Operacional:
+  - recebeu resumo `Inventario guiado por Curva ABC`
+  - filas passam a priorizar classe/rank ABC, status calculado com ABC/logs, divergencia, movimentacao recente e falta de localizacao
+  - cada card priorizado mostra classe/rank ABC e min/max automatico quando existir classificacao
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Publicado via Wrangler:
+  - preview: `https://683469e6.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` da home em producao: `no-store`
+  - asset principal publicado: `assets/index-CZy2z39v.js`
 - Integrada a planilha tratada `Analise_Curva_ABC_Estoque_2026_Atualizada.xlsx` ao projeto:
   - gerado `src/abcAnalysisData.ts` com 622 registros da aba `ABC_Completa`
   - criado `src/abcAnalysis.ts` para buscar SKU mesmo com/sem zero a esquerda
@@ -227,6 +250,7 @@ O sistema ja tem os modulos principais funcionando:
 - Removido o tipo `OLEO` de `Peças/Modelo` (era um tipo extra operacional e nao representa tipo de veiculo)
 - Em `Solicitacoes > Dados do veiculo`, adicionado atalho e grid compacto de tipos para abrir `Pecas/Modelo` ja filtrado por tipo, facilitando a escolha rapida pelo mecanico
 - Em `Inventario Operacional`, filas e contagens passaram a considerar somente SKUs marcados como `Ativo` no armazem
+- Em `Inventario Operacional`, a fila agora tambem prioriza classe/rank da Curva ABC, status recalculado com ABC, divergencias e movimentacao recente
 - Aumentado o tamanho do botao `Ativo` (no Estoque e no detalhe do item) para facilitar o uso durante a contagem
 - Botao `Ativo` aumentado novamente (aprox. 2x) para melhor visualizacao no celular e durante contagem
 - Quando marcado como ativo, o botao `Ativo` passa a ficar azul para destacar o status
