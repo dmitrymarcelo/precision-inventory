@@ -412,6 +412,75 @@ function getQuotationPrintGroupKey(row: QuotationFormRow) {
   return row.id;
 }
 
+function createQuotationBudgetItem(
+  purchase: PurchaseRequest,
+  items: InventoryItem[],
+  options?: {
+    quantity?: number;
+    unitPrice?: number;
+    matchConfidence?: PurchaseQuotationLinkedItem['matchConfidence'];
+  }
+): PurchaseQuotationLinkedItem {
+  const item = findItemBySku(items, purchase.sku);
+  const quantity = options?.quantity ?? purchase.suggestedQuantity;
+  const unitPrice = options?.unitPrice;
+
+  return {
+    id: `budget-${purchase.id}`,
+    purchaseId: purchase.id,
+    sku: purchase.sku,
+    itemName: normalizeUserFacingText(purchase.itemName),
+    purchaseType: getEffectivePurchaseType(item),
+    classification: getPurchaseClassificationMeta(getPurchaseClassification(purchase)).label,
+    quantity,
+    unitPrice,
+    totalPrice: unitPrice && quantity ? unitPrice * quantity : undefined,
+    matchConfidence: options?.matchConfidence || 'manual',
+    selected: true
+  };
+}
+
+function mergeQuotationBudgetItems(items: PurchaseQuotationLinkedItem[]) {
+  return items.reduce<PurchaseQuotationLinkedItem[]>((merged, item) => {
+    const existingIndex = merged.findIndex(
+      current => current.purchaseId === item.purchaseId || current.sku === item.sku
+    );
+
+    if (existingIndex < 0) {
+      merged.push(item);
+      return merged;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      ...item,
+      quantity: item.quantity ?? existing.quantity,
+      unitPrice: item.unitPrice ?? existing.unitPrice,
+      totalPrice: item.totalPrice ?? existing.totalPrice,
+      selected: true
+    };
+    return merged;
+  }, []);
+}
+
+function buildQuotationBudgetItems(
+  row: QuotationFormRow,
+  currentPurchase: PurchaseRequest,
+  items: InventoryItem[]
+) {
+  const currentUnitPrice = parsePositiveNumber(row.unitPrice) || undefined;
+  const currentItem = createQuotationBudgetItem(currentPurchase, items, {
+    unitPrice: currentUnitPrice,
+    matchConfidence: 'manual'
+  });
+
+  return mergeQuotationBudgetItems([
+    currentItem,
+    ...row.linkedItems.filter(item => item.selected)
+  ]);
+}
+
 function upsertQuotation(quotations: PurchaseQuotation[], quotation: PurchaseQuotation) {
   const existingIndex = quotations.findIndex(existing => {
     if (existing.id === quotation.id) return true;
@@ -936,7 +1005,7 @@ export default function AutomaticPurchases({
 
     const now = new Date().toISOString();
     const quotations: PurchaseQuotation[] = completeRows.map(row =>
-      buildQuotationPayload(row, row.id === selectedRow.id, row.linkedItems.filter(item => item.selected))
+      buildQuotationPayload(row, row.id === selectedRow.id, buildQuotationBudgetItems(row, quotePurchase, items))
     );
     const linkedQuotationUpdates = completeRows.flatMap(row =>
       row.linkedItems
@@ -944,13 +1013,14 @@ export default function AutomaticPurchases({
         .map(linkedItem => {
           const targetPurchase = allPurchases.find(purchase => purchase.id === linkedItem.purchaseId);
           if (!targetPurchase) return null;
+          const budgetItems = buildQuotationBudgetItems(row, quotePurchase, items);
 
           return {
             targetPurchase,
             quotation: buildQuotationPayload(
               row,
               false,
-              row.linkedItems.filter(item => item.selected),
+              budgetItems,
               {
                 id: buildLinkedQuotationId(row, targetPurchase.id),
                 unitPrice: linkedItem.unitPrice || 0,
@@ -1093,47 +1163,46 @@ export default function AutomaticPurchases({
       .map((group, index) => {
         const representative = group.representative;
         const selected = group.rows.some(row => row.isSelected) ? 'Fornecedor escolhido' : '';
-        const linkedItemsHtml = group.rows
-          .flatMap(row => row.linkedItems.filter(item => item.selected))
-          .reduce<PurchaseQuotationLinkedItem[]>((acc, item) => {
-            const alreadyExists = acc.some(current => current.purchaseId === item.purchaseId || current.sku === item.sku);
-            if (!alreadyExists) acc.push(item);
-            return acc;
-          }, [])
-          .map(
-            item => `
+        const budgetItems = mergeQuotationBudgetItems(
+          group.rows.flatMap(row => buildQuotationBudgetItems(row, quotePurchase, items))
+        );
+        const budgetItemsHtml = budgetItems
+          .map(item => {
+            const total = item.totalPrice || (item.unitPrice && item.quantity ? item.unitPrice * item.quantity : undefined);
+            return `
               <tr>
                 <td>${escapeHtml(item.sku)}</td>
                 <td>${escapeHtml(item.itemName)}</td>
-                <td>${escapeHtml(item.purchaseType || '-')}</td>
-                <td>${escapeHtml(item.classification || '-')}</td>
-                <td>${escapeHtml(getMatchConfidenceLabel(item.matchConfidence))}</td>
+                <td>${escapeHtml(item.quantity || '-')}</td>
+                <td>${item.unitPrice ? formatCurrency(item.unitPrice) : '-'}</td>
+                <td>${total ? formatCurrency(total) : '-'}</td>
+                <td>${escapeHtml([item.purchaseType, item.classification].filter(Boolean).join(' / ') || '-')}</td>
               </tr>
-            `
-          )
+            `;
+          })
           .join('');
 
         return `
           <section class="quote ${group.rows.some(row => row.isSelected) ? 'selected' : ''}">
             <div class="quote-title">
-              <h2>Cotação ${index + 1} - ${escapeHtml(representative.supplierName || 'Fornecedor não informado')}${group.rows.length > 1 ? ` (${group.rows.length} itens vinculados)` : ''}</h2>
+              <h2>Orcamento ${index + 1} - ${escapeHtml(representative.supplierName || 'Fornecedor nao informado')}${budgetItems.length > 1 ? ` (${budgetItems.length} itens)` : ''}</h2>
               <strong>${escapeHtml(selected)}</strong>
             </div>
             <div class="grid">
-              <p><span>Nº cotação</span>${escapeHtml(representative.quoteNumber || '-')}</p>
+              <p><span>Nro cotacao</span>${escapeHtml(representative.quoteNumber || '-')}</p>
               <p><span>Data</span>${escapeHtml(representative.quotedAt || '-')}</p>
               <p><span>Validade</span>${escapeHtml(representative.validUntil || '-')}</p>
-              <p><span>Valor unitário</span>${formatCurrency(parsePositiveNumber(representative.unitPrice))}</p>
+              <p><span>Valor unitario</span>${formatCurrency(parsePositiveNumber(representative.unitPrice))}</p>
               <p><span>Frete/taxas</span>${formatCurrency(parsePositiveNumber(representative.freightCost))}</p>
               <p><span>Total comparado</span>${formatCurrency(getQuotationTotalFromRow(representative))}</p>
               <p><span>Prazo</span>${escapeHtml(representative.deliveryDays || '-')} dias</p>
               <p><span>Pagamento</span>${escapeHtml(representative.paymentTerms || '-')}</p>
-              <p><span>Nota técnica</span>${escapeHtml(representative.technicalScore || '-')}</p>
+              <p><span>Nota tecnica</span>${escapeHtml(representative.technicalScore || '-')}</p>
             </div>
             <p class="notes">${escapeHtml(representative.notes || '')}</p>
             ${
-              linkedItemsHtml
-                ? `<p class="notes"><strong>Itens deste or�amento:</strong></p><table><thead><tr><th>SKU</th><th>Item detectado</th><th>Tipo</th><th>Grupo</th><th>Reconhecimento</th></tr></thead><tbody>${linkedItemsHtml}</tbody></table>`
+              budgetItemsHtml
+                ? `<p class="notes"><strong>Itens deste orcamento:</strong> ${budgetItems.length}</p><table><thead><tr><th>SKU</th><th>Item</th><th>Qtd.</th><th>Valor unit.</th><th>Total</th><th>Tipo / grupo</th></tr></thead><tbody>${budgetItemsHtml}</tbody></table>`
                 : ''
             }
           </section>

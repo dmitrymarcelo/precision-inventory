@@ -162,6 +162,20 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Painel:
+  - o card grande `Nivel global de estoque (SKUs)` continua removido
+  - os numeros `Total` e `Ativos` voltaram em um bloco compacto no topo
+- Compras:
+  - impressao de cotacao vinculada agora monta `Itens deste orcamento`
+  - o mapa inclui o item atual e os itens vinculados como linhas de um unico orcamento
+  - deixou de depender da tabela de `Item detectado` como representacao principal do print
+- Validado nesta correcao:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Deploy publicado nesta correcao:
+  - preview: `https://f3032d3c.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
 - O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
   - aplicado no Estoque
   - aplicado no detalhe de `Atualizar Estoque`

@@ -95,6 +95,7 @@ Regras de importacao de PDF em cotacoes:
 - Permitir vincular manualmente quando o PDF nao reconhecer.
 - Ao salvar, replicar a cotacao para outros itens reconhecidos, mas sem escolher vencedor/aprovar automaticamente nesses itens.
 - Cada cotacao tem botao pequeno Imprimir mapa para layout de impressao.
+- Ao imprimir cotacao com item vinculado, mostrar como um unico orcamento com varias linhas de item.
 
 Memorias do projeto:
 - AGENTS.md: regras obrigatorias para agentes.

@@ -79,6 +79,7 @@ Regras:
 - permitir selecionar manualmente um item quando o PDF nao reconhecer
 - ao salvar, replicar a cotacao para os outros itens reconhecidos, sem escolher vencedor automaticamente nesses outros SKUs
 - cada cotacao deve ter botao pequeno para imprimir o mapa de cotacao
+- ao imprimir uma cotacao com itens vinculados, tratar como um unico orcamento com varias linhas de item
 
 Pontuacao sugerida:
 

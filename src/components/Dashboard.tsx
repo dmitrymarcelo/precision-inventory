@@ -68,6 +68,7 @@ export default function Dashboard({
     onOpenSeparation(requestId);
   };
 
+  const totalItems = items.length;
   const activeWarehouseItems = useMemo(() => items.filter(item => item.isActiveInWarehouse === true), [items]);
   const totalActiveItems = useMemo(
     () => items.filter(item => item.isActiveInWarehouse === true).length,
@@ -193,7 +194,30 @@ export default function Dashboard({
   return (
     <>
       {!isConsulta && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="text-left bg-surface-container-lowest p-4 rounded-xl shadow-[0_8px_24px_rgba(36,52,69,0.08)] border border-outline-variant/20 min-h-40 flex items-center">
+            <div className="grid grid-cols-2 gap-3 w-full">
+              <div>
+                <div className="flex items-center gap-2 text-primary-dim mb-2">
+                  <TrendingUp size={18} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Total</span>
+                </div>
+                <p className="text-3xl font-headline font-extrabold text-primary">{totalItems}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenInventoryFilter('active-only')}
+                className="text-left rounded-lg hover:bg-surface-container-low p-1 -m-1 transition-colors"
+              >
+                <div className="flex items-center gap-2 text-primary-dim mb-2">
+                  <PackageSearch size={18} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Ativos</span>
+                </div>
+                <p className="text-3xl font-headline font-extrabold text-primary">{totalActiveItems}</p>
+              </button>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => handleAlertListChange('critical')}
