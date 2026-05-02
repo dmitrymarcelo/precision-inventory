@@ -1317,6 +1317,7 @@ export default function App() {
             logs={logs}
             settings={settings}
             purchases={purchases}
+            vehicles={vehicles}
             setPurchases={setPurchasesGuarded}
             canManagePurchases={role === 'admin' || role === 'operacao'}
             showToast={showToast}

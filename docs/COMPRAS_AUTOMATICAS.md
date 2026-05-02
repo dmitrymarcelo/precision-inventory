@@ -130,10 +130,19 @@ Cards ordenados por:
 
 Campos minimos:
 
+- placa
+- centro de custo
 - SKU
 - quantidade solicitada
 - motivo
 - observacao
+
+Regras do formulario:
+
+- placa e centro de custo ficam editaveis
+- ao digitar a placa, consultar a base de veiculos e preencher centro de custo automaticamente quando houver correspondencia
+- ao digitar SKU, descricao, tipo ou localizacao, mostrar sugestoes de itens automaticamente
+- o card do pedido manual deve exibir placa e centro de custo quando existirem
 
 ### Card do item
 

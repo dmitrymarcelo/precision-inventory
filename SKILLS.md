@@ -251,6 +251,9 @@ Agrupamento atual:
 - `VW` deve aparecer como `SAVEIRO/GOL`
 - `CHEVROLET` deve aparecer como `S-10`
 - `OLEO`, quando salvo no item, deve continuar como tipo operacional para compra
+- pedido manual de compra deve ter placa, centro de custo editavel, SKU, quantidade e motivo
+- ao digitar a placa no pedido manual, buscar a base de veiculos e preencher centro de custo quando encontrar
+- ao digitar SKU/nome no pedido manual, mostrar sugestoes de itens automaticamente
 
 Cotacoes:
 

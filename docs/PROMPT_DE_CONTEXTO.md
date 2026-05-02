@@ -79,6 +79,7 @@ Compras Automaticas:
 - VW deve aparecer como SAVEIRO/GOL.
 - CHEVROLET deve aparecer como S-10.
 - OLEO permanece como tipo operacional de compra quando salvo no item.
+- Pedido manual de compra usa placa e centro de custo editaveis; placa deve buscar a base de veiculos e SKU deve sugerir itens automaticamente ao digitar.
 - Aprovacao de item/pacote exige no minimo 3 cotacoes recebidas.
 - Cotacao completa exige fornecedor e valor unitario.
 - Pontuacao sugerida: preco/custo total 45%, tecnica 35%, prazo 20%.

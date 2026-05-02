@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ChevronDown,
@@ -21,10 +21,12 @@ import {
   PurchaseQuotation,
   PurchaseQuotationLinkedItem,
   PurchaseRequest,
-  PurchaseRequestStatus
+  PurchaseRequestStatus,
+  VehicleRecord
 } from '../types';
 import { calculateItemStatus, getItemAlertSettings } from '../inventoryRules';
 import { getAbcAnalysisForSku, getAdaptiveAbcStockPolicy } from '../abcAnalysis';
+import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
 import { normalizeUserFacingText } from '../textUtils';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
 
@@ -33,6 +35,7 @@ interface AutomaticPurchasesProps {
   logs: InventoryLog[];
   settings: InventorySettings;
   purchases: PurchaseRequest[];
+  vehicles: VehicleRecord[];
   setPurchases: React.Dispatch<React.SetStateAction<PurchaseRequest[]>>;
   canManagePurchases: boolean;
   showToast: (message: string, type?: 'success' | 'info') => void;
@@ -194,6 +197,17 @@ function getMatchConfidenceLabel(value: PurchaseQuotationLinkedItem['matchConfid
 
 function getTodayInputDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getVehicleModelFromRecord(vehicle: VehicleRecord | null) {
+  if (!vehicle) return '';
+  const normalizedTarget = 'modelo';
+  const modelFromDetails =
+    Object.entries(vehicle.details || {}).find(([label]) => {
+      const normalized = normalizeUserFacingText(label).trim().toLowerCase();
+      return normalized === normalizedTarget;
+    })?.[1] || '';
+  return normalizeUserFacingText(modelFromDetails || vehicle.description || '');
 }
 
 function createEmptyQuotationRow(index: number): QuotationFormRow {
@@ -831,6 +845,7 @@ export default function AutomaticPurchases({
   logs,
   settings,
   purchases,
+  vehicles,
   setPurchases,
   canManagePurchases,
   showToast,
@@ -839,15 +854,89 @@ export default function AutomaticPurchases({
   const [activeTab, setActiveTab] = useState<PurchaseTab>('fila');
   const [searchQuery, setSearchQuery] = useState('');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualPlate, setManualPlate] = useState('');
+  const [manualCostCenter, setManualCostCenter] = useState('');
+  const [manualVehicleDescription, setManualVehicleDescription] = useState('');
   const [manualSku, setManualSku] = useState('');
   const [manualQuantity, setManualQuantity] = useState('');
   const [manualReason, setManualReason] = useState('');
+  const [isManualPlateSuggestionOpen, setIsManualPlateSuggestionOpen] = useState(false);
   const [quotePurchase, setQuotePurchase] = useState<PurchaseRequest | null>(null);
   const [quoteRows, setQuoteRows] = useState<QuotationFormRow[]>(() => buildInitialQuotationRows(null));
   const [quotationDecisionNote, setQuotationDecisionNote] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [importingPdfRowId, setImportingPdfRowId] = useState<string | null>(null);
   const [manualLinkTargets, setManualLinkTargets] = useState<Record<string, string>>({});
+
+  const normalizedManualVehicles = useMemo(
+    () =>
+      vehicles.map(vehicle => ({
+        vehicle,
+        plate: normalizePlate(vehicle.plate)
+      })),
+    [vehicles]
+  );
+
+  const manualMatchedVehicle = useMemo(
+    () => findVehicleByPlate(vehicles, manualPlate),
+    [vehicles, manualPlate]
+  );
+
+  const manualMatchedVehicleModel = useMemo(
+    () => getVehicleModelFromRecord(manualMatchedVehicle),
+    [manualMatchedVehicle]
+  );
+
+  useEffect(() => {
+    if (!manualMatchedVehicle) return;
+    setManualCostCenter(manualMatchedVehicle.costCenter);
+    setManualVehicleDescription(manualMatchedVehicleModel);
+  }, [manualMatchedVehicle, manualMatchedVehicleModel]);
+
+  const manualPlateSuggestions = useMemo(() => {
+    if (!isManualPlateSuggestionOpen) return [];
+    const query = normalizePlate(manualPlate);
+    if (!query || normalizedManualVehicles.length === 0) return [];
+
+    return normalizedManualVehicles
+      .filter(entry => entry.plate.includes(query))
+      .slice(0, 6)
+      .map(entry => entry.vehicle);
+  }, [isManualPlateSuggestionOpen, manualPlate, normalizedManualVehicles]);
+
+  const manualSelectedItem = useMemo(
+    () => findItemBySku(items, manualSku),
+    [items, manualSku]
+  );
+
+  const manualSkuSuggestions = useMemo(() => {
+    const query = normalizeSearchText(manualSku);
+    if (!query) return [];
+
+    return items
+      .filter(item => {
+        const haystack = [
+          item.sku,
+          item.name,
+          item.category,
+          item.location,
+          item.vehicleModel,
+          item.vehicleType,
+          getEffectivePurchaseType(item)
+        ]
+          .map(value => normalizeSearchText(value))
+          .filter(Boolean)
+          .join(' ');
+        return haystack.includes(query);
+      })
+      .sort((first, second) => {
+        const firstExact = getSkuCandidates(first.sku).has(normalizeSku(manualSku));
+        const secondExact = getSkuCandidates(second.sku).has(normalizeSku(manualSku));
+        if (firstExact !== secondExact) return firstExact ? -1 : 1;
+        return normalizeUserFacingText(first.name).localeCompare(normalizeUserFacingText(second.name), 'pt-BR');
+      })
+      .slice(0, 8);
+  }, [items, manualSku]);
 
   const suggestions = useMemo(() => {
     const generated: PurchaseRequest[] = [];
@@ -942,6 +1031,9 @@ export default function AutomaticPurchases({
       const haystack = [
         purchase.sku,
         purchase.itemName,
+        purchase.vehiclePlate,
+        purchase.costCenter,
+        purchase.vehicleDescription,
         item?.name,
         item?.category,
         item?.location,
@@ -1409,6 +1501,18 @@ export default function AutomaticPurchases({
     event.preventDefault();
     if (!canManagePurchases) return;
 
+    const vehiclePlate = normalizePlate(manualPlate);
+    if (!vehiclePlate) {
+      showToast('Informe a placa para criar o pedido manual.', 'info');
+      return;
+    }
+
+    const costCenter = normalizeUserFacingText(manualCostCenter);
+    if (!costCenter) {
+      showToast('Informe o centro de custo para criar o pedido manual.', 'info');
+      return;
+    }
+
     const sku = normalizeSku(manualSku);
     const item = findItemBySku(items, sku);
     if (!item) {
@@ -1431,15 +1535,23 @@ export default function AutomaticPurchases({
       source: 'manual',
       suggestedQuantity: qty,
       reason: normalizeUserFacingText(manualReason) || 'Pedido manual',
+      vehiclePlate,
+      costCenter,
+      vehicleDescription: normalizeUserFacingText(manualVehicleDescription) || manualMatchedVehicleModel || undefined,
+      vehicleDetails: manualMatchedVehicle?.details || undefined,
       createdAt: now,
       updatedAt: now
     };
 
     setPurchases(previous => [...previous, newPurchase].sort(comparePurchases));
     setIsManualModalOpen(false);
+    setManualPlate('');
+    setManualCostCenter('');
+    setManualVehicleDescription('');
     setManualSku('');
     setManualQuantity('');
     setManualReason('');
+    setIsManualPlateSuggestionOpen(false);
     showToast('Pedido manual criado com sucesso.', 'success');
   };
 
@@ -1689,6 +1801,14 @@ export default function AutomaticPurchases({
                             <p className="text-xs text-on-surface-variant mt-2">
                               Motivo: {normalizeUserFacingText(purchase.reason)}
                             </p>
+                            {(purchase.vehiclePlate || purchase.costCenter) && (
+                              <p className="text-xs text-on-surface-variant mt-1">
+                                Placa: <strong className="text-on-surface">{purchase.vehiclePlate || '-'}</strong>
+                                {' '}· Centro de custo:{' '}
+                                <strong className="text-on-surface">{purchase.costCenter || '-'}</strong>
+                                {purchase.vehicleDescription ? ` · ${normalizeUserFacingText(purchase.vehicleDescription)}` : ''}
+                              </p>
+                            )}
                             <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                               <span className={`px-2 py-1 rounded-lg ${
                                 quoteCount >= 3
@@ -1768,7 +1888,7 @@ export default function AutomaticPurchases({
 
       {isManualModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-container w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-surface-container w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-outline-variant">
               <h2 className="text-lg font-bold text-on-surface">Novo Pedido Manual</h2>
               <button
@@ -1780,17 +1900,143 @@ export default function AutomaticPurchases({
               </button>
             </div>
             <form onSubmit={handleCreateManual} className="p-4 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium text-on-surface mb-1">SKU</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                  Placa
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={manualPlate}
+                      onFocus={() => setIsManualPlateSuggestionOpen(true)}
+                      onBlur={() => window.setTimeout(() => setIsManualPlateSuggestionOpen(false), 120)}
+                      onChange={event => setManualPlate(normalizePlate(event.target.value))}
+                      className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none uppercase"
+                      placeholder="Ex: AAA0A00"
+                      autoComplete="off"
+                      inputMode="text"
+                    />
+
+                    {isManualPlateSuggestionOpen && normalizePlate(manualPlate).length >= 1 && (
+                      <div
+                        className="absolute z-40 mt-2 w-full rounded-xl border border-outline-variant bg-surface-container-lowest shadow-xl overflow-hidden"
+                        onMouseDown={event => event.preventDefault()}
+                      >
+                        {vehicles.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-on-surface-variant">
+                            Base de veículos vazia.
+                          </div>
+                        ) : manualPlateSuggestions.length > 0 ? (
+                          manualPlateSuggestions.map(vehicle => {
+                            const model = getVehicleModelFromRecord(vehicle);
+                            return (
+                              <button
+                                key={vehicle.id}
+                                type="button"
+                                onClick={() => {
+                                  setManualPlate(normalizePlate(vehicle.plate));
+                                  setManualCostCenter(vehicle.costCenter);
+                                  setManualVehicleDescription(model);
+                                  setIsManualPlateSuggestionOpen(false);
+                                }}
+                                className="w-full px-4 py-3 text-left hover:bg-surface-container-low transition-colors"
+                              >
+                                <p className="font-semibold text-on-surface text-sm">{normalizePlate(vehicle.plate)}</p>
+                                <p className="text-xs text-on-surface-variant mt-1 truncate">
+                                  {normalizeUserFacingText(vehicle.costCenter)}
+                                  {model ? ` · ${model}` : ''}
+                                </p>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-on-surface-variant">
+                            Nenhuma placa encontrada para {normalizePlate(manualPlate)}.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                  Centro de custo
+                  <input
+                    type="text"
+                    required
+                    value={manualCostCenter}
+                    onChange={event => setManualCostCenter(event.target.value)}
+                    className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Centro de custo"
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                Modelo / descrição do veículo
                 <input
                   type="text"
-                  required
-                  value={manualSku}
-                  onChange={event => setManualSku(event.target.value)}
+                  value={manualVehicleDescription}
+                  onChange={event => setManualVehicleDescription(event.target.value)}
                   className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                  placeholder="Ex: 12345"
+                  placeholder="Modelo do veículo"
                 />
+              </label>
+
+              <div>
+                <label className="block text-sm font-medium text-on-surface mb-1">SKU</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                  <input
+                    type="text"
+                    required
+                    value={manualSku}
+                    onChange={event => setManualSku(event.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Digite SKU, nome, tipo ou localização"
+                    autoComplete="off"
+                  />
+                </div>
+
+                {manualSku.trim().length > 0 && (
+                  <div className="mt-2 grid gap-2">
+                    {manualSkuSuggestions.length > 0 ? (
+                      manualSkuSuggestions.map(item => (
+                        <button
+                          key={item.sku}
+                          type="button"
+                          onClick={() => {
+                            setManualSku(item.sku);
+                            if (!manualQuantity) setManualQuantity('1');
+                          }}
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+                            manualSelectedItem?.sku === item.sku
+                              ? 'border-primary bg-primary-container/40'
+                              : 'border-outline-variant bg-surface-container-lowest hover:border-primary/40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-on-surface truncate">
+                                {normalizeUserFacingText(item.name)}
+                              </p>
+                              <p className="text-xs text-on-surface-variant truncate">
+                                SKU {item.sku} · saldo {item.quantity} · {getEffectivePurchaseType(item)}
+                              </p>
+                            </div>
+                            <span className="text-xs font-bold text-primary shrink-0">Selecionar</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface-variant">
+                        Nenhum SKU encontrado.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-on-surface mb-1">Quantidade</label>
                 <input

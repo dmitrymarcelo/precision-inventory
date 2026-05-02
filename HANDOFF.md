@@ -16,6 +16,32 @@ O sistema ja tem os modulos principais funcionando:
 - Compras Automaticas
 - Persistencia online via Cloudflare D1
 
+## Pedido manual de Compras com placa/centro em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora exige e salva:
+  - placa
+  - centro de custo
+  - modelo/descricao do veiculo
+  - SKU
+  - quantidade
+  - motivo
+- A placa e o centro de custo continuam editaveis.
+- Ao digitar a placa, o formulario consulta a base de veiculos e preenche centro de custo/modelo quando encontra correspondencia.
+- Ao digitar SKU, nome, tipo ou localizacao, o formulario mostra sugestoes de itens automaticamente.
+- O card do pedido manual passa a exibir placa e centro de custo.
+- A busca da aba `Compras` tambem considera placa, centro de custo e modelo do pedido manual.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DARTOjoM.js`
+  - `/assets/index-BZBUqCex.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://c66545a2.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
 ## Correcao de Compras vinculadas em 2026-05-02
 
 - Corrigido o print do mapa de cotacao quando um item e vinculado manualmente a outro SKU ja cotado.

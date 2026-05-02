@@ -169,6 +169,10 @@ export interface PurchaseRequest {
   approvedQuantity?: number;
   receivedQuantity?: number;
   reason: string;
+  vehiclePlate?: string;
+  costCenter?: string;
+  vehicleDescription?: string;
+  vehicleDetails?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
