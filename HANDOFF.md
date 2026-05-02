@@ -1779,3 +1779,57 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `docs/COMPRAS_AUTOMATICAS.md`
   - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
+
+## Cotacoes profissionais em Compras em 2026-05-02
+
+- A tela `Compras` ganhou dropdown por pacote:
+  - tipo do item
+  - subgrupo `Critico`, `Repor`, `Manual` ou `Kit preventiva`
+- O botao `Analisar` de cada item agora abre um mapa de cotacoes.
+- Cada SKU precisa ter no minimo 3 cotacoes recebidas antes de ser aprovado.
+- O formulario de cotacao registra:
+  - fornecedor
+  - contato
+  - numero da cotacao
+  - data e validade
+  - valor unitario
+  - frete/taxas
+  - prazo de entrega
+  - condicao de pagamento
+  - nota tecnica
+  - observacoes
+- O sistema sugere a melhor cotacao por pontuacao:
+  - preco/custo total 45%
+  - tecnica 35%
+  - prazo 20%
+- O usuario ainda escolhe manualmente a vencedora e pode justificar a decisao.
+- Ao tentar aprovar item ou pacote sem 3 cotacoes, o sistema bloqueia e abre o mapa de cotacoes.
+- Regra preservada:
+  - cotar/aprovar/comprar nao altera saldo
+  - entrada real continua somente via `Recebimento`
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando Node portatil.
+- `vite build` passou usando Node portatil.
+- Build gerou os assets:
+  - `/assets/index-DVrjPHCR.js`
+  - `/assets/index-Bqine2L0.css`
+  - `/assets/browser-rpPU-9HU.js`
+
+## Deploy publicado em 2026-05-02 para cotacoes em Compras
+
+- Preview publicado:
+  - `https://420d8def.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Validado online:
+  - home de producao respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao respondeu `no-store`
+- Memoria atualizada:
+  - `SKILLS.md`
+  - `docs/COMPRAS_AUTOMATICAS.md`
+  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`

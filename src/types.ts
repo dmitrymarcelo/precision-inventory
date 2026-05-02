@@ -122,6 +122,25 @@ export type PurchaseRequestStatus =
   | 'Recebida total'
   | 'Cancelada';
 
+export type PurchaseQuotationStatus = 'Pendente' | 'Recebida' | 'Recusada';
+
+export interface PurchaseQuotation {
+  id: string;
+  supplierName: string;
+  contactInfo?: string;
+  quoteNumber?: string;
+  quotedAt: string;
+  validUntil?: string;
+  unitPrice: number;
+  freightCost?: number;
+  deliveryDays?: number;
+  paymentTerms?: string;
+  technicalScore?: number;
+  notes?: string;
+  status: PurchaseQuotationStatus;
+  isSelected?: boolean;
+}
+
 export interface PurchaseRequest {
   id: string;
   sku: string;
@@ -136,5 +155,8 @@ export interface PurchaseRequest {
   updatedAt: string;
   createdBy?: string;
   approvedBy?: string;
+  quotations?: PurchaseQuotation[];
+  selectedQuotationId?: string;
+  quotationDecisionNote?: string;
   cancelledReason?: string;
 }

@@ -59,6 +59,31 @@ Exemplos de pacote:
 - `BATERIA / Critico`
 - `OLEO / Repor`
 
+## Cotacoes por item
+
+Ao clicar em `Analisar`, o sistema deve abrir o mapa de cotacoes do SKU.
+
+Regras:
+
+- exigir no minimo 3 cotacoes completas para aprovar o item
+- cotacao completa = fornecedor + valor unitario + status `Recebida`
+- registrar contato, numero da cotacao, data, validade, frete/taxas, prazo, condicao de pagamento e observacoes
+- permitir escolher manualmente a cotacao vencedora
+- sugerir automaticamente a melhor opcao por pontuacao
+- manter justificativa da escolha
+
+Pontuacao sugerida:
+
+- preco/custo total: 45%
+- aderencia tecnica/qualidade: 35%
+- prazo de entrega: 20%
+
+Importante:
+
+- a menor cotacao nao precisa ser obrigatoriamente a escolhida
+- a aprovacao continua sendo decisao humana
+- aprovar cotacao nao altera saldo do estoque
+
 ## Estados da compra
 
 - `Sugestao`: gerada automaticamente.

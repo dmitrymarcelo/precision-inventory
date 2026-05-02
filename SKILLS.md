@@ -249,6 +249,16 @@ Agrupamento atual:
 - `CHEVROLET` deve aparecer como `S-10`
 - `OLEO`, quando salvo no item, deve continuar como tipo operacional para compra
 
+Cotacoes:
+
+- `Analisar` abre o mapa de cotacoes do SKU
+- exigir no minimo 3 cotacoes recebidas para aprovar item ou pacote
+- cotacao completa precisa ter fornecedor e valor unitario
+- registrar contato, numero, data, validade, frete/taxas, prazo, pagamento, nota tecnica e observacoes
+- pontuacao sugerida: preco/custo total 45%, tecnica 35%, prazo 20%
+- menor preco nao e obrigatoriamente vencedor; registrar justificativa da escolha
+- cotacao/aprovacao nunca altera saldo do estoque
+
 Memoria Obsidian:
 
 - `Precision Inventory/07 - Proposta Compras Automaticas`
