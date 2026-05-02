@@ -1833,3 +1833,64 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
   - Obsidian `Precision Inventory/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
+
+## Importacao de PDF nas cotacoes em Compras em 2026-05-02
+
+- Cada cotacao do mapa de compras ganhou botao `Importar PDF`.
+- A leitura de PDF carrega sob demanda:
+  - o motor `pdfjs-dist` so entra quando o usuario clica para importar
+  - a abertura normal da aba `Compras` nao carrega o pacote de PDF
+- O importador tenta preencher automaticamente:
+  - fornecedor
+  - contato
+  - numero da cotacao
+  - data e validade
+  - valor unitario
+  - frete/taxas
+  - prazo de entrega
+  - condicao de pagamento
+- Quando o PDF traz varios SKUs, o sistema tenta reconhecer outros itens em compras abertas/sugeridas.
+- Itens reconhecidos aparecem com:
+  - SKU
+  - descricao
+  - tipo do item
+  - classificacao `Critico`, `Repor`, `Manual` ou `Kit preventiva`
+  - confianca do reconhecimento
+- Se o PDF nao reconhecer um item, o comprador pode vincular manualmente no formulario.
+- Ao salvar, a cotacao e replicada para os outros itens reconhecidos, mas sem escolher vencedor/aprovar automaticamente nesses outros SKUs.
+- Cada cotacao ganhou botao pequeno `Imprimir mapa` para abrir o layout de impressao do mapa de cotacao.
+- Regra preservada:
+  - importar/cotar/aprovar/comprar nao altera saldo
+  - entrada real continua somente via `Recebimento`
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando Node portatil.
+- `vite build` passou usando Node portatil.
+- Build gerou os assets:
+  - `/assets/index-Dgi6kzMn.js`
+  - `/assets/index-DWJpkDMg.css`
+  - `/assets/browser-rpPU-9HU.js`
+  - `/assets/pdf-qG1jx4kV.js`
+  - `/assets/pdf.worker-pcWA6tER.mjs`
+  - `/assets/pdf.worker-BQEIRQK4.js`
+- Observacao:
+  - o Vite manteve o aviso conhecido de chunk grande
+  - o pacote principal ficou menor apos mover o leitor de PDF para importacao sob demanda
+
+## Deploy publicado em 2026-05-02 para importacao PDF em cotacoes
+
+- Preview publicado:
+  - `https://a84f0457.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Validado online:
+  - home de producao respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao respondeu `no-store`
+- Memoria atualizada:
+  - `SKILLS.md`
+  - `docs/COMPRAS_AUTOMATICAS.md`
+  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`

@@ -258,6 +258,12 @@ Cotacoes:
 - pontuacao sugerida: preco/custo total 45%, tecnica 35%, prazo 20%
 - menor preco nao e obrigatoriamente vencedor; registrar justificativa da escolha
 - cotacao/aprovacao nunca altera saldo do estoque
+- cada cotacao pode importar PDF de fornecedor
+- leitura de PDF deve carregar o motor sob demanda para nao pesar a abertura da tela
+- se o PDF tiver varios SKUs, reconhecer itens de qualquer tipo/subgrupo `Critico`, `Repor`, `Manual` ou `Kit preventiva`
+- quando reconhecer outros SKUs no PDF, salvar a cotacao tambem nos itens vinculados, sem aprovar automaticamente
+- se o PDF nao reconhecer um item, permitir vinculo manual no formulario
+- cada cotacao tem botao para imprimir o mapa de cotacao
 
 Memoria Obsidian:
 

@@ -71,6 +71,14 @@ Regras:
 - permitir escolher manualmente a cotacao vencedora
 - sugerir automaticamente a melhor opcao por pontuacao
 - manter justificativa da escolha
+- permitir importar PDF em cada cotacao
+- carregar a leitura de PDF sob demanda, somente ao clicar em `Importar PDF`
+- preencher automaticamente fornecedor, contato, numero, datas, valores, prazo e pagamento quando o texto do PDF permitir
+- reconhecer SKUs adicionais presentes na mesma cotacao, mesmo quando pertencem a outro tipo/subgrupo
+- mostrar itens reconhecidos por tipo e classificacao: `Critico`, `Repor`, `Manual` ou `Kit preventiva`
+- permitir selecionar manualmente um item quando o PDF nao reconhecer
+- ao salvar, replicar a cotacao para os outros itens reconhecidos, sem escolher vencedor automaticamente nesses outros SKUs
+- cada cotacao deve ter botao pequeno para imprimir o mapa de cotacao
 
 Pontuacao sugerida:
 

@@ -4,10 +4,14 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
+  FileText,
+  Link2,
   Package,
   Plus,
+  Printer,
   Search,
   ShoppingCart,
+  Upload,
   X
 } from 'lucide-react';
 import {
@@ -15,6 +19,7 @@ import {
   InventoryLog,
   InventorySettings,
   PurchaseQuotation,
+  PurchaseQuotationLinkedItem,
   PurchaseRequest,
   PurchaseRequestStatus
 } from '../types';
@@ -63,6 +68,9 @@ type QuotationFormRow = {
   notes: string;
   status: PurchaseQuotation['status'];
   isSelected: boolean;
+  sourceFileName: string;
+  sourceFileImportedAt: string;
+  linkedItems: PurchaseQuotationLinkedItem[];
 };
 
 const ACTIVE_PURCHASE_STATUSES = new Set<PurchaseRequestStatus>([
@@ -178,6 +186,12 @@ function getPurchaseClassificationMeta(classification: PurchaseClassification) {
   };
 }
 
+function getMatchConfidenceLabel(value: PurchaseQuotationLinkedItem['matchConfidence']) {
+  if (value === 'alta') return 'Reconhecido automaticamente';
+  if (value === 'media') return 'Possível correspondência';
+  return 'Selecionado manualmente';
+}
+
 function getTodayInputDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -197,7 +211,10 @@ function createEmptyQuotationRow(index: number): QuotationFormRow {
     technicalScore: '3',
     notes: '',
     status: 'Recebida',
-    isSelected: false
+    isSelected: false,
+    sourceFileName: '',
+    sourceFileImportedAt: '',
+    linkedItems: []
   };
 }
 
@@ -216,7 +233,10 @@ function quotationToFormRow(quotation: PurchaseQuotation): QuotationFormRow {
     technicalScore: Number.isFinite(quotation.technicalScore) ? String(quotation.technicalScore) : '3',
     notes: quotation.notes || '',
     status: quotation.status || 'Recebida',
-    isSelected: quotation.isSelected === true
+    isSelected: quotation.isSelected === true,
+    sourceFileName: quotation.sourceFileName || '',
+    sourceFileImportedAt: quotation.sourceFileImportedAt || '',
+    linkedItems: quotation.linkedItems || []
   };
 }
 
@@ -259,6 +279,36 @@ function getQuotationTotalFromRow(row: QuotationFormRow) {
 
 function getQuotationTotal(quotation: PurchaseQuotation) {
   return (Number(quotation.unitPrice) || 0) + (Number(quotation.freightCost) || 0);
+}
+
+function buildQuotationPayload(
+  row: QuotationFormRow,
+  isSelected: boolean,
+  linkedItems: PurchaseQuotationLinkedItem[],
+  options?: { id?: string; unitPrice?: number; notesSuffix?: string }
+): PurchaseQuotation {
+  const baseNotes = normalizeUserFacingText(row.notes);
+  const notes = [baseNotes, options?.notesSuffix].filter(Boolean).join(' | ');
+
+  return {
+    id: options?.id || row.id,
+    supplierName: normalizeUserFacingText(row.supplierName),
+    contactInfo: normalizeUserFacingText(row.contactInfo) || undefined,
+    quoteNumber: normalizeUserFacingText(row.quoteNumber) || undefined,
+    quotedAt: row.quotedAt ? new Date(`${row.quotedAt}T12:00:00`).toISOString() : new Date().toISOString(),
+    validUntil: row.validUntil ? new Date(`${row.validUntil}T12:00:00`).toISOString() : undefined,
+    unitPrice: options?.unitPrice ?? parsePositiveNumber(row.unitPrice),
+    freightCost: parseOptionalPositiveNumber(row.freightCost),
+    deliveryDays: parseOptionalPositiveNumber(row.deliveryDays),
+    paymentTerms: normalizeUserFacingText(row.paymentTerms) || undefined,
+    technicalScore: clampScore(row.technicalScore),
+    notes: notes || undefined,
+    status: row.status,
+    isSelected,
+    sourceFileName: row.sourceFileName || undefined,
+    sourceFileImportedAt: row.sourceFileImportedAt || undefined,
+    linkedItems
+  };
 }
 
 function countCompleteQuotationRows(rows: QuotationFormRow[]) {
@@ -306,6 +356,278 @@ function getBestQuotationRow(rows: QuotationFormRow[]) {
       if (second.score !== first.score) return second.score - first.score;
       return first.total - second.total;
     })[0]?.row || null;
+}
+
+async function extractPdfTextFromFile(file: File) {
+  const [pdfjsLib, pdfWorker] = await Promise.all([
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.mjs?url')
+  ]);
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker.default;
+  const data = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
+  const pages: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map(item => ('str' in item ? String(item.str) : ''))
+      .filter(Boolean)
+      .join(' ');
+    pages.push(pageText);
+  }
+
+  return normalizeUserFacingText(pages.join('\n'));
+}
+
+function normalizeSearchText(value: unknown) {
+  return normalizeUserFacingText(value)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildLinkedQuotationId(row: QuotationFormRow, purchaseId: string) {
+  const basis = normalizeSearchText(`${purchaseId} ${row.sourceFileName || ''} ${row.quoteNumber || ''} ${row.supplierName || row.id}`)
+    .replace(/\s+/g, '-')
+    .slice(0, 96);
+  return `pdf-${basis || purchaseId}`;
+}
+
+function upsertQuotation(quotations: PurchaseQuotation[], quotation: PurchaseQuotation) {
+  const existingIndex = quotations.findIndex(existing => {
+    if (existing.id === quotation.id) return true;
+    if (!existing.sourceFileName || !quotation.sourceFileName) return false;
+
+    const sameFile = existing.sourceFileName === quotation.sourceFileName;
+    const sameQuote = (existing.quoteNumber || '') === (quotation.quoteNumber || '');
+    const sameSupplier = normalizeSearchText(existing.supplierName) === normalizeSearchText(quotation.supplierName);
+    return sameFile && sameQuote && sameSupplier;
+  });
+
+  if (existingIndex < 0) return [...quotations, quotation];
+
+  return quotations.map((existing, index) =>
+    index === existingIndex
+      ? {
+          ...existing,
+          ...quotation,
+          id: existing.id
+        }
+      : existing
+  );
+}
+
+function parseBrazilianMoney(value: string) {
+  const raw = String(value || '').replace(/[^\d,.-]/g, '');
+  if (!raw) return 0;
+
+  const hasComma = raw.includes(',');
+  const normalized = hasComma ? raw.replace(/\./g, '').replace(',', '.') : raw.replace(/,/g, '');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function extractMoneyValues(text: string) {
+  const matches = Array.from(
+    text.matchAll(/(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,7},\d{2}|\d{1,7}\.\d{2})/g)
+  );
+
+  return matches
+    .map(match => parseBrazilianMoney(match[1]))
+    .filter(value => value > 0 && value < 100000000);
+}
+
+function extractFirstDate(text: string) {
+  const match = text.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+  if (!match) return '';
+
+  const day = match[1].padStart(2, '0');
+  const month = match[2].padStart(2, '0');
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+  return `${year}-${month}-${day}`;
+}
+
+function extractDateByLabel(lines: string[], labels: string[]) {
+  const normalizedLabels = labels.map(normalizeSearchText);
+  const line = lines.find(candidate => {
+    const normalized = normalizeSearchText(candidate);
+    return normalizedLabels.some(label => normalized.includes(label)) && extractFirstDate(candidate);
+  });
+  return line ? extractFirstDate(line) : '';
+}
+
+function extractQuoteNumber(lines: string[]) {
+  const joined = lines.join(' ');
+  const match = joined.match(/(?:cotacao|cotação|orcamento|orçamento|proposta|pedido|n[ºo.]?)\s*(?:n[ºo.]?)?\s*[:#-]?\s*([A-Z0-9./-]{3,})/i);
+  return match ? match[1].trim() : '';
+}
+
+function extractContact(lines: string[]) {
+  const email = lines.join(' ').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+  const phone = lines.join(' ').match(/(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/)?.[0];
+  return [email, phone].filter(Boolean).join(' | ');
+}
+
+function extractSupplierName(lines: string[]) {
+  const ignored = ['COTACAO', 'COTAÇÃO', 'ORCAMENTO', 'ORÇAMENTO', 'PROPOSTA', 'PEDIDO', 'DATA', 'VALIDADE', 'CNPJ', 'CPF'];
+  const candidate = lines.find(line => {
+    const normalized = normalizeSearchText(line);
+    return normalized.length >= 4 && normalized.length <= 80 && !ignored.some(word => normalized.includes(word));
+  });
+
+  return candidate ? normalizeUserFacingText(candidate) : '';
+}
+
+function extractDeliveryDays(lines: string[]) {
+  const line = lines.find(candidate => /prazo|entrega|dispon/i.test(candidate));
+  const match = line?.match(/(\d{1,3})\s*(?:dia|dias|d\.?u\.?)/i);
+  return match ? match[1] : '';
+}
+
+function extractPaymentTerms(lines: string[]) {
+  const line = lines.find(candidate => /pagamento|condi[cç][aã]o|boleto|pix|cart[aã]o|avista|à vista/i.test(candidate));
+  return line ? normalizeUserFacingText(line).slice(0, 120) : '';
+}
+
+function getSignificantWords(value: unknown) {
+  return normalizeSearchText(value)
+    .split(' ')
+    .filter(word => word.length >= 4 && !['PARA', 'COM', 'SEM', 'UNIDADE', 'UNIDADES'].includes(word))
+    .slice(0, 6);
+}
+
+function findBestLineForPurchase(lines: string[], purchase: PurchaseRequest) {
+  const skuCandidates = Array.from(getSkuCandidates(purchase.sku)).map(normalizeSearchText).filter(Boolean);
+  const bySku = lines.find(line => {
+    const normalized = normalizeSearchText(line);
+    return skuCandidates.some(candidate => normalized.includes(candidate));
+  });
+  if (bySku) return { line: bySku, confidence: 'alta' as const };
+
+  const words = getSignificantWords(purchase.itemName);
+  const byName = lines.find(line => {
+    const normalized = normalizeSearchText(line);
+    const matches = words.filter(word => normalized.includes(word)).length;
+    return matches >= Math.min(2, words.length);
+  });
+
+  return byName ? { line: byName, confidence: 'media' as const } : null;
+}
+
+function extractQuantityFromLine(line: string) {
+  const unitMatch = line.match(/(?:^|\s)(\d{1,5})(?:[,.]\d+)?\s*(?:UN|UND|UNID|PC|P[ÇC]A|LT|L|KG)\b/i);
+  if (unitMatch) return Number.parseInt(unitMatch[1], 10);
+
+  const firstNumber = line.match(/(?:^|\s)(\d{1,5})(?:\s+)/);
+  return firstNumber ? Number.parseInt(firstNumber[1], 10) : undefined;
+}
+
+function detectQuotationLinkedItems(
+  text: string,
+  purchases: PurchaseRequest[],
+  items: InventoryItem[],
+  currentPurchase: PurchaseRequest
+) {
+  const lines = text.split(/\n| {2,}/).map(line => normalizeUserFacingText(line)).filter(line => line.length > 3);
+  const candidates = [currentPurchase, ...purchases.filter(purchase => purchase.id !== currentPurchase.id)];
+  const linked: PurchaseQuotationLinkedItem[] = [];
+  const seen = new Set<string>();
+
+  for (const purchase of candidates) {
+    const match = findBestLineForPurchase(lines, purchase);
+    if (!match || seen.has(purchase.id)) continue;
+
+    const item = findItemBySku(items, purchase.sku);
+    const moneyValues = extractMoneyValues(match.line);
+    const unitPrice = moneyValues.length ? moneyValues[moneyValues.length - 1] : undefined;
+    const quantity = extractQuantityFromLine(match.line);
+    const classification = getPurchaseClassificationMeta(getPurchaseClassification(purchase)).label;
+
+    linked.push({
+      id: `link-${purchase.id}-${Date.now()}-${linked.length}`,
+      purchaseId: purchase.id,
+      sku: purchase.sku,
+      itemName: normalizeUserFacingText(purchase.itemName),
+      purchaseType: getEffectivePurchaseType(item),
+      classification,
+      quantity,
+      unitPrice,
+      totalPrice: unitPrice && quantity ? unitPrice * quantity : undefined,
+      lineText: match.line.slice(0, 240),
+      matchConfidence: match.confidence,
+      selected: true
+    });
+    seen.add(purchase.id);
+  }
+
+  return linked;
+}
+
+function parseQuotationPdfText(
+  text: string,
+  file: File,
+  row: QuotationFormRow,
+  purchase: PurchaseRequest,
+  purchases: PurchaseRequest[],
+  items: InventoryItem[]
+): QuotationFormRow {
+  const lines = text
+    .split(/\n| {2,}/)
+    .map(line => normalizeUserFacingText(line))
+    .filter(line => line.length > 2);
+  const linkedItems = detectQuotationLinkedItems(text, purchases, items, purchase);
+  const linkedCurrentItem = linkedItems.find(item => item.purchaseId === purchase.id);
+  const moneyValues = extractMoneyValues(text);
+  const freightLine = lines.find(line => /frete|taxa|envio/i.test(line));
+  const freightValue = freightLine ? extractMoneyValues(freightLine)[0] : undefined;
+  const quoteUnitPrice = linkedCurrentItem?.unitPrice || moneyValues[0] || 0;
+  const extractedQuotedAt = extractDateByLabel(lines, ['data', 'emissao', 'emissão']);
+  const extractedValidUntil = extractDateByLabel(lines, ['validade', 'valido', 'válido']);
+  const mergedLinkedItems = [...linkedItems];
+
+  row.linkedItems.forEach(existing => {
+    const alreadyDetected = mergedLinkedItems.some(
+      item => item.purchaseId === existing.purchaseId || item.sku === existing.sku
+    );
+    if (!alreadyDetected) mergedLinkedItems.push(existing);
+  });
+
+  return {
+    ...row,
+    supplierName: row.supplierName || extractSupplierName(lines),
+    contactInfo: row.contactInfo || extractContact(lines),
+    quoteNumber: row.quoteNumber || extractQuoteNumber(lines),
+    quotedAt: extractedQuotedAt || row.quotedAt || getTodayInputDate(),
+    validUntil: extractedValidUntil || row.validUntil,
+    unitPrice: row.unitPrice || (quoteUnitPrice ? String(quoteUnitPrice.toFixed(2)) : ''),
+    freightCost: row.freightCost || (freightValue ? String(freightValue.toFixed(2)) : ''),
+    deliveryDays: row.deliveryDays || extractDeliveryDays(lines),
+    paymentTerms: row.paymentTerms || extractPaymentTerms(lines),
+    notes: [row.notes, `PDF importado: ${file.name}`].filter(Boolean).join(' | '),
+    sourceFileName: file.name,
+    sourceFileImportedAt: new Date().toISOString(),
+    linkedItems: mergedLinkedItems
+  };
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatCurrency(value: unknown) {
+  return `R$ ${(Number(value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 }
 
 function buildSuggestionReason(item: InventoryItem, source: PurchaseRequest['source'], settings: InventorySettings, logs: InventoryLog[]) {
@@ -370,6 +692,8 @@ export default function AutomaticPurchases({
   const [quoteRows, setQuoteRows] = useState<QuotationFormRow[]>(() => buildInitialQuotationRows(null));
   const [quotationDecisionNote, setQuotationDecisionNote] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [importingPdfRowId, setImportingPdfRowId] = useState<string | null>(null);
+  const [manualLinkTargets, setManualLinkTargets] = useState<Record<string, string>>({});
 
   const suggestions = useMemo(() => {
     const generated: PurchaseRequest[] = [];
@@ -536,6 +860,14 @@ export default function AutomaticPurchases({
     };
   }, [allPurchases, groupedPurchases.length]);
 
+  const quotationSelectablePurchases = useMemo(
+    () =>
+      allPurchases.filter(purchase =>
+        ['Sugestao', 'Manual', 'Em analise', 'Aprovada', 'Comprada', 'Recebida parcial'].includes(purchase.status)
+      ),
+    [allPurchases]
+  );
+
   const openQuotationForm = (purchase: PurchaseRequest) => {
     if (!canManagePurchases) {
       showToast('Sem permissão para gerenciar cotações.', 'info');
@@ -558,6 +890,7 @@ export default function AutomaticPurchases({
     setQuotePurchase(purchaseInAnalysis);
     setQuoteRows(buildInitialQuotationRows(purchaseInAnalysis));
     setQuotationDecisionNote(purchase.quotationDecisionNote || '');
+    setManualLinkTargets({});
   };
 
   const updateQuotationRow = (rowId: string, field: keyof QuotationFormRow, value: string | boolean) => {
@@ -590,22 +923,32 @@ export default function AutomaticPurchases({
     }
 
     const now = new Date().toISOString();
-    const quotations: PurchaseQuotation[] = completeRows.map(row => ({
-      id: row.id,
-      supplierName: normalizeUserFacingText(row.supplierName),
-      contactInfo: normalizeUserFacingText(row.contactInfo) || undefined,
-      quoteNumber: normalizeUserFacingText(row.quoteNumber) || undefined,
-      quotedAt: row.quotedAt ? new Date(`${row.quotedAt}T12:00:00`).toISOString() : now,
-      validUntil: row.validUntil ? new Date(`${row.validUntil}T12:00:00`).toISOString() : undefined,
-      unitPrice: parsePositiveNumber(row.unitPrice),
-      freightCost: parseOptionalPositiveNumber(row.freightCost),
-      deliveryDays: parseOptionalPositiveNumber(row.deliveryDays),
-      paymentTerms: normalizeUserFacingText(row.paymentTerms) || undefined,
-      technicalScore: clampScore(row.technicalScore),
-      notes: normalizeUserFacingText(row.notes) || undefined,
-      status: row.status,
-      isSelected: row.id === selectedRow.id
-    }));
+    const quotations: PurchaseQuotation[] = completeRows.map(row =>
+      buildQuotationPayload(row, row.id === selectedRow.id, row.linkedItems.filter(item => item.selected))
+    );
+    const linkedQuotationUpdates = completeRows.flatMap(row =>
+      row.linkedItems
+        .filter(linkedItem => linkedItem.selected && linkedItem.purchaseId && linkedItem.purchaseId !== quotePurchase.id)
+        .map(linkedItem => {
+          const targetPurchase = allPurchases.find(purchase => purchase.id === linkedItem.purchaseId);
+          if (!targetPurchase) return null;
+
+          return {
+            targetPurchase,
+            quotation: buildQuotationPayload(
+              row,
+              false,
+              row.linkedItems.filter(item => item.selected),
+              {
+                id: buildLinkedQuotationId(row, targetPurchase.id),
+                unitPrice: linkedItem.unitPrice || 0,
+                notesSuffix: `Cotação vinculada automaticamente pelo PDF do SKU ${quotePurchase.sku}.`
+              }
+            )
+          };
+        })
+        .filter((entry): entry is { targetPurchase: PurchaseRequest; quotation: PurchaseQuotation } => Boolean(entry))
+    );
 
     const updatedPurchase: PurchaseRequest = {
       ...quotePurchase,
@@ -617,16 +960,214 @@ export default function AutomaticPurchases({
     };
 
     setPurchases(previous => {
-      const existing = previous.find(current => current.id === quotePurchase.id);
-      if (existing) {
-        return previous.map(current => current.id === quotePurchase.id ? updatedPurchase : current).sort(comparePurchases);
-      }
+      const purchasesById = new Map(previous.map(current => [current.id, current]));
+      purchasesById.set(quotePurchase.id, updatedPurchase);
 
-      return [...previous, updatedPurchase].sort(comparePurchases);
+      linkedQuotationUpdates.forEach(({ targetPurchase, quotation }) => {
+        const current = purchasesById.get(targetPurchase.id) || targetPurchase;
+        const nextStatus = ['Sugestao', 'Manual'].includes(current.status) ? 'Em analise' : current.status;
+        purchasesById.set(targetPurchase.id, {
+          ...current,
+          status: nextStatus,
+          quotations: upsertQuotation(current.quotations || [], quotation),
+          updatedAt: now
+        });
+      });
+
+      return Array.from(purchasesById.values()).sort(comparePurchases);
     });
 
     setQuotePurchase(null);
-    showToast('Cotações salvas. O item está pronto para aprovação.', 'success');
+    const linkedTargetCount = new Set(linkedQuotationUpdates.map(update => update.targetPurchase.id)).size;
+    showToast(
+      linkedTargetCount > 0
+        ? `Cotações salvas e vinculadas a ${linkedTargetCount} item(ns) reconhecido(s) no PDF.`
+        : 'Cotações salvas. O item está pronto para aprovação.',
+      'success'
+    );
+  };
+
+  const handleQuotationPdfImport = async (rowId: string, file: File | null) => {
+    if (!file || !quotePurchase) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Selecione um arquivo PDF.', 'info');
+      return;
+    }
+
+    const row = quoteRows.find(candidate => candidate.id === rowId);
+    if (!row) return;
+
+    setImportingPdfRowId(rowId);
+    try {
+      const text = await extractPdfTextFromFile(file);
+      if (text.length < 20) {
+        showToast('Não consegui ler texto neste PDF. Se for imagem escaneada, preencha manualmente.', 'info');
+        return;
+      }
+
+      const parsedRow = parseQuotationPdfText(text, file, row, quotePurchase, allPurchases, items);
+      setQuoteRows(previous => previous.map(candidate => candidate.id === rowId ? parsedRow : candidate));
+      showToast('PDF lido e cotação preenchida automaticamente.', 'success');
+    } catch {
+      showToast('Não consegui importar este PDF. Tente outro arquivo ou preencha manualmente.', 'info');
+    } finally {
+      setImportingPdfRowId(null);
+    }
+  };
+
+  const toggleLinkedItem = (rowId: string, linkId: string) => {
+    setQuoteRows(previous =>
+      previous.map(row =>
+        row.id === rowId
+          ? {
+              ...row,
+              linkedItems: row.linkedItems.map(item =>
+                item.id === linkId ? { ...item, selected: !item.selected } : item
+              )
+            }
+          : row
+      )
+    );
+  };
+
+  const addManualLinkedItem = (rowId: string) => {
+    const purchaseId = manualLinkTargets[rowId];
+    const purchase = quotationSelectablePurchases.find(candidate => candidate.id === purchaseId);
+    if (!purchase) {
+      showToast('Selecione um item para vincular à cotação.', 'info');
+      return;
+    }
+
+    const item = findItemBySku(items, purchase.sku);
+    const classification = getPurchaseClassificationMeta(getPurchaseClassification(purchase)).label;
+    const linkedItem: PurchaseQuotationLinkedItem = {
+      id: `manual-${purchase.id}-${Date.now()}`,
+      purchaseId: purchase.id,
+      sku: purchase.sku,
+      itemName: normalizeUserFacingText(purchase.itemName),
+      purchaseType: getEffectivePurchaseType(item),
+      classification,
+      matchConfidence: 'manual',
+      selected: true
+    };
+
+    setQuoteRows(previous =>
+      previous.map(row => {
+        if (row.id !== rowId) return row;
+        if (row.linkedItems.some(current => current.purchaseId === purchase.id || current.sku === purchase.sku)) return row;
+        return { ...row, linkedItems: [...row.linkedItems, linkedItem] };
+      })
+    );
+    setManualLinkTargets(previous => ({ ...previous, [rowId]: '' }));
+  };
+
+  const printQuotationMap = () => {
+    if (!quotePurchase) return;
+
+    const rowsHtml = quoteRows
+      .filter(row => isCompleteQuotationRow(row) || row.supplierName || row.sourceFileName)
+      .map((row, index) => {
+        const selected = row.isSelected ? 'Fornecedor escolhido' : '';
+        const linkedItemsHtml = row.linkedItems
+          .filter(item => item.selected)
+          .map(
+            item => `
+              <tr>
+                <td>${escapeHtml(item.sku)}</td>
+                <td>${escapeHtml(item.itemName)}</td>
+                <td>${escapeHtml(item.purchaseType || '-')}</td>
+                <td>${escapeHtml(item.classification || '-')}</td>
+                <td>${escapeHtml(getMatchConfidenceLabel(item.matchConfidence))}</td>
+              </tr>
+            `
+          )
+          .join('');
+
+        return `
+          <section class="quote ${row.isSelected ? 'selected' : ''}">
+            <div class="quote-title">
+              <h2>Cotação ${index + 1} - ${escapeHtml(row.supplierName || 'Fornecedor não informado')}</h2>
+              <strong>${escapeHtml(selected)}</strong>
+            </div>
+            <div class="grid">
+              <p><span>Nº cotação</span>${escapeHtml(row.quoteNumber || '-')}</p>
+              <p><span>Data</span>${escapeHtml(row.quotedAt || '-')}</p>
+              <p><span>Validade</span>${escapeHtml(row.validUntil || '-')}</p>
+              <p><span>Valor unitário</span>${formatCurrency(parsePositiveNumber(row.unitPrice))}</p>
+              <p><span>Frete/taxas</span>${formatCurrency(parsePositiveNumber(row.freightCost))}</p>
+              <p><span>Total comparado</span>${formatCurrency(getQuotationTotalFromRow(row))}</p>
+              <p><span>Prazo</span>${escapeHtml(row.deliveryDays || '-')} dias</p>
+              <p><span>Pagamento</span>${escapeHtml(row.paymentTerms || '-')}</p>
+              <p><span>Nota técnica</span>${escapeHtml(row.technicalScore || '-')}</p>
+            </div>
+            <p class="notes">${escapeHtml(row.notes || '')}</p>
+            ${
+              linkedItemsHtml
+                ? `<table><thead><tr><th>SKU</th><th>Item detectado</th><th>Tipo</th><th>Grupo</th><th>Reconhecimento</th></tr></thead><tbody>${linkedItemsHtml}</tbody></table>`
+                : ''
+            }
+          </section>
+        `;
+      })
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'width=1120,height=800');
+    if (!printWindow) {
+      showToast('O navegador bloqueou a janela de impressão.', 'info');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Mapa de cotação ${escapeHtml(quotePurchase.sku)}</title>
+          <style>
+            body { font-family: Inter, Arial, sans-serif; color: #13233a; margin: 32px; }
+            header { border-bottom: 3px solid #1f4f8f; padding-bottom: 16px; margin-bottom: 20px; }
+            h1 { margin: 0; font-size: 26px; }
+            .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+            .meta p, .grid p { border: 1px solid #d7e2f2; border-radius: 10px; padding: 10px; margin: 0; }
+            span { display: block; color: #5c6f8a; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+            .quote { border: 1px solid #d7e2f2; border-radius: 16px; padding: 16px; margin: 16px 0; break-inside: avoid; }
+            .selected { border-color: #1f4f8f; box-shadow: inset 0 0 0 2px #1f4f8f; }
+            .quote-title { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+            .quote h2 { margin: 0 0 12px; font-size: 18px; }
+            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+            .notes { color: #52627a; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+            th, td { border: 1px solid #d7e2f2; padding: 8px; text-align: left; }
+            th { background: #e9f1ff; }
+            footer { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+            .sign { border-top: 1px solid #8090a8; padding-top: 8px; text-align: center; color: #5c6f8a; }
+            @media print { button { display: none; } body { margin: 18mm; } }
+          </style>
+        </head>
+        <body>
+          <header>
+            <h1>Mapa de cotação</h1>
+            <p>${escapeHtml(quotePurchase.sku)} - ${escapeHtml(quotePurchase.itemName)}</p>
+            <div class="meta">
+              <p><span>Quantidade sugerida</span>${quotePurchase.suggestedQuantity}</p>
+              <p><span>Status</span>${escapeHtml(quotePurchase.status)}</p>
+              <p><span>Data</span>${new Date().toLocaleString('pt-BR')}</p>
+              <p><span>Critério</span>Preço 45% / técnica 35% / prazo 20%</p>
+            </div>
+          </header>
+          ${rowsHtml}
+          <section class="quote">
+            <h2>Justificativa da escolha</h2>
+            <p>${escapeHtml(quotationDecisionNote || quotePurchase.quotationDecisionNote || 'Sem justificativa informada.')}</p>
+          </section>
+          <footer>
+            <div class="sign">Compras</div>
+            <div class="sign">Aprovação</div>
+          </footer>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const handleStatusChange = (purchase: PurchaseRequest, newStatus: PurchaseRequestStatus) => {
@@ -1203,17 +1744,51 @@ export default function AutomaticPurchases({
                               </span>
                             )}
                           </div>
-                          <label className="inline-flex items-center gap-2 text-sm font-bold text-on-surface">
-                            <input
-                              type="radio"
-                              name="selectedQuotation"
-                              checked={row.isSelected}
-                              onChange={() => updateQuotationRow(row.id, 'isSelected', true)}
-                              disabled={!isCompleteQuotationRow(row)}
-                            />
-                            Selecionar fornecedor
-                          </label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border border-primary/30 bg-primary-container text-on-primary-container ${
+                              importingPdfRowId === row.id ? 'opacity-70 cursor-wait' : 'cursor-pointer hover:bg-primary/15'
+                            }`}>
+                              <Upload className="w-4 h-4" />
+                              {importingPdfRowId === row.id ? 'Lendo PDF...' : 'Importar PDF'}
+                              <input
+                                type="file"
+                                accept="application/pdf,.pdf"
+                                className="hidden"
+                                disabled={importingPdfRowId === row.id}
+                                onChange={event => {
+                                  const file = event.currentTarget.files?.[0] ?? null;
+                                  void handleQuotationPdfImport(row.id, file);
+                                  event.currentTarget.value = '';
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={printQuotationMap}
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-surface-container-highest text-on-surface hover:bg-surface-variant"
+                            >
+                              <Printer className="w-4 h-4" />
+                              Imprimir mapa
+                            </button>
+                            <label className="inline-flex items-center gap-2 text-sm font-bold text-on-surface">
+                              <input
+                                type="radio"
+                                name="selectedQuotation"
+                                checked={row.isSelected}
+                                onChange={() => updateQuotationRow(row.id, 'isSelected', true)}
+                                disabled={!isCompleteQuotationRow(row)}
+                              />
+                              Selecionar fornecedor
+                            </label>
+                          </div>
                         </div>
+
+                        {row.sourceFileName && (
+                          <div className="mb-4 inline-flex max-w-full items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-bold text-on-surface-variant">
+                            <FileText className="w-4 h-4 text-primary shrink-0" />
+                            <span className="truncate">PDF importado: {row.sourceFileName}</span>
+                          </div>
+                        )}
 
                         <div className="grid md:grid-cols-3 gap-3">
                           <div>
@@ -1375,6 +1950,102 @@ export default function AutomaticPurchases({
                               placeholder="Condição especial, marca, garantia, disponibilidade..."
                             />
                           </div>
+                        </div>
+
+                        {row.linkedItems.length > 0 && (
+                          <div className="mt-4 rounded-2xl border border-primary/20 bg-primary-container/20 p-3">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 mb-3">
+                              <div>
+                                <p className="font-bold text-on-surface flex items-center gap-2">
+                                  <Link2 className="w-4 h-4 text-primary" />
+                                  Itens reconhecidos nesta cotação
+                                </p>
+                                <p className="text-xs text-on-surface-variant">
+                                  Marque os itens que pertencem a esta compra. O PDF pode trazer vários SKUs do mesmo fornecedor.
+                                </p>
+                              </div>
+                              <span className="text-xs font-bold text-primary">
+                                {row.linkedItems.filter(item => item.selected).length} selecionados
+                              </span>
+                            </div>
+                            <div className="grid gap-2">
+                              {row.linkedItems.map(linkedItem => (
+                                <label
+                                  key={linkedItem.id}
+                                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer ${
+                                    linkedItem.selected
+                                      ? 'border-primary bg-surface'
+                                      : 'border-outline-variant bg-surface-container-lowest'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={linkedItem.selected}
+                                      onChange={() => toggleLinkedItem(row.id, linkedItem.id)}
+                                      className="mt-1"
+                                    />
+                                    <div>
+                                      <p className="font-bold text-on-surface">
+                                        {linkedItem.sku} - {linkedItem.itemName}
+                                      </p>
+                                      <p className="text-xs text-on-surface-variant">
+                                        {linkedItem.purchaseType || 'Sem tipo vinculado'} • {linkedItem.classification || 'Sem grupo'} • {getMatchConfidenceLabel(linkedItem.matchConfidence)}
+                                      </p>
+                                      {linkedItem.lineText && (
+                                        <p className="mt-1 text-[11px] text-on-surface-variant line-clamp-2">
+                                          Linha do PDF: {linkedItem.lineText}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs sm:text-right text-on-surface-variant">
+                                    {linkedItem.quantity ? <p>Qtd: <strong>{linkedItem.quantity}</strong></p> : null}
+                                    {linkedItem.unitPrice ? <p>Unit.: <strong>{formatCurrency(linkedItem.unitPrice)}</strong></p> : null}
+                                    {linkedItem.totalPrice ? <p>Total: <strong>{formatCurrency(linkedItem.totalPrice)}</strong></p> : null}
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-3">
+                          <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+                            <div className="flex-1">
+                              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                                Vincular item manualmente
+                              </label>
+                              <select
+                                value={manualLinkTargets[row.id] || ''}
+                                onChange={event => setManualLinkTargets(previous => ({ ...previous, [row.id]: event.target.value }))}
+                                className="w-full px-3 py-2 bg-surface-container-lowest text-on-surface rounded-xl border border-outline-variant focus:border-primary outline-none"
+                              >
+                                <option value="">Selecione quando o PDF não reconhecer o item</option>
+                                {quotationSelectablePurchases
+                                  .filter(purchase => !row.linkedItems.some(linkedItem => linkedItem.purchaseId === purchase.id || linkedItem.sku === purchase.sku))
+                                  .map(purchase => {
+                                    const item = findItemBySku(items, purchase.sku);
+                                    const classification = getPurchaseClassificationMeta(getPurchaseClassification(purchase)).label;
+                                    return (
+                                      <option key={purchase.id} value={purchase.id}>
+                                        {getEffectivePurchaseType(item)} / {classification} - {purchase.sku} - {normalizeUserFacingText(purchase.itemName)}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addManualLinkedItem(row.id)}
+                              className="px-4 py-2 rounded-xl bg-surface text-on-surface border border-outline-variant font-bold hover:bg-surface-container-highest"
+                            >
+                              Vincular
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs text-on-surface-variant">
+                            Use este campo quando a cotação tiver outros itens do pacote, mas o texto do PDF não vier claro o suficiente.
+                          </p>
                         </div>
 
                         <div className="mt-3 text-xs text-on-surface-variant">

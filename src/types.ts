@@ -139,6 +139,24 @@ export interface PurchaseQuotation {
   notes?: string;
   status: PurchaseQuotationStatus;
   isSelected?: boolean;
+  sourceFileName?: string;
+  sourceFileImportedAt?: string;
+  linkedItems?: PurchaseQuotationLinkedItem[];
+}
+
+export interface PurchaseQuotationLinkedItem {
+  id: string;
+  purchaseId?: string;
+  sku: string;
+  itemName: string;
+  purchaseType?: string;
+  classification?: string;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  lineText?: string;
+  matchConfidence: 'alta' | 'media' | 'manual';
+  selected: boolean;
 }
 
 export interface PurchaseRequest {
