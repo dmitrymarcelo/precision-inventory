@@ -254,6 +254,10 @@ Agrupamento atual:
 - pedido manual de compra deve ter placa, centro de custo editavel, SKU, quantidade e motivo
 - ao digitar a placa no pedido manual, buscar a base de veiculos e preencher centro de custo quando encontrar
 - ao digitar SKU/nome no pedido manual, mostrar sugestoes de itens automaticamente
+- o pedido manual pode ser montado com varios SKUs antes de salvar
+- cada SKU do pedido manual pode ter quantidade editada ou ser removido no formulario
+- pedidos manuais em `Manual` ou `Em analise` podem ser editados/removidos depois de criados
+- quando varios SKUs forem salvos juntos, manter o lote pelo campo `manualBatchId`
 
 Cotacoes:
 

@@ -169,6 +169,7 @@ export interface PurchaseRequest {
   approvedQuantity?: number;
   receivedQuantity?: number;
   reason: string;
+  manualBatchId?: string;
   vehiclePlate?: string;
   costCenter?: string;
   vehicleDescription?: string;

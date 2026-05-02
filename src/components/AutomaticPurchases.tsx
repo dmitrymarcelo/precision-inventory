@@ -7,10 +7,12 @@ import {
   FileText,
   Link2,
   Package,
+  Pencil,
   Plus,
   Printer,
   Search,
   ShoppingCart,
+  Trash2,
   Upload,
   X
 } from 'lucide-react';
@@ -76,6 +78,14 @@ type QuotationFormRow = {
   linkedItems: PurchaseQuotationLinkedItem[];
 };
 
+type ManualPurchaseDraftItem = {
+  id: string;
+  purchaseId?: string;
+  sku: string;
+  itemName: string;
+  quantity: string;
+};
+
 const ACTIVE_PURCHASE_STATUSES = new Set<PurchaseRequestStatus>([
   'Sugestao',
   'Manual',
@@ -115,6 +125,14 @@ function findItemBySku(items: InventoryItem[], sku: string) {
     }
     return false;
   });
+}
+
+function hasMatchingSku(firstSku: unknown, secondSku: unknown) {
+  const firstCandidates = getSkuCandidates(firstSku);
+  for (const candidate of getSkuCandidates(secondSku)) {
+    if (firstCandidates.has(candidate)) return true;
+  }
+  return false;
 }
 
 function normalizePurchaseType(value: unknown) {
@@ -840,6 +858,14 @@ function comparePurchases(first: PurchaseRequest, second: PurchaseRequest) {
   return new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime();
 }
 
+function getManualBatchId(purchase: PurchaseRequest) {
+  return purchase.manualBatchId || purchase.id;
+}
+
+function canEditManualPurchase(purchase: PurchaseRequest) {
+  return purchase.source === 'manual' && ['Manual', 'Em analise'].includes(purchase.status);
+}
+
 export default function AutomaticPurchases({
   items,
   logs,
@@ -860,6 +886,8 @@ export default function AutomaticPurchases({
   const [manualSku, setManualSku] = useState('');
   const [manualQuantity, setManualQuantity] = useState('');
   const [manualReason, setManualReason] = useState('');
+  const [manualDraftItems, setManualDraftItems] = useState<ManualPurchaseDraftItem[]>([]);
+  const [editingManualBatchId, setEditingManualBatchId] = useState<string | null>(null);
   const [isManualPlateSuggestionOpen, setIsManualPlateSuggestionOpen] = useState(false);
   const [quotePurchase, setQuotePurchase] = useState<PurchaseRequest | null>(null);
   const [quoteRows, setQuoteRows] = useState<QuotationFormRow[]>(() => buildInitialQuotationRows(null));
@@ -937,6 +965,82 @@ export default function AutomaticPurchases({
       })
       .slice(0, 8);
   }, [items, manualSku]);
+
+  const resetManualForm = () => {
+    setManualPlate('');
+    setManualCostCenter('');
+    setManualVehicleDescription('');
+    setManualSku('');
+    setManualQuantity('');
+    setManualReason('');
+    setManualDraftItems([]);
+    setEditingManualBatchId(null);
+    setIsManualPlateSuggestionOpen(false);
+  };
+
+  const openManualCreator = () => {
+    resetManualForm();
+    setIsManualModalOpen(true);
+  };
+
+  const closeManualModal = () => {
+    resetManualForm();
+    setIsManualModalOpen(false);
+  };
+
+  const handleSelectManualSku = (item: InventoryItem) => {
+    setManualSku(item.sku);
+    if (!manualQuantity) setManualQuantity('1');
+  };
+
+  const handleAddManualDraftItem = () => {
+    const exactSuggestion = manualSkuSuggestions.find(item => hasMatchingSku(item.sku, manualSku));
+    const item = manualSelectedItem || exactSuggestion || (manualSkuSuggestions.length === 1 ? manualSkuSuggestions[0] : null);
+
+    if (!item) {
+      showToast('Selecione um SKU da lista para adicionar ao pedido.', 'info');
+      return;
+    }
+
+    const qty = Number.parseInt(manualQuantity, 10);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      showToast('Informe uma quantidade valida para o SKU.', 'info');
+      return;
+    }
+
+    setManualDraftItems(previous => {
+      const existingIndex = previous.findIndex(line => hasMatchingSku(line.sku, item.sku));
+      const nextLine: ManualPurchaseDraftItem = {
+        id: existingIndex >= 0 ? previous[existingIndex].id : `manual-line-${normalizeSku(item.sku)}-${Date.now()}`,
+        purchaseId: existingIndex >= 0 ? previous[existingIndex].purchaseId : undefined,
+        sku: item.sku,
+        itemName: normalizeUserFacingText(item.name),
+        quantity: String(qty)
+      };
+
+      if (existingIndex >= 0) {
+        const next = [...previous];
+        next[existingIndex] = nextLine;
+        return next;
+      }
+
+      return [...previous, nextLine];
+    });
+
+    setManualSku('');
+    setManualQuantity('');
+    showToast('SKU adicionado ao pedido manual.', 'success');
+  };
+
+  const updateManualDraftQuantity = (lineId: string, quantity: string) => {
+    setManualDraftItems(previous =>
+      previous.map(line => line.id === lineId ? { ...line, quantity } : line)
+    );
+  };
+
+  const removeManualDraftItem = (lineId: string) => {
+    setManualDraftItems(previous => previous.filter(line => line.id !== lineId));
+  };
 
   const suggestions = useMemo(() => {
     const generated: PurchaseRequest[] = [];
@@ -1497,6 +1601,81 @@ export default function AutomaticPurchases({
     showToast(`Pacote ${group.type} / ${group.label} atualizado para ${newStatus}.`, 'success');
   };
 
+  const getEditableManualBatch = (purchase: PurchaseRequest) => {
+    const batchId = getManualBatchId(purchase);
+    const batch = purchases
+      .filter(current => current.source === 'manual' && getManualBatchId(current) === batchId && canEditManualPurchase(current))
+      .sort(comparePurchases);
+
+    return batch.length > 0 ? batch : [purchase];
+  };
+
+  const openManualEditor = (purchase: PurchaseRequest) => {
+    if (!canManagePurchases) {
+      showToast('Sem permissao para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (!canEditManualPurchase(purchase)) {
+      showToast('Somente pedidos manuais em aberto podem ser editados.', 'info');
+      return;
+    }
+
+    const batch = getEditableManualBatch(purchase);
+    const mainPurchase = batch[0];
+
+    setEditingManualBatchId(getManualBatchId(purchase));
+    setManualPlate(normalizePlate(mainPurchase.vehiclePlate || ''));
+    setManualCostCenter(normalizeUserFacingText(mainPurchase.costCenter));
+    setManualVehicleDescription(normalizeUserFacingText(mainPurchase.vehicleDescription));
+    setManualReason(normalizeUserFacingText(mainPurchase.reason));
+    setManualSku('');
+    setManualQuantity('');
+    setManualDraftItems(
+      batch.map(current => ({
+        id: `manual-line-${current.id}`,
+        purchaseId: current.id,
+        sku: current.sku,
+        itemName: normalizeUserFacingText(current.itemName),
+        quantity: String(current.suggestedQuantity || 1)
+      }))
+    );
+    setIsManualPlateSuggestionOpen(false);
+    setIsManualModalOpen(true);
+  };
+
+  const removeManualPurchase = (purchase: PurchaseRequest) => {
+    if (!canManagePurchases) {
+      showToast('Sem permissao para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (!canEditManualPurchase(purchase)) {
+      showToast('Somente pedidos manuais em aberto podem ser removidos.', 'info');
+      return;
+    }
+
+    const batchId = getManualBatchId(purchase);
+    const batch = getEditableManualBatch(purchase);
+    const message =
+      batch.length > 1
+        ? `Remover este pedido manual com ${batch.length} SKUs?`
+        : 'Remover este pedido manual?';
+
+    if (!window.confirm(message)) return;
+
+    setPurchases(previous =>
+      previous
+        .filter(current => {
+          if (current.source !== 'manual') return true;
+          if (getManualBatchId(current) !== batchId) return true;
+          return !canEditManualPurchase(current);
+        })
+        .sort(comparePurchases)
+    );
+    showToast('Pedido manual removido.', 'success');
+  };
+
   const handleCreateManual = (event: React.FormEvent) => {
     event.preventDefault();
     if (!canManagePurchases) return;
@@ -1513,46 +1692,105 @@ export default function AutomaticPurchases({
       return;
     }
 
-    const sku = normalizeSku(manualSku);
-    const item = findItemBySku(items, sku);
-    if (!item) {
-      showToast('SKU não encontrado.', 'info');
+    if (manualDraftItems.length === 0) {
+      showToast(
+        manualSku.trim()
+          ? 'Clique em Adicionar SKU antes de salvar o pedido.'
+          : 'Adicione pelo menos um SKU ao pedido manual.',
+        'info'
+      );
       return;
     }
 
-    const qty = Number.parseInt(manualQuantity, 10);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      showToast('Quantidade inválida.', 'info');
+    const preparedLines: Array<ManualPurchaseDraftItem & { item: InventoryItem; quantityNumber: number }> = [];
+    for (const line of manualDraftItems) {
+      const item = findItemBySku(items, line.sku);
+      if (!item) {
+        showToast(`SKU ${line.sku} nao encontrado.`, 'info');
+        return;
+      }
+
+      const quantityNumber = Number.parseInt(line.quantity, 10);
+      if (!Number.isFinite(quantityNumber) || quantityNumber <= 0) {
+        showToast(`Quantidade invalida no SKU ${item.sku}.`, 'info');
+        return;
+      }
+
+      preparedLines.push({ ...line, item, quantityNumber });
+    }
+
+    const duplicateLine = preparedLines.find(line =>
+      purchases.some(current => {
+        if (!ACTIVE_PURCHASE_STATUSES.has(current.status)) return false;
+        if (editingManualBatchId && current.source === 'manual' && getManualBatchId(current) === editingManualBatchId) {
+          return false;
+        }
+        return hasMatchingSku(current.sku, line.item.sku);
+      })
+    );
+    if (duplicateLine) {
+      showToast(`SKU ${duplicateLine.item.sku} ja existe em uma compra ativa.`, 'info');
       return;
     }
 
     const now = new Date().toISOString();
-    const newPurchase: PurchaseRequest = {
-      id: `man-${normalizeSku(item.sku)}-${Date.now()}`,
-      sku: item.sku,
-      itemName: normalizeUserFacingText(item.name),
-      status: 'Manual',
-      source: 'manual',
-      suggestedQuantity: qty,
-      reason: normalizeUserFacingText(manualReason) || 'Pedido manual',
-      vehiclePlate,
-      costCenter,
-      vehicleDescription: normalizeUserFacingText(manualVehicleDescription) || manualMatchedVehicleModel || undefined,
-      vehicleDetails: manualMatchedVehicle?.details || undefined,
-      createdAt: now,
-      updatedAt: now
-    };
+    const batchId = editingManualBatchId || `man-batch-${Date.now()}`;
+    const wasEditing = Boolean(editingManualBatchId);
+    const reason = normalizeUserFacingText(manualReason) || 'Pedido manual';
+    const vehicleDescription = normalizeUserFacingText(manualVehicleDescription) || manualMatchedVehicleModel || undefined;
+    const vehicleDetails = manualMatchedVehicle?.details || undefined;
 
-    setPurchases(previous => [...previous, newPurchase].sort(comparePurchases));
-    setIsManualModalOpen(false);
-    setManualPlate('');
-    setManualCostCenter('');
-    setManualVehicleDescription('');
-    setManualSku('');
-    setManualQuantity('');
-    setManualReason('');
-    setIsManualPlateSuggestionOpen(false);
-    showToast('Pedido manual criado com sucesso.', 'success');
+    setPurchases(previous => {
+      const byId = new Map(previous.map(purchase => [purchase.id, purchase]));
+      const existingBatchStatus = editingManualBatchId
+        ? previous.find(
+            current =>
+              current.source === 'manual' &&
+              getManualBatchId(current) === editingManualBatchId &&
+              canEditManualPurchase(current)
+          )?.status
+        : undefined;
+      const usedIds = new Set<string>();
+
+      preparedLines.forEach((line, index) => {
+        const existing = line.purchaseId ? byId.get(line.purchaseId) : undefined;
+        const id = existing?.id || `man-${normalizeSku(line.item.sku)}-${Date.now()}-${index}`;
+        const purchase: PurchaseRequest = {
+          ...(existing || {}),
+          id,
+          sku: line.item.sku,
+          itemName: normalizeUserFacingText(line.item.name),
+          status: existing?.status || existingBatchStatus || 'Manual',
+          source: 'manual',
+          suggestedQuantity: line.quantityNumber,
+          reason,
+          manualBatchId: batchId,
+          vehiclePlate,
+          costCenter,
+          vehicleDescription,
+          vehicleDetails,
+          createdAt: existing?.createdAt || now,
+          updatedAt: now
+        };
+
+        byId.set(id, purchase);
+        usedIds.add(id);
+      });
+
+      if (editingManualBatchId) {
+        previous.forEach(current => {
+          if (current.source !== 'manual') return;
+          if (getManualBatchId(current) !== editingManualBatchId) return;
+          if (!canEditManualPurchase(current)) return;
+          if (!usedIds.has(current.id)) byId.delete(current.id);
+        });
+      }
+
+      return Array.from(byId.values()).sort(comparePurchases);
+    });
+
+    closeManualModal();
+    showToast(wasEditing ? 'Pedido manual atualizado com sucesso.' : 'Pedido manual criado com sucesso.', 'success');
   };
 
   const completeQuoteRows = quoteRows.filter(isCompleteQuotationRow);
@@ -1573,7 +1811,7 @@ export default function AutomaticPurchases({
         {canManagePurchases && (
           <button
             type="button"
-            onClick={() => setIsManualModalOpen(true)}
+            onClick={openManualCreator}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-5 h-5" />
@@ -1828,6 +2066,26 @@ export default function AutomaticPurchases({
                           <div className="flex flex-wrap gap-2 w-full xl:w-auto">
                             {canManagePurchases && (
                               <>
+                                {canEditManualPurchase(purchase) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => openManualEditor(purchase)}
+                                      className="flex-1 xl:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 bg-surface text-on-surface rounded-lg border border-outline-variant text-sm font-bold hover:bg-surface-container-highest"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                      Editar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeManualPurchase(purchase)}
+                                      className="flex-1 xl:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 bg-error-container text-on-error-container rounded-lg text-sm font-bold hover:bg-error-container/80"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Remover
+                                    </button>
+                                  </>
+                                )}
                                 {['Sugestao', 'Manual', 'Em analise', 'Aprovada', 'Comprada', 'Recebida parcial'].includes(purchase.status) && (
                                   <button
                                     type="button"
@@ -1855,7 +2113,7 @@ export default function AutomaticPurchases({
                                     Marcar comprada
                                   </button>
                                 )}
-                                {['Sugestao', 'Manual', 'Em analise', 'Aprovada'].includes(purchase.status) && (
+                                {['Sugestao', 'Manual', 'Em analise', 'Aprovada'].includes(purchase.status) && !canEditManualPurchase(purchase) && (
                                   <button
                                     type="button"
                                     onClick={() => handleStatusChange(purchase, 'Cancelada')}
@@ -1890,10 +2148,12 @@ export default function AutomaticPurchases({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-surface-container w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-outline-variant">
-              <h2 className="text-lg font-bold text-on-surface">Novo Pedido Manual</h2>
+              <h2 className="text-lg font-bold text-on-surface">
+                {editingManualBatchId ? 'Editar Pedido Manual' : 'Novo Pedido Manual'}
+              </h2>
               <button
                 type="button"
-                onClick={() => setIsManualModalOpen(false)}
+                onClick={closeManualModal}
                 className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -1989,7 +2249,6 @@ export default function AutomaticPurchases({
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
                   <input
                     type="text"
-                    required
                     value={manualSku}
                     onChange={event => setManualSku(event.target.value)}
                     className="w-full pl-9 pr-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
@@ -2005,10 +2264,7 @@ export default function AutomaticPurchases({
                         <button
                           key={item.sku}
                           type="button"
-                          onClick={() => {
-                            setManualSku(item.sku);
-                            if (!manualQuantity) setManualQuantity('1');
-                          }}
+                          onClick={() => handleSelectManualSku(item)}
                           className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                             manualSelectedItem?.sku === item.sku
                               ? 'border-primary bg-primary-container/40'
@@ -2037,17 +2293,66 @@ export default function AutomaticPurchases({
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-on-surface mb-1">Quantidade</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={manualQuantity}
-                  onChange={event => setManualQuantity(event.target.value)}
-                  className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                  placeholder="Ex: 10"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+                <label className="block text-sm font-medium text-on-surface">
+                  Quantidade para adicionar
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualQuantity}
+                    onChange={event => setManualQuantity(event.target.value)}
+                    className="mt-1 w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Ex: 10"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddManualDraftItem}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-on-secondary rounded-xl font-bold hover:bg-secondary/90 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Adicionar SKU
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+                <div className="px-3 py-2 border-b border-outline-variant flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-on-surface">Itens do pedido</p>
+                  <span className="text-xs font-semibold text-on-surface-variant">{manualDraftItems.length} SKU(s)</span>
+                </div>
+                {manualDraftItems.length > 0 ? (
+                  <div className="divide-y divide-outline-variant">
+                    {manualDraftItems.map(line => (
+                      <div key={line.id} className="grid grid-cols-[1fr_96px_40px] gap-2 items-center p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-on-surface truncate">
+                            SKU {line.sku} - {normalizeUserFacingText(line.itemName)}
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={event => updateManualDraftQuantity(line.id, event.target.value)}
+                          className="w-full px-2 py-2 bg-surface text-on-surface rounded-lg border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                          aria-label={`Quantidade do SKU ${line.sku}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeManualDraftItem(line.id)}
+                          className="w-10 h-10 inline-flex items-center justify-center rounded-lg text-error hover:bg-error-container hover:text-on-error-container transition-colors"
+                          aria-label={`Remover SKU ${line.sku}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-4 text-sm text-on-surface-variant">
+                    Nenhum SKU adicionado.
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-on-surface mb-1">Motivo / Observação</label>
@@ -2062,7 +2367,7 @@ export default function AutomaticPurchases({
               <div className="pt-4 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsManualModalOpen(false)}
+                  onClick={closeManualModal}
                   className="px-4 py-2 text-on-surface-variant hover:bg-surface-variant rounded-xl font-medium transition-colors"
                 >
                   Cancelar
@@ -2071,7 +2376,7 @@ export default function AutomaticPurchases({
                   type="submit"
                   className="px-4 py-2 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary/90 transition-colors"
                 >
-                  Criar Pedido
+                  {editingManualBatchId ? 'Salvar Pedido' : 'Criar Pedido'}
                 </button>
               </div>
             </form>

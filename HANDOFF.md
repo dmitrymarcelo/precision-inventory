@@ -16,6 +16,30 @@ O sistema ja tem os modulos principais funcionando:
 - Compras Automaticas
 - Persistencia online via Cloudflare D1
 
+## Pedido manual de Compras com varios SKUs em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora permite montar uma lista com varios SKUs antes de salvar.
+- Cada SKU adicionado ao pedido manual pode ter a quantidade editada ou ser removido ainda dentro do formulario.
+- Ao salvar varios SKUs juntos, as linhas ficam ligadas por `manualBatchId`, preservando o pedido manual como um lote operacional.
+- Pedidos manuais em status `Manual` ou `Em analise` ganharam acoes:
+  - `Editar`: reabre o lote com placa, centro de custo, motivo e todos os SKUs vinculados.
+  - `Remover`: remove o lote manual inteiro, com confirmacao no navegador.
+- Ao editar um pedido manual, o sistema permite acrescentar novos SKUs, alterar quantidades e remover linhas do lote.
+- O sistema bloqueia salvar SKU que ja exista em uma compra ativa persistida, exceto quando o SKU pertence ao proprio lote em edicao.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `npm run lint` foi tentado, mas o npm desta maquina retornou `Acesso negado` ao chamar o shim de `tsc`; o mesmo TypeScript passou pelo comando portatil direto
+- Build gerou:
+  - `/assets/index-9UhVHBkA.js`
+  - `/assets/index-CQVUaZT9.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://045ce448.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
 ## Pedido manual de Compras com placa/centro em 2026-05-02
 
 - O formulario `Novo Pedido Manual` em `Compras` agora exige e salva:

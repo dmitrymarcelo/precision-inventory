@@ -132,7 +132,7 @@ Campos minimos:
 
 - placa
 - centro de custo
-- SKU
+- um ou varios SKUs
 - quantidade solicitada
 - motivo
 - observacao
@@ -142,6 +142,10 @@ Regras do formulario:
 - placa e centro de custo ficam editaveis
 - ao digitar a placa, consultar a base de veiculos e preencher centro de custo automaticamente quando houver correspondencia
 - ao digitar SKU, descricao, tipo ou localizacao, mostrar sugestoes de itens automaticamente
+- permitir adicionar varios SKUs antes de criar o pedido manual
+- permitir editar quantidade e remover SKU da lista antes de salvar
+- quando varios SKUs forem salvos juntos, manter as linhas vinculadas pelo mesmo `manualBatchId`
+- pedidos manuais em status `Manual` ou `Em analise` podem ser editados ou removidos depois de criados
 - o card do pedido manual deve exibir placa e centro de custo quando existirem
 
 ### Card do item
