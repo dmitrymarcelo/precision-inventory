@@ -464,10 +464,81 @@ function mergeQuotationBudgetItems(items: PurchaseQuotationLinkedItem[]) {
   }, []);
 }
 
+function findPurchaseForLinkedItem(linkedItem: PurchaseQuotationLinkedItem, purchases: PurchaseRequest[]) {
+  if (linkedItem.purchaseId) {
+    const byId = purchases.find(purchase => purchase.id === linkedItem.purchaseId);
+    if (byId) return byId;
+  }
+
+  const linkedCandidates = getSkuCandidates(linkedItem.sku);
+  return purchases.find(purchase => {
+    const purchaseCandidates = getSkuCandidates(purchase.sku);
+    for (const candidate of linkedCandidates) {
+      if (purchaseCandidates.has(candidate)) return true;
+    }
+    return false;
+  });
+}
+
+function getMatchedQuotationForLinkedItem(referenceRow: QuotationFormRow, targetPurchase: PurchaseRequest) {
+  const quotations = (targetPurchase.quotations || []).filter(quotation => Number(quotation.unitPrice) > 0);
+  if (quotations.length === 0) return undefined;
+
+  const referenceFile = normalizeSearchText(referenceRow.sourceFileName || '');
+  const referenceQuote = normalizeSearchText(referenceRow.quoteNumber || '');
+  const referenceSupplier = normalizeSearchText(referenceRow.supplierName || '');
+
+  return quotations
+    .map((quotation, index) => {
+      const quotationFile = normalizeSearchText(quotation.sourceFileName || '');
+      const quotationNumber = normalizeSearchText(quotation.quoteNumber || '');
+      const quotationSupplier = normalizeSearchText(quotation.supplierName || '');
+      let score = 0;
+
+      if (referenceFile && referenceFile === quotationFile) score += 30;
+      if (referenceQuote && referenceQuote === quotationNumber) score += 25;
+      if (referenceSupplier && referenceSupplier === quotationSupplier) score += 20;
+      if (quotation.id === targetPurchase.selectedQuotationId || quotation.isSelected) score += 10;
+      if (quotation.status === 'Recebida') score += 5;
+
+      return { quotation, score, index };
+    })
+    .sort((first, second) => second.score - first.score || first.index - second.index)[0]?.quotation;
+}
+
+function enrichLinkedQuotationItem(
+  linkedItem: PurchaseQuotationLinkedItem,
+  referenceRow: QuotationFormRow,
+  purchases: PurchaseRequest[],
+  items: InventoryItem[]
+): PurchaseQuotationLinkedItem {
+  const targetPurchase = findPurchaseForLinkedItem(linkedItem, purchases);
+  if (!targetPurchase) return linkedItem;
+
+  const item = findItemBySku(items, targetPurchase.sku);
+  const matchedQuotation = getMatchedQuotationForLinkedItem(referenceRow, targetPurchase);
+  const quantity = linkedItem.quantity ?? targetPurchase.suggestedQuantity;
+  const unitPrice = linkedItem.unitPrice ?? matchedQuotation?.unitPrice;
+  const totalPrice = linkedItem.totalPrice ?? (unitPrice && quantity ? unitPrice * quantity : undefined);
+
+  return {
+    ...linkedItem,
+    purchaseId: targetPurchase.id,
+    sku: targetPurchase.sku,
+    itemName: normalizeUserFacingText(linkedItem.itemName || targetPurchase.itemName),
+    purchaseType: linkedItem.purchaseType || getEffectivePurchaseType(item),
+    classification: linkedItem.classification || getPurchaseClassificationMeta(getPurchaseClassification(targetPurchase)).label,
+    quantity,
+    unitPrice,
+    totalPrice
+  };
+}
+
 function buildQuotationBudgetItems(
   row: QuotationFormRow,
   currentPurchase: PurchaseRequest,
-  items: InventoryItem[]
+  items: InventoryItem[],
+  purchases: PurchaseRequest[]
 ) {
   const currentUnitPrice = parsePositiveNumber(row.unitPrice) || undefined;
   const currentItem = createQuotationBudgetItem(currentPurchase, items, {
@@ -477,7 +548,9 @@ function buildQuotationBudgetItems(
 
   return mergeQuotationBudgetItems([
     currentItem,
-    ...row.linkedItems.filter(item => item.selected)
+    ...row.linkedItems
+      .filter(item => item.selected)
+      .map(item => enrichLinkedQuotationItem(item, row, purchases, items))
   ]);
 }
 
@@ -1005,7 +1078,7 @@ export default function AutomaticPurchases({
 
     const now = new Date().toISOString();
     const quotations: PurchaseQuotation[] = completeRows.map(row =>
-      buildQuotationPayload(row, row.id === selectedRow.id, buildQuotationBudgetItems(row, quotePurchase, items))
+      buildQuotationPayload(row, row.id === selectedRow.id, buildQuotationBudgetItems(row, quotePurchase, items, allPurchases))
     );
     const linkedQuotationUpdates = completeRows.flatMap(row =>
       row.linkedItems
@@ -1013,7 +1086,10 @@ export default function AutomaticPurchases({
         .map(linkedItem => {
           const targetPurchase = allPurchases.find(purchase => purchase.id === linkedItem.purchaseId);
           if (!targetPurchase) return null;
-          const budgetItems = buildQuotationBudgetItems(row, quotePurchase, items);
+          const budgetItems = buildQuotationBudgetItems(row, quotePurchase, items, allPurchases);
+          const targetBudgetItem = budgetItems.find(
+            item => item.purchaseId === targetPurchase.id || item.sku === targetPurchase.sku
+          );
 
           return {
             targetPurchase,
@@ -1023,7 +1099,7 @@ export default function AutomaticPurchases({
               budgetItems,
               {
                 id: buildLinkedQuotationId(row, targetPurchase.id),
-                unitPrice: linkedItem.unitPrice || 0,
+                unitPrice: targetBudgetItem?.unitPrice ?? linkedItem.unitPrice ?? 0,
                 notesSuffix: `CotaÃ§Ã£o vinculada automaticamente pelo PDF do SKU ${quotePurchase.sku}.`
               }
             )
@@ -1164,7 +1240,7 @@ export default function AutomaticPurchases({
         const representative = group.representative;
         const selected = group.rows.some(row => row.isSelected) ? 'Fornecedor escolhido' : '';
         const budgetItems = mergeQuotationBudgetItems(
-          group.rows.flatMap(row => buildQuotationBudgetItems(row, quotePurchase, items))
+          group.rows.flatMap(row => buildQuotationBudgetItems(row, quotePurchase, items, allPurchases))
         );
         const budgetItemsHtml = budgetItems
           .map(item => {
@@ -1212,7 +1288,7 @@ export default function AutomaticPurchases({
 
     const printWindow = window.open('', '_blank', 'width=1120,height=800');
     if (!printWindow) {
-      showToast('O navegador bloqueou a janela de impressão.', 'info');
+      showToast('O navegador bloqueou a janela de impressao.', 'info');
       return;
     }
 
@@ -1220,7 +1296,8 @@ export default function AutomaticPurchases({
       <!doctype html>
       <html>
         <head>
-          <title>Mapa de cotação ${escapeHtml(quotePurchase.sku)}</title>
+          <meta charset="utf-8">
+          <title>Mapa de cotacao ${escapeHtml(quotePurchase.sku)}</title>
           <style>
             body { font-family: Inter, Arial, sans-serif; color: #13233a; margin: 32px; }
             header { border-bottom: 3px solid #1f4f8f; padding-bottom: 16px; margin-bottom: 20px; }
@@ -1244,13 +1321,13 @@ export default function AutomaticPurchases({
         </head>
         <body>
           <header>
-            <h1>Mapa de cotação</h1>
+            <h1>Mapa de cotacao</h1>
             <p>${escapeHtml(quotePurchase.sku)} - ${escapeHtml(quotePurchase.itemName)}</p>
             <div class="meta">
               <p><span>Quantidade sugerida</span>${quotePurchase.suggestedQuantity}</p>
               <p><span>Status</span>${escapeHtml(quotePurchase.status)}</p>
               <p><span>Data</span>${new Date().toLocaleString('pt-BR')}</p>
-              <p><span>Critério</span>Preço 45% / técnica 35% / prazo 20%</p>
+              <p><span>Criterio</span>Preco 45% / tecnica 35% / prazo 20%</p>
             </div>
           </header>
           ${rowsHtml}
@@ -1260,7 +1337,7 @@ export default function AutomaticPurchases({
           </section>
           <footer>
             <div class="sign">Compras</div>
-            <div class="sign">Aprovação</div>
+            <div class="sign">Aprovacao</div>
           </footer>
           <script>window.print();</script>
         </body>

@@ -16,6 +16,28 @@ O sistema ja tem os modulos principais funcionando:
 - Compras Automaticas
 - Persistencia online via Cloudflare D1
 
+## Correcao de Compras vinculadas em 2026-05-02
+
+- Corrigido o print do mapa de cotacao quando um item e vinculado manualmente a outro SKU ja cotado.
+- Agora, se o item vinculado ja tem cotacoes salvas no proprio SKU, a linha do mapa reaproveita:
+  - quantidade sugerida do SKU vinculado
+  - valor unitario da cotacao correspondente/selecionada
+  - total calculado da linha
+- O agrupamento continua como um unico orcamento com varias linhas de item.
+- O mapa impresso passou a usar rotulos seguros e `<meta charset="utf-8">` para evitar texto quebrado como ocorria em `Mapa de cotacao`, `Criterio` e `Aprovacao`.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DSaH-M0u.js`
+  - `/assets/index-BH_JqPai.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://99639141.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
 ## Estado atual por modulo
 
 ### 1. Painel

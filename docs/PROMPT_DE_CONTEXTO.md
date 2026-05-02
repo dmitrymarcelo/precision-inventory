@@ -96,6 +96,8 @@ Regras de importacao de PDF em cotacoes:
 - Ao salvar, replicar a cotacao para outros itens reconhecidos, mas sem escolher vencedor/aprovar automaticamente nesses itens.
 - Cada cotacao tem botao pequeno Imprimir mapa para layout de impressao.
 - Ao imprimir cotacao com item vinculado, mostrar como um unico orcamento com varias linhas de item.
+- Se o item vinculado ja tiver cotacoes no proprio SKU, o mapa deve puxar quantidade, valor unitario e total dessa cotacao; nao deixar a linha vinculada com `-`.
+- Em mapas impressos, revisar codificacao para evitar texto quebrado; usar charset explicito e rotulos seguros quando necessario.
 
 Memorias do projeto:
 - AGENTS.md: regras obrigatorias para agentes.

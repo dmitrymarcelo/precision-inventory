@@ -268,6 +268,7 @@ Cotacoes:
 - se o PDF nao reconhecer um item, permitir vinculo manual no formulario
 - cada cotacao tem botao para imprimir o mapa de cotacao
 - ao imprimir item vinculado, o mapa deve aparecer como um unico orcamento com varias linhas de item
+- se o item vinculado ja tiver cotacoes salvas no proprio SKU, o mapa deve reaproveitar quantidade, valor unitario e total dessa cotacao em vez de imprimir `-`
 
 Memoria Obsidian:
 

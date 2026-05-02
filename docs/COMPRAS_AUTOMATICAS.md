@@ -80,6 +80,8 @@ Regras:
 - ao salvar, replicar a cotacao para os outros itens reconhecidos, sem escolher vencedor automaticamente nesses outros SKUs
 - cada cotacao deve ter botao pequeno para imprimir o mapa de cotacao
 - ao imprimir uma cotacao com itens vinculados, tratar como um unico orcamento com varias linhas de item
+- quando um item vinculado ja tem cotacoes salvas no proprio SKU, o mapa impresso deve reaproveitar quantidade, valor unitario e total dessa cotacao
+- textos do mapa impresso devem sair sem mojibake; se houver risco de codificacao, preferir rotulos ASCII ou HTML com charset explicito
 
 Pontuacao sugerida:
 
