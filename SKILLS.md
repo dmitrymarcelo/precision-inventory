@@ -217,6 +217,7 @@ Notas principais:
 - `Precision Inventory/04 - Curva ABC e Inventario Operacional`
 - `Precision Inventory/05 - Decisoes Recentes`
 - `Precision Inventory/06 - Riscos e Cuidados`
+- `Precision Inventory/08 - Prompt de Contexto`
 - `Precision Inventory/99 - Diario de Handoff`
 
 Regra:
@@ -272,3 +273,29 @@ Memoria Obsidian:
 Documento tecnico no projeto:
 
 - `docs/COMPRAS_AUTOMATICAS.md`
+
+## Skill 14 - Troca de chat com pouco contexto
+
+Objetivo:
+
+- quando o contexto da conversa ficar grande, abrir um novo chat sem perder as regras do projeto
+- economizar credito evitando reler todo o historico antigo
+
+Fonte principal:
+
+- `docs/PROMPT_DE_CONTEXTO.md`
+
+Regra:
+
+- antes de iniciar um novo chat, usar o prompt de contexto como handoff
+- o novo agente deve ler `AGENTS.md`, `HANDOFF.md`, `SKILLS.md` e `docs/PROMPT_DE_CONTEXTO.md`
+- para modulo `Compras`, ler tambem `docs/COMPRAS_AUTOMATICAS.md`
+- para memoria ampla, consultar Obsidian `Precision Inventory/08 - Prompt de Contexto`
+- para memoria procedural Hermes, consultar `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-context\SKILL.md`
+
+Quando sugerir novo chat:
+
+- conversa muito longa
+- muitas ferramentas chamadas
+- tarefa nova e grande depois de uma entrega concluida
+- risco de gastar credito relendo contexto antigo

@@ -1834,6 +1834,31 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - Obsidian `Precision Inventory/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
+## Prompt de Contexto para novo chat em 2026-05-02
+
+- Criado um handoff curto para reduzir consumo de contexto em novos chats.
+- Fonte principal no projeto:
+  - `docs/PROMPT_DE_CONTEXTO.md`
+- O prompt resume:
+  - estrutura atual do projeto
+  - tecnologias usadas
+  - comandos confiaveis de validacao/deploy
+  - regras criticas de negocio
+  - regras de Compras Automaticas
+  - regras de importacao de PDF em cotacoes
+  - memorias que devem ser lidas antes de trabalhar
+- Obsidian atualizado:
+  - `Precision Inventory/08 - Prompt de Contexto`
+  - `Precision Inventory/00 - Mapa do Projeto`
+- Hermes atualizado:
+  - `C:\Users\dmitry.santos\.hermes\MEMORY.md`
+  - `C:\Users\dmitry.santos\.hermes\USER.md`
+  - `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-context\SKILL.md`
+- `SKILLS.md` ganhou a regra `Troca de chat com pouco contexto`.
+- Observacao:
+  - nao houve alteracao funcional no app nesta etapa; por isso nao foi necessario novo deploy de producao
+  - se houver mudanca de app em etapa futura, manter a regra de validar build e publicar no Cloudflare
+
 ## Importacao de PDF nas cotacoes em Compras em 2026-05-02
 
 - Cada cotacao do mapa de compras ganhou botao `Importar PDF`.
