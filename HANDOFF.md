@@ -161,6 +161,14 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Configurado Obsidian como memoria ampla do projeto:
+  - cofre localizado em `C:\Users\dmitry.santos\Downloads\Lembranças`
+  - criada pasta `Precision Inventory` dentro do cofre
+  - criado mapa principal `Precision Inventory/00 - Mapa do Projeto`
+  - criadas notas para regras de negocio, modulos/fluxos, deploy/GitHub, Curva ABC, decisoes recentes, riscos/cuidados e diario de handoff
+  - criados templates de `Registro de Decisao` e `Handoff Rapido`
+  - nota `Bem-vindo.md` do cofre passou a apontar para o mapa do projeto
+  - `SKILLS.md` e skill local Hermes foram atualizados para lembrar o uso do Obsidian
 - Evoluida a Curva ABC para modo operacional:
   - `abcAnalysis.ts` passou a aceitar logs recentes e comparar a demanda media da planilha com as saidas dos ultimos 120 dias
   - para minimo/maximo, o sistema usa a maior demanda entre Curva ABC tratada e saidas recentes, evitando subestimar item que acelerou consumo

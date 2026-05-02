@@ -195,3 +195,31 @@ Regra atual:
 - Entradas recentes aparecem no relatorio explicativo, mas nao reduzem minimo/maximo automaticamente
 - No Painel, clicar em item alertado deve abrir relatorio rapido antes de abrir o SKU
 - No Inventario Operacional, a fila deve priorizar classe/rank ABC, status critico/reposicao, divergencia, movimentacao e falta de localizacao
+
+## Skill 12 - Memoria Obsidian
+
+Objetivo:
+
+- usar o cofre `Lembrancas` como memoria ampla e navegavel do projeto
+- manter um mapa visual para decisoes, regras, riscos, Curva ABC, deploy e handoff
+
+Caminho do cofre:
+
+- `C:\Users\dmitry.santos\Downloads\Lembrancas`
+- No Windows/Obsidian o nome aparece como `Lembranças`
+
+Notas principais:
+
+- `Precision Inventory/00 - Mapa do Projeto`
+- `Precision Inventory/01 - Regras de Negocio`
+- `Precision Inventory/02 - Modulos e Fluxos`
+- `Precision Inventory/03 - Deploy Cloudflare e GitHub`
+- `Precision Inventory/04 - Curva ABC e Inventario Operacional`
+- `Precision Inventory/05 - Decisoes Recentes`
+- `Precision Inventory/06 - Riscos e Cuidados`
+- `Precision Inventory/99 - Diario de Handoff`
+
+Regra:
+
+- Obsidian complementa, mas nao substitui `HANDOFF.md`, `SKILLS.md` e `AGENTS.md`
+- Ao concluir etapa importante, registrar no `HANDOFF.md`; quando for conhecimento amplo, registrar tambem no Obsidian
