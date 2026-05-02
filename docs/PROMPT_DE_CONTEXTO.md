@@ -54,6 +54,7 @@ Regras de negocio que nao podem quebrar:
 - Em Atualizar Estoque, quantidade digitada = saldo final contado. Nao e entrada nem saida.
 - Entrada real de material acontece somente pelo fluxo Recebimento.
 - Compra, cotacao, aprovacao ou marcar como comprada nunca altera saldo.
+- O botao `Ativo` pede confirmacao antes de marcar ou desmarcar um SKU.
 - Alertas sao por item; o Painel nao deve virar regra unica centralizada.
 - Localizacao importada vem da coluna K, campo locacao, da planilha principal.
 - Solicitacao de pecas gira em torno de placa e centro de custo.

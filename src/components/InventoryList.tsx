@@ -669,8 +669,16 @@ export default function InventoryList({
                         showToast('Modo consulta: sem permissão para apontar itens ativos.', 'info');
                         return;
                       }
-                      const now = new Date().toISOString();
+
                       const nextActive = item.isActiveInWarehouse !== true;
+                      const confirmed = window.confirm(
+                        nextActive
+                          ? `Marcar o SKU ${item.sku} como ativo no armazém?`
+                          : `Remover o SKU ${item.sku} dos ativos do armazém?`
+                      );
+                      if (!confirmed) return;
+
+                      const now = new Date().toISOString();
                       setItems(previous =>
                         previous.map(current =>
                           current.sku === item.sku

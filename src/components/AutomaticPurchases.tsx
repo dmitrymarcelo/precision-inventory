@@ -400,6 +400,18 @@ function buildLinkedQuotationId(row: QuotationFormRow, purchaseId: string) {
   return `pdf-${basis || purchaseId}`;
 }
 
+function getQuotationPrintGroupKey(row: QuotationFormRow) {
+  const sourceFileKey = normalizeSearchText(row.sourceFileName || '');
+  const quoteNumberKey = normalizeSearchText(row.quoteNumber || '');
+  const supplierKey = normalizeSearchText(row.supplierName || '');
+
+  if (sourceFileKey || quoteNumberKey || supplierKey) {
+    return [sourceFileKey, quoteNumberKey, supplierKey].filter(Boolean).join('|');
+  }
+
+  return row.id;
+}
+
 function upsertQuotation(quotations: PurchaseQuotation[], quotation: PurchaseQuotation) {
   const existingIndex = quotations.findIndex(existing => {
     if (existing.id === quotation.id) return true;
@@ -1064,12 +1076,30 @@ export default function AutomaticPurchases({
   const printQuotationMap = () => {
     if (!quotePurchase) return;
 
-    const rowsHtml = quoteRows
+    const groupedRows = quoteRows
       .filter(row => isCompleteQuotationRow(row) || row.supplierName || row.sourceFileName)
-      .map((row, index) => {
-        const selected = row.isSelected ? 'Fornecedor escolhido' : '';
-        const linkedItemsHtml = row.linkedItems
-          .filter(item => item.selected)
+      .map(row => ({ row, groupKey: getQuotationPrintGroupKey(row) }))
+      .reduce<Array<{ representative: QuotationFormRow; rows: QuotationFormRow[] }>>((groups, entry) => {
+        const existingGroup = groups.find(group => getQuotationPrintGroupKey(group.representative) === entry.groupKey);
+        if (existingGroup) {
+          existingGroup.rows.push(entry.row);
+          return groups;
+        }
+        groups.push({ representative: entry.row, rows: [entry.row] });
+        return groups;
+      }, []);
+
+    const rowsHtml = groupedRows
+      .map((group, index) => {
+        const representative = group.representative;
+        const selected = group.rows.some(row => row.isSelected) ? 'Fornecedor escolhido' : '';
+        const linkedItemsHtml = group.rows
+          .flatMap(row => row.linkedItems.filter(item => item.selected))
+          .reduce<PurchaseQuotationLinkedItem[]>((acc, item) => {
+            const alreadyExists = acc.some(current => current.purchaseId === item.purchaseId || current.sku === item.sku);
+            if (!alreadyExists) acc.push(item);
+            return acc;
+          }, [])
           .map(
             item => `
               <tr>
@@ -1084,26 +1114,26 @@ export default function AutomaticPurchases({
           .join('');
 
         return `
-          <section class="quote ${row.isSelected ? 'selected' : ''}">
+          <section class="quote ${group.rows.some(row => row.isSelected) ? 'selected' : ''}">
             <div class="quote-title">
-              <h2>Cotação ${index + 1} - ${escapeHtml(row.supplierName || 'Fornecedor não informado')}</h2>
+              <h2>Cotação ${index + 1} - ${escapeHtml(representative.supplierName || 'Fornecedor não informado')}${group.rows.length > 1 ? ` (${group.rows.length} itens vinculados)` : ''}</h2>
               <strong>${escapeHtml(selected)}</strong>
             </div>
             <div class="grid">
-              <p><span>Nº cotação</span>${escapeHtml(row.quoteNumber || '-')}</p>
-              <p><span>Data</span>${escapeHtml(row.quotedAt || '-')}</p>
-              <p><span>Validade</span>${escapeHtml(row.validUntil || '-')}</p>
-              <p><span>Valor unitário</span>${formatCurrency(parsePositiveNumber(row.unitPrice))}</p>
-              <p><span>Frete/taxas</span>${formatCurrency(parsePositiveNumber(row.freightCost))}</p>
-              <p><span>Total comparado</span>${formatCurrency(getQuotationTotalFromRow(row))}</p>
-              <p><span>Prazo</span>${escapeHtml(row.deliveryDays || '-')} dias</p>
-              <p><span>Pagamento</span>${escapeHtml(row.paymentTerms || '-')}</p>
-              <p><span>Nota técnica</span>${escapeHtml(row.technicalScore || '-')}</p>
+              <p><span>Nº cotação</span>${escapeHtml(representative.quoteNumber || '-')}</p>
+              <p><span>Data</span>${escapeHtml(representative.quotedAt || '-')}</p>
+              <p><span>Validade</span>${escapeHtml(representative.validUntil || '-')}</p>
+              <p><span>Valor unitário</span>${formatCurrency(parsePositiveNumber(representative.unitPrice))}</p>
+              <p><span>Frete/taxas</span>${formatCurrency(parsePositiveNumber(representative.freightCost))}</p>
+              <p><span>Total comparado</span>${formatCurrency(getQuotationTotalFromRow(representative))}</p>
+              <p><span>Prazo</span>${escapeHtml(representative.deliveryDays || '-')} dias</p>
+              <p><span>Pagamento</span>${escapeHtml(representative.paymentTerms || '-')}</p>
+              <p><span>Nota técnica</span>${escapeHtml(representative.technicalScore || '-')}</p>
             </div>
-            <p class="notes">${escapeHtml(row.notes || '')}</p>
+            <p class="notes">${escapeHtml(representative.notes || '')}</p>
             ${
               linkedItemsHtml
-                ? `<table><thead><tr><th>SKU</th><th>Item detectado</th><th>Tipo</th><th>Grupo</th><th>Reconhecimento</th></tr></thead><tbody>${linkedItemsHtml}</tbody></table>`
+                ? `<p class="notes"><strong>Itens deste or�amento:</strong></p><table><thead><tr><th>SKU</th><th>Item detectado</th><th>Tipo</th><th>Grupo</th><th>Reconhecimento</th></tr></thead><tbody>${linkedItemsHtml}</tbody></table>`
                 : ''
             }
           </section>
@@ -1113,7 +1143,7 @@ export default function AutomaticPurchases({
 
     const printWindow = window.open('', '_blank', 'width=1120,height=800');
     if (!printWindow) {
-      showToast('O navegador bloqueou a janela de impressão.', 'info');
+      showToast('O navegador bloqueou a janela de impress�o.', 'info');
       return;
     }
 
@@ -1121,7 +1151,7 @@ export default function AutomaticPurchases({
       <!doctype html>
       <html>
         <head>
-          <title>Mapa de cotação ${escapeHtml(quotePurchase.sku)}</title>
+          <title>Mapa de cota��o ${escapeHtml(quotePurchase.sku)}</title>
           <style>
             body { font-family: Inter, Arial, sans-serif; color: #13233a; margin: 32px; }
             header { border-bottom: 3px solid #1f4f8f; padding-bottom: 16px; margin-bottom: 20px; }
@@ -1145,13 +1175,13 @@ export default function AutomaticPurchases({
         </head>
         <body>
           <header>
-            <h1>Mapa de cotação</h1>
+            <h1>Mapa de cota��o</h1>
             <p>${escapeHtml(quotePurchase.sku)} - ${escapeHtml(quotePurchase.itemName)}</p>
             <div class="meta">
               <p><span>Quantidade sugerida</span>${quotePurchase.suggestedQuantity}</p>
               <p><span>Status</span>${escapeHtml(quotePurchase.status)}</p>
               <p><span>Data</span>${new Date().toLocaleString('pt-BR')}</p>
-              <p><span>Critério</span>Preço 45% / técnica 35% / prazo 20%</p>
+              <p><span>Crit�rio</span>Pre�o 45% / t�cnica 35% / prazo 20%</p>
             </div>
           </header>
           ${rowsHtml}
@@ -1161,7 +1191,7 @@ export default function AutomaticPurchases({
           </section>
           <footer>
             <div class="sign">Compras</div>
-            <div class="sign">Aprovação</div>
+            <div class="sign">Aprova��o</div>
           </footer>
           <script>window.print();</script>
         </body>
@@ -2133,3 +2163,5 @@ export default function AutomaticPurchases({
     </div>
   );
 }
+
+

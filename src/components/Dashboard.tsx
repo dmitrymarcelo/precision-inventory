@@ -68,7 +68,6 @@ export default function Dashboard({
     onOpenSeparation(requestId);
   };
 
-  const totalItems = items.length;
   const activeWarehouseItems = useMemo(() => items.filter(item => item.isActiveInWarehouse === true), [items]);
   const totalActiveItems = useMemo(
     () => items.filter(item => item.isActiveInWarehouse === true).length,
@@ -194,43 +193,7 @@ export default function Dashboard({
   return (
     <>
       {!isConsulta && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <div className="md:col-span-2 xl:col-span-2 text-left bg-surface-container-lowest p-6 rounded-xl shadow-[0_8px_24px_rgba(36,52,69,0.08)] relative overflow-hidden">
-            <div className="relative z-10">
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2 font-label">
-                Nível global de estoque (SKUs)
-              </p>
-              <h2 className="text-5xl md:text-6xl font-headline font-extrabold text-primary mb-2 tracking-tighter">
-                {totalItems}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                <div className="flex items-center gap-2 text-primary-dim font-semibold">
-                  <TrendingUp size={16} />
-                  <span>Total de itens cadastrados: {totalItems}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenInventoryFilter('active-only')}
-                  className="flex items-center gap-2 text-primary-dim font-semibold hover:text-primary transition-colors text-left"
-                >
-                  <PackageSearch size={16} />
-                  <span>Total de itens ativos: {totalActiveItems}</span>
-                </button>
-              </div>
-              <div className="mt-4 rounded-xl bg-primary-container/35 border border-primary/10 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
-                  Curva ABC 2026 aplicada em {activeAbcItems.length} item(ns) ativo(s)
-                </p>
-                <p className="mt-1 text-sm font-semibold text-on-surface">
-                  Classe A: {activeAbcSummary.A} | Classe B: {activeAbcSummary.B} | Classe C: {activeAbcSummary.C}
-                </p>
-                <p className="mt-1 text-[11px] text-on-surface-variant">
-                  Atualizada em {formatShortDate(ABC_ANALYSIS_UPDATED_AT)}; minimos e maximos automaticos entram nos alertas.
-                </p>
-              </div>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <button
             type="button"
             onClick={() => handleAlertListChange('critical')}
@@ -836,3 +799,4 @@ function formatShortDate(value: string) {
     year: 'numeric'
   });
 }
+

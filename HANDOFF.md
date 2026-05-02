@@ -162,6 +162,10 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
+  - aplicado no Estoque
+  - aplicado no detalhe de `Atualizar Estoque`
+  - objetivo: evitar toque acidental no celular
 - Barra superior simplificada novamente:
   - removido texto visual `Precision Inventory` do canto esquerdo, mantendo apenas o icone
   - removidos `Admin` e `Sair` da barra

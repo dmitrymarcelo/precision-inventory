@@ -57,6 +57,7 @@ Fluxo:
 Regra critica:
 
 - quantidade digitada = saldo final contado
+- o botao `Ativo` deve pedir confirmacao antes de marcar ou desmarcar o SKU
 
 ## Skill 4 - Operar Solicitacao de pecas
 
@@ -166,6 +167,7 @@ Se o deploy travar:
 - nao quebrar o fluxo de operacao para testar uma ideia
 - manter um caminho estavel e outro experimental quando necessario
 - documentar decisoes novas nos arquivos de memoria
+- protecoes contra toque acidental, como confirmacao do botao `Ativo`, devem valer tanto no estoque quanto no detalhe do item
 
 ## Skill 11 - Curva ABC e limites automaticos
 
