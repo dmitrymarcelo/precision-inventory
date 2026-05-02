@@ -3,6 +3,7 @@ import {
   InventoryLog,
   InventorySettings,
   MaterialRequest,
+  PurchaseRequest,
   VehicleRecord
 } from './types';
 
@@ -12,6 +13,7 @@ export interface CloudInventoryState {
   settings: InventorySettings;
   requests: MaterialRequest[];
   vehicles: VehicleRecord[];
+  purchases?: PurchaseRequest[];
   ocrAliases?: Record<string, string>;
 }
 

@@ -130,6 +130,7 @@ export default function Layout({
       badge: openRequestCount > 0 ? openRequestCount : undefined
     });
     navigationItems.push({ key: 'inventory', label: 'Estoque', icon: ClipboardList });
+    navigationItems.push({ key: 'purchases', label: 'Compras', icon: ShoppingCart });
   }
   if (authRole === 'admin') {
     navigationItems.push({ key: 'inventory-operations', label: 'Inventário Operacional', icon: ClipboardPlus });

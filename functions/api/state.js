@@ -130,6 +130,7 @@ function normalizeState(body) {
     settings: body?.settings && typeof body.settings === 'object' ? body.settings : {},
     requests: Array.isArray(body?.requests) ? body.requests : [],
     vehicles: Array.isArray(body?.vehicles) ? body.vehicles : [],
+    purchases: Array.isArray(body?.purchases) ? body.purchases : [],
     ocrAliases: body?.ocrAliases && typeof body.ocrAliases === 'object' ? body.ocrAliases : {}
   };
 }
@@ -141,6 +142,7 @@ function mergeStates(existing, incoming) {
     settings: mergeSettings(existing.settings, incoming.settings),
     requests: mergeRequestsById(existing.requests, incoming.requests),
     vehicles: mergeVehiclesById(existing.vehicles, incoming.vehicles),
+    purchases: mergePurchasesById(existing.purchases || [], incoming.purchases || []),
     ocrAliases: mergeAliases(existing.ocrAliases, incoming.ocrAliases)
   };
 }
@@ -181,6 +183,20 @@ function mergeVehiclesById(existingVehicles, incomingVehicles) {
   for (const incoming of incomingVehicles) {
     if (!incoming || !incoming.id) continue;
     merged.set(String(incoming.id), incoming);
+  }
+  return Array.from(merged.values());
+}
+
+function mergePurchasesById(existingPurchases, incomingPurchases) {
+  const merged = new Map();
+  for (const purchase of existingPurchases) {
+    if (purchase && purchase.id) merged.set(String(purchase.id), purchase);
+  }
+  for (const incoming of incomingPurchases) {
+    if (!incoming || !incoming.id) continue;
+    const id = String(incoming.id);
+    const current = merged.get(id);
+    merged.set(id, chooseNewerRecord(current, incoming, 'updatedAt'));
   }
   return Array.from(merged.values());
 }

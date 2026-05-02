@@ -13,6 +13,7 @@ O sistema ja tem os modulos principais funcionando:
 - Separacao de material
 - Inventario
 - Impressao de etiquetas
+- Compras Automaticas
 - Persistencia online via Cloudflare D1
 
 ## Estado atual por modulo
@@ -1275,7 +1276,28 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-B1HOYyS_.css`
 - `/api/state` respondeu `200`
 
-## Ajuste do aviso funcional no Estoque em 2026-04-26
+## Deploy publicado em 2026-04-26 para ajuste do aviso funcional no Estoque
+
+- Preview publicado:
+  - `https://8a1b2c3d.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- `/api/state` respondeu `200`
+
+## Modulo Compras Automaticas implementado em 2026-04-30
+
+- Criado o modulo `Compras Automaticas` (`src/components/AutomaticPurchases.tsx`) baseado na proposta `docs/COMPRAS_AUTOMATICAS.md`.
+- O modulo gera sugestoes de compra automaticamente baseadas em:
+  - Alertas criticos (Urgentes)
+  - Limites de reposicao (Reposição)
+- Permite a criacao de pedidos manuais.
+- Os status das compras sao: `Sugestao`, `Manual`, `Em analise`, `Aprovada`, `Comprada`, `Recebida parcial`, `Recebida total`, `Cancelada`.
+- Aprovacao e gerenciamento de compras restritos aos perfis `admin` e `operacao`.
+- O estado das compras (`purchases`) foi adicionado ao `CloudInventoryState` e persistido no Cloudflare D1 (`functions/api/state.js`).
+- A aba `Compras` foi adicionada a navegacao principal para usuarios com permissao.
+- Validacao local:
+  - `tsc --noEmit` passou.
+  - `vite build` passou.
 
 - A mensagem `Verificacao do Sistema Pronta` foi removida da area operacional do formulario de `Estoque`
 - O aviso `Aviso: este SKU ja teve alteracao hoje` passou a ocupar esse lugar quando houver log do SKU no mesmo dia

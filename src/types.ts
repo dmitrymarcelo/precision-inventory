@@ -80,7 +80,7 @@ export type MaterialRequestAuditEntry = {
   detail?: string;
 };
 
-export interface MaterialRequestItem {
+export type MaterialRequestItem = {
   id: string;
   sku: string;
   itemName: string;
@@ -88,7 +88,7 @@ export interface MaterialRequestItem {
   category: string;
   requestedQuantity: number;
   separatedQuantity: number;
-}
+};
 
 export interface MaterialRequest {
   id: string;
@@ -110,4 +110,31 @@ export interface MaterialRequest {
   deletedAt?: string;
   auditTrail?: MaterialRequestAuditEntry[];
   items: MaterialRequestItem[];
+}
+
+export type PurchaseRequestStatus =
+  | 'Sugestao'
+  | 'Manual'
+  | 'Em analise'
+  | 'Aprovada'
+  | 'Comprada'
+  | 'Recebida parcial'
+  | 'Recebida total'
+  | 'Cancelada';
+
+export interface PurchaseRequest {
+  id: string;
+  sku: string;
+  itemName: string;
+  status: PurchaseRequestStatus;
+  source: 'alerta-critico' | 'reposicao' | 'manual' | 'kit-preventiva';
+  suggestedQuantity: number;
+  approvedQuantity?: number;
+  receivedQuantity?: number;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  approvedBy?: string;
+  cancelledReason?: string;
 }

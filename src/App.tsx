@@ -16,6 +16,7 @@ import MaterialSeparation from './components/MaterialSeparation';
 import VehiclePartsBrowser from './components/VehiclePartsBrowser';
 import PreventiveKits from './components/PreventiveKits';
 import UserManager from './components/UserManager';
+import AutomaticPurchases from './components/AutomaticPurchases';
 import {
   InventoryItem,
   InventoryLog,
@@ -50,6 +51,7 @@ const logsStorageKey = 'precisionInventory.react.logs.v1';
 const settingsStorageKey = 'precisionInventory.react.settings.v1';
 const requestsStorageKey = 'precisionInventory.react.requests.v1';
 const vehiclesStorageKey = 'precisionInventory.react.vehicles.v1';
+const purchasesStorageKey = 'precisionInventory.react.purchases.v1';
 const localUpdatedAtStorageKey = 'precisionInventory.local.updatedAt.v1';
 const localDirtyStorageKey = 'precisionInventory.local.dirty.v1';
 const cloudOutboxStorageKey = 'precisionInventory.cloud.outbox.v1';
@@ -67,7 +69,8 @@ const validTabs = [
   'separation',
   'inventory',
   'inventory-operations',
-  'users'
+  'users',
+  'purchases'
 ];
 
 function getInitialTab() {
@@ -495,6 +498,14 @@ export default function App() {
       return [];
     }
   });
+  const [purchases, setPurchases] = useState<PurchaseRequest[]>(() => {
+    try {
+      const storedPurchases = localStorage.getItem(purchasesStorageKey);
+      return storedPurchases ? JSON.parse(storedPurchases) : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedSku, setSelectedSku] = useState<string | null>(getInitialSku);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(() =>
     getInitialTab() === 'separation' ? getInitialRequestId() : null
@@ -628,6 +639,7 @@ export default function App() {
     setSettings({ ...defaultInventorySettings, ...result.state.settings });
     setRequests(sanitizeRequests(result.state.requests));
     setVehicles(sanitizeVehicles(result.state.vehicles));
+    setPurchases(result.state.purchases || []);
     setOcrAliases(
       result.state.ocrAliases && typeof result.state.ocrAliases === 'object'
         ? result.state.ocrAliases
@@ -783,13 +795,14 @@ export default function App() {
   }, [vehicles]);
 
   useEffect(() => {
-    if (!localDirtyRef.current) return;
-    if (outboxWriteTimerRef.current) window.clearTimeout(outboxWriteTimerRef.current);
+    if (!cloudLoaded) return;
+    if (outboxWriteTimerRef.current) {
+      window.clearTimeout(outboxWriteTimerRef.current);
+    }
 
     outboxWriteTimerRef.current = window.setTimeout(() => {
-      outboxWriteTimerRef.current = null;
       const queuedAt = new Date().toISOString();
-      const state: CloudInventoryState = { items, logs, settings, requests, vehicles, ocrAliases };
+      const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
       setOutbox(state, queuedAt, localUpdatedAtRef.current);
       appendSyncEvent('outbox_write');
       if (navigator.onLine) {
@@ -803,7 +816,7 @@ export default function App() {
         outboxWriteTimerRef.current = null;
       }
     };
-  }, [items, logs, settings, requests, vehicles, ocrAliases]);
+  }, [items, logs, settings, requests, vehicles, purchases, ocrAliases]);
 
   useEffect(() => {
     if (!cloudLoaded || !cloudAvailable) return;
@@ -817,7 +830,8 @@ export default function App() {
       items.length > initialData.length ||
       logs.length > 0 ||
       requests.length > 0 ||
-      vehicles.length > 0;
+      vehicles.length > 0 ||
+      purchases.length > 0;
 
     if (!hasRealStateToSave) {
       setCloudStatus('online');
@@ -838,7 +852,7 @@ export default function App() {
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [items, logs, settings, requests, vehicles, ocrAliases, cloudLoaded, cloudAvailable, cloudHasState]);
+  }, [items, logs, settings, requests, vehicles, purchases, ocrAliases, cloudLoaded, cloudAvailable, cloudHasState]);
 
   useEffect(() => {
     if (!cloudLoaded) return;
@@ -1135,6 +1149,25 @@ export default function App() {
     window.history.replaceState(null, '', url);
   };
 
+  const setPurchasesGuarded: React.Dispatch<React.SetStateAction<PurchaseRequest[]>> = updater => {
+    if (role === 'consulta') {
+      showToast('Modo consulta: sem permissão para gerenciar compras.', 'info');
+      return;
+    }
+    flushSync(() => {
+      setPurchases(previous => {
+        const resolved =
+          typeof updater === 'function'
+            ? (updater as (prev: PurchaseRequest[]) => PurchaseRequest[])(previous)
+            : updater;
+        const updatedAt = new Date().toISOString();
+        markLocalDirty(updatedAt);
+        localStorage.setItem(purchasesStorageKey, JSON.stringify(resolved));
+        return resolved;
+      });
+    });
+  };
+
   const setActiveTab = (tab: string) => {
     const nextTab = tab === 'search' || tab === 'update' ? 'inventory' : tab;
     if (!validTabs.includes(nextTab)) return;
@@ -1274,6 +1307,19 @@ export default function App() {
             showToast={showToast}
             vehicles={vehicles}
             setVehicles={setVehiclesGuarded}
+          />
+        )}
+
+        {activeTab === 'purchases' && (
+          <AutomaticPurchases
+            items={items}
+            logs={logs}
+            settings={settings}
+            purchases={purchases}
+            setPurchases={setPurchasesGuarded}
+            canManagePurchases={role === 'admin' || role === 'operacao'}
+            showToast={showToast}
+            onSelectSku={handleSelectSku}
           />
         )}
 
