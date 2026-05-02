@@ -1221,10 +1221,7 @@ export default function App() {
       <Layout
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        items={items}
-        settings={settings}
         requests={requests}
-        onSelectSku={handleSelectSku}
         authRole={authSession.role}
         cloudStatus={cloudStatus}
         onLogout={() => {

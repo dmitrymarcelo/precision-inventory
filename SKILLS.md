@@ -223,3 +223,23 @@ Regra:
 
 - Obsidian complementa, mas nao substitui `HANDOFF.md`, `SKILLS.md` e `AGENTS.md`
 - Ao concluir etapa importante, registrar no `HANDOFF.md`; quando for conhecimento amplo, registrar tambem no Obsidian
+
+## Skill 13 - Compras automaticas
+
+Objetivo futuro:
+
+- transformar alertas criticos, reposicao e pedidos manuais em uma fila de compras
+- sugerir quantidade ideal sem dar entrada automatica no estoque
+- manter aprovacao humana antes de compra/recebimento
+
+Regra inicial:
+
+- `necessidade = maximoAutomatico - saldoAtual`
+- se saldo atual estiver abaixo do minimo, prioridade `Urgente`
+- se estiver abaixo do maximo, prioridade `Repor`
+- Classe A e saidas recentes sobem prioridade
+- Estoque so aumenta pelo fluxo `Recebimento`, nunca pela aprovacao de compra
+
+Memoria Obsidian:
+
+- `Precision Inventory/07 - Proposta Compras Automaticas`

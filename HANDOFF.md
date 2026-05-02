@@ -161,6 +161,23 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Removido o botao de notificacoes/sino da barra superior:
+  - alertas de estoque ficam concentrados no `Painel`
+  - removido dropdown duplicado de alertas no `Layout`
+  - `Layout` deixou de receber `items`, `settings` e `onSelectSku` apenas para alimentar o sino
+- Registrada proposta de modulo futuro `Compras Automaticas`:
+  - nota criada no Obsidian: `Precision Inventory/07 - Proposta Compras Automaticas`
+  - proposta usa alertas criticos, reposicao, Curva ABC, saidas recentes e pedidos manuais
+  - regra de seguranca: aprovar compra nao aumenta estoque; entrada real continua somente pelo fluxo `Recebimento`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Publicado via Wrangler:
+  - preview: `https://c29c163f.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` da home em producao: `no-store`
+  - asset principal publicado: `assets/index-OfDveYJZ.js`
 - Configurado Obsidian como memoria ampla do projeto:
   - cofre localizado em `C:\Users\dmitry.santos\Downloads\Lembranças`
   - criada pasta `Precision Inventory` dentro do cofre
