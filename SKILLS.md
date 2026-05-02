@@ -226,9 +226,9 @@ Regra:
 
 ## Skill 13 - Compras automaticas
 
-Objetivo futuro:
+Objetivo:
 
-- transformar alertas criticos, reposicao e pedidos manuais em uma fila de compras
+- transformar alertas criticos, reposicao e pedidos manuais em uma fila de compras por pacote
 - sugerir quantidade ideal sem dar entrada automatica no estoque
 - manter aprovacao humana antes de compra/recebimento
 
@@ -239,6 +239,15 @@ Regra inicial:
 - se estiver abaixo do maximo, prioridade `Repor`
 - Classe A e saidas recentes sobem prioridade
 - Estoque so aumenta pelo fluxo `Recebimento`, nunca pela aprovacao de compra
+
+Agrupamento atual:
+
+- somente SKUs com `isActiveInWarehouse === true` entram nas sugestoes automaticas
+- pacotes sao separados por `tipo do veiculo`/tipo operacional e por classificacao
+- classificacoes principais: `Critico`, `Repor`, `Manual`, `Kit preventiva`
+- `VW` deve aparecer como `SAVEIRO/GOL`
+- `CHEVROLET` deve aparecer como `S-10`
+- `OLEO`, quando salvo no item, deve continuar como tipo operacional para compra
 
 Memoria Obsidian:
 

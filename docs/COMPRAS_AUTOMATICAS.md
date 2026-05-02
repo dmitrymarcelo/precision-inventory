@@ -1,10 +1,10 @@
-# Compras Automaticas - Proposta pronta
+# Compras Automaticas - modulo operacional
 
-Este documento deixa o modulo futuro de compras pronto para implementacao sem misturar compra com estoque.
+Este documento registra a regra operacional do modulo de compras sem misturar compra com estoque.
 
 ## Objetivo
 
-Transformar alertas criticos, reposicao, Curva ABC e pedidos manuais em uma fila de compras revisavel, aprovada por usuario e conectada ao recebimento real.
+Transformar alertas criticos, reposicao, Curva ABC e pedidos manuais em pacotes de compras revisaveis, aprovados por usuario e conectados ao recebimento real.
 
 ## Principio de seguranca
 
@@ -30,6 +30,8 @@ Para cada SKU ativo com politica ABC ou limite manual:
 quantidade_sugerida = max(0, maximo_calculado - saldo_atual)
 ```
 
+O maximo calculado vem da Curva ABC quando o SKU existir na base tratada. Se nao existir, usa o limite de reposicao manual/fallback do item.
+
 Regras de prioridade:
 
 - `Urgente`: saldo atual menor ou igual ao minimo.
@@ -38,6 +40,24 @@ Regras de prioridade:
 - Classe A sobe prioridade.
 - Rank ABC menor sobe prioridade.
 - Saida recente acima da media sobe prioridade.
+
+## Pacotes de compra
+
+As sugestoes devem ficar agrupadas para facilitar cotacao e compra:
+
+- Primeiro por `tipo do veiculo` ou tipo operacional salvo no item.
+- Depois por classificacao: `Critico`, `Repor`, `Manual` ou `Kit preventiva`.
+- Somente SKUs marcados como ativos no armazem entram na fila automatica.
+- `VW` aparece como `SAVEIRO/GOL`.
+- `CHEVROLET` aparece como `S-10`.
+- `OLEO`, quando salvo no item, continua como pacote operacional de compra.
+
+Exemplos de pacote:
+
+- `SAVEIRO/GOL / Critico`
+- `SAVEIRO/GOL / Repor`
+- `BATERIA / Critico`
+- `OLEO / Repor`
 
 ## Estados da compra
 
@@ -152,4 +172,3 @@ Adicionar `purchases` ao estado salvo:
 - Nao enviar compra automaticamente para fornecedor.
 - Nao alterar saldo por aprovacao.
 - Nao duplicar sugestao de SKU que ja tenha compra aberta.
-

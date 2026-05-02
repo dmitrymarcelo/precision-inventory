@@ -22,6 +22,7 @@ import {
   InventoryLog,
   InventorySettings,
   MaterialRequest,
+  PurchaseRequest,
   VehicleRecord
 } from './types';
 import { calculateItemStatus, defaultInventorySettings } from './inventoryRules';
@@ -974,7 +975,7 @@ export default function App() {
       role === 'admin'
         ? validTabs
         : role === 'operacao'
-          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory']
+          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'purchases']
           : ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests'];
 
     if (!allowedTabs.includes(activeTab)) {

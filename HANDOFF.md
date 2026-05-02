@@ -1,6 +1,6 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-01
+Ultima atualizacao: 2026-05-02
 
 ## Resumo executivo
 
@@ -1738,3 +1738,44 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - `/assets/index-BBbVJ7-y.css`
 - `/api/state` respondeu `200`
 - `Cache-Control` do HTML em producao respondeu `no-store`
+
+## Pacotes de Compras Automaticas em 2026-05-02
+
+- Revisado o modulo `Compras` criado em outra IDE.
+- Ajustado o padrao operacional:
+  - sugestoes automaticas consideram somente SKUs ativos no armazem
+  - quantidade sugerida agora usa `maximo calculado - saldo atual`
+  - deixou de usar a regra antiga `limite de reposicao x 2`
+  - pacotes ficam agrupados por tipo do item e classificacao
+  - classificacoes principais: `Critico`, `Repor`, `Manual`, `Kit preventiva`
+  - `OLEO` permanece como tipo operacional de compra quando estiver salvo no item
+- A aba `Compras` foi liberada tambem para o perfil `operacao`, alinhando a regra de permissao com a navegacao.
+- Foram adicionadas acoes por pacote:
+  - enviar pacote para analise
+  - aprovar pacote
+- A aprovacao/compra continua sem alterar saldo; entrada real permanece somente no fluxo `Recebimento`.
+
+## Validacao local desta etapa
+
+- `tsc --noEmit` passou usando Node portatil.
+- `vite build` passou usando Node portatil.
+- Build gerou os assets:
+  - `/assets/index-D0xVU-js.js`
+  - `/assets/index-B9pv_15u.css`
+  - `/assets/browser-rpPU-9HU.js`
+
+## Deploy publicado em 2026-05-02 para Compras por pacote
+
+- Preview publicado:
+  - `https://176fa46a.precision-inventory.pages.dev`
+- Producao atualizada:
+  - `https://precision-inventory.pages.dev`
+- Validado online:
+  - home de producao respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao respondeu `no-store`
+- Memoria atualizada:
+  - `SKILLS.md`
+  - `docs/COMPRAS_AUTOMATICAS.md`
+  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
