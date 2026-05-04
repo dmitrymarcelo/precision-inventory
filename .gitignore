@@ -5,9 +5,13 @@ coverage/
 .codex-tools/
 .xdg.config/
 .tools/
+.codex/
 package-lock.json
 eng.traineddata
 .DS_Store
 *.log
 .env*
 !.env.example
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json

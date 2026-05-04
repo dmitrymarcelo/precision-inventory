@@ -19,6 +19,7 @@ export interface InventoryItem {
   status: InventoryStatus;
   alertCriticalLimit?: number;
   alertReorderLimit?: number;
+  alertRuleOverrideAt?: string;
 }
 
 export interface InventoryLog {
@@ -34,6 +35,8 @@ export interface InventoryLog {
   referenceCode?: string;
   expectedQuantityAfter?: number;
   reportedQuantityAfter?: number;
+  clearsDivergence?: boolean;
+  note?: string;
 }
 
 export interface InventorySettings {

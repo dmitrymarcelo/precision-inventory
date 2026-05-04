@@ -7,6 +7,7 @@ interface StockWorkspaceProps {
   showToast: (message: string, type?: 'success' | 'info') => void;
   canAdjustStock: boolean;
   canReceiveStock: boolean;
+  canEditAlertRules: boolean;
   items: InventoryItem[];
   setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
   logs: InventoryLog[];
@@ -24,6 +25,7 @@ export default function StockWorkspace({
   showToast,
   canAdjustStock,
   canReceiveStock,
+  canEditAlertRules,
   items,
   setItems,
   logs,
@@ -42,6 +44,7 @@ export default function StockWorkspace({
         showToast={showToast}
         canAdjustStock={canAdjustStock}
         canReceiveStock={canReceiveStock}
+        canEditAlertRules={canEditAlertRules}
         items={items}
         setItems={setItems}
         logs={logs}

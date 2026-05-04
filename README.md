@@ -1,4 +1,4 @@
-# Precision Inventory
+# Armazem 28
 
 Aplicativo de inventário feito com React, Vite, Tailwind CSS, Cloudflare Pages e Cloudflare D1.
 

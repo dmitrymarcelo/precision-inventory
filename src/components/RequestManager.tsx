@@ -34,7 +34,7 @@ import {
   startPreparedScanner,
   type DetectedScan
 } from '../barcodeUtils';
-import { InventoryItem, MaterialRequest, MaterialRequestAuditActor, MaterialRequestAuditEntry, VehicleRecord } from '../types';
+import { InventoryItem, InventoryLog, MaterialRequest, MaterialRequestAuditActor, MaterialRequestAuditEntry, VehicleRecord } from '../types';
 import {
   createEmptyRequest,
   createRequestItem,
@@ -49,9 +49,11 @@ import { getVehicleTypeFromModel, listVehicleCatalogByType, normalizeOperational
 import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
 import { preventiveKitCatalog } from '../preventiveKitCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { getOpenDivergenceMap } from '../divergenceRules';
 
 interface RequestManagerProps {
   items: InventoryItem[];
+  logs: InventoryLog[];
   requests: MaterialRequest[];
   vehicles: VehicleRecord[];
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
@@ -71,6 +73,7 @@ interface RequestManagerProps {
 
 export default function RequestManager({
   items,
+  logs,
   requests,
   vehicles,
   setRequests,
@@ -407,6 +410,7 @@ export default function RequestManager({
   }, [draft.vehiclePlate, isPlateSuggestionOpen, normalizedVehicles]);
 
   const stockBySku = useMemo(() => new Map(items.map(item => [item.sku, item.quantity])), [items]);
+  const openDivergenceBySku = useMemo(() => getOpenDivergenceMap(logs), [logs]);
   const vehicleTypeCards = useMemo(() => {
     const catalogGroups = listVehicleCatalogByType();
     const itemTypes = Array.from(new Set(items.map(item => getEffectiveVehicleType(item)).filter(Boolean)));
@@ -623,7 +627,7 @@ export default function RequestManager({
       const supported = kit.items.map(component => {
         const item = stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
         const availableQuantity = item?.quantity ?? 0;
-        return item ? Math.floor(availableQuantity / component.requiredQuantity) : 0;
+        return item && !openDivergenceBySku.has(item.sku) ? Math.floor(availableQuantity / component.requiredQuantity) : 0;
       });
       const availableKits = supported.length > 0 ? Math.min(...supported) : 0;
       return {
@@ -632,7 +636,7 @@ export default function RequestManager({
         availableKits
       };
     });
-  }, [stockItemByNormalizedSku]);
+  }, [openDivergenceBySku, stockItemByNormalizedSku]);
 
   type PickerKitEntry = {
     sku: string;
@@ -730,6 +734,7 @@ export default function RequestManager({
 
     let added = 0;
     let withoutStock = 0;
+    let withDivergence = 0;
     let alreadyInRequest = 0;
 
     setDraft(current => {
@@ -743,6 +748,10 @@ export default function RequestManager({
         }
         if (item.quantity <= 0) {
           withoutStock += 1;
+          return;
+        }
+        if (openDivergenceBySku.has(item.sku)) {
+          withDivergence += 1;
           return;
         }
         nextItems.push(createRequestItem(item));
@@ -759,6 +768,7 @@ export default function RequestManager({
 
     const parts: string[] = [];
     if (added > 0) parts.push(`${added} adicionados`);
+    if (withDivergence > 0) parts.push(`${withDivergence} com divergencia`);
     if (alreadyInRequest > 0) parts.push(`${alreadyInRequest} já estavam`);
     if (withoutStock > 0) parts.push(`${withoutStock} sem saldo`);
     showToast(parts.length ? parts.join(' • ') : 'Nenhum item adicionado.', added > 0 ? 'success' : 'info');
@@ -786,6 +796,7 @@ export default function RequestManager({
     let alreadyInRequest = 0;
     let missing = 0;
     let insufficientStock = 0;
+    let withDivergence = 0;
 
     setDraft(current => {
       const currentSkuSet = new Set(current.items.map(entry => entry.sku));
@@ -808,6 +819,11 @@ export default function RequestManager({
           return;
         }
 
+        if (openDivergenceBySku.has(item.sku)) {
+          withDivergence += 1;
+          return;
+        }
+
         nextItems.push({
           ...createRequestItem(item),
           requestedQuantity: component.requiredQuantity,
@@ -826,6 +842,7 @@ export default function RequestManager({
 
     const parts: string[] = [];
     if (added > 0) parts.push(`${added} itens do kit adicionados`);
+    if (withDivergence > 0) parts.push(`${withDivergence} com divergencia`);
     if (alreadyInRequest > 0) parts.push(`${alreadyInRequest} já estavam`);
     if (insufficientStock > 0) parts.push(`${insufficientStock} sem saldo`);
     if (missing > 0) parts.push(`${missing} não encontrados`);
@@ -906,6 +923,28 @@ export default function RequestManager({
       return null;
     }
 
+    const blockedItem = draft.items.find(requestItem => {
+      const stockItem = items.find(item => item.sku === requestItem.sku) || null;
+      if (!stockItem) return true;
+      if (stockItem.quantity <= 0) return true;
+      if (openDivergenceBySku.has(stockItem.sku)) return true;
+      return requestItem.requestedQuantity > stockItem.quantity;
+    });
+
+    if (blockedItem) {
+      const stockItem = items.find(item => item.sku === blockedItem.sku) || null;
+      if (stockItem && openDivergenceBySku.has(stockItem.sku)) {
+        showToast(`SKU ${blockedItem.sku} tem divergencia aberta. Reconte antes de solicitar.`, 'info');
+        return null;
+      }
+      if (!stockItem || stockItem.quantity <= 0) {
+        showToast(`SKU ${blockedItem.sku} esta sem saldo disponivel.`, 'info');
+        return null;
+      }
+      showToast(`SKU ${blockedItem.sku} tem saldo ${stockItem.quantity}. Ajuste a quantidade solicitada.`, 'info');
+      return null;
+    }
+
     const now = new Date().toISOString();
     const vehicleModel = (matchedVehicleModel || draft.vehicleDescription || '').trim();
     const auditEvent: MaterialRequestAuditEntry['event'] = draft.id ? 'request_updated' : 'request_created';
@@ -964,6 +1003,11 @@ export default function RequestManager({
 
     if (item.quantity <= 0) {
       showToast(`O item ${item.sku} está sem saldo e não pode entrar na solicitação.`, 'info');
+      return;
+    }
+
+    if (openDivergenceBySku.has(item.sku)) {
+      showToast(`SKU ${item.sku} tem divergencia aberta. Reconte antes de solicitar.`, 'info');
       return;
     }
 
@@ -1329,6 +1373,7 @@ export default function RequestManager({
                                       stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
                                     if (!item) return;
                                     if (item.quantity <= 0) return;
+                                    if (openDivergenceBySku.has(item.sku)) return;
                                     if (draftSkuSet.has(item.sku)) return;
                                     selectedSkus.push(item.sku);
                                   });
@@ -1427,8 +1472,9 @@ export default function RequestManager({
                           pickerVisibleKitEntries.map(entry => {
                             const item = entry.item;
                             const hasStock = (item?.quantity ?? 0) > 0;
+                            const hasOpenDivergence = item ? openDivergenceBySku.has(item.sku) : false;
                             const alreadyAdded = item ? draftSkuSet.has(item.sku) : false;
-                            const selectable = Boolean(item) && hasStock && !alreadyAdded;
+                            const selectable = Boolean(item) && hasStock && !hasOpenDivergence && !alreadyAdded;
                             const checked = item ? pickerSelectedSet.has(item.sku) : false;
 
                             return (
@@ -1437,7 +1483,7 @@ export default function RequestManager({
                                 className={`block rounded-xl border px-4 py-3 transition-colors ${
                                   selectable
                                     ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/10'
-                                    : !item || !hasStock
+                                    : !item || !hasStock || hasOpenDivergence
                                       ? 'bg-error-container/15 border-error/25 text-on-surface-variant'
                                       : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
                                 }`}
@@ -1472,6 +1518,11 @@ export default function RequestManager({
                                         Sem saldo: item bloqueado para solicitação
                                       </p>
                                     )}
+                                    {hasOpenDivergence && (
+                                      <p className="text-[11px] font-semibold text-error mt-1">
+                                        Divergencia aberta: recontar antes de solicitar
+                                      </p>
+                                    )}
                                     {alreadyAdded && (
                                       <p className="text-[11px] font-semibold text-on-surface-variant mt-1">
                                         Já está nesta solicitação
@@ -1490,8 +1541,9 @@ export default function RequestManager({
                       ) : pickerVisibleItems.length > 0 ? (
                         pickerVisibleItems.map(item => {
                           const hasStock = item.quantity > 0;
+                          const hasOpenDivergence = openDivergenceBySku.has(item.sku);
                           const alreadyAdded = draftSkuSet.has(item.sku);
-                          const selectable = hasStock && !alreadyAdded;
+                          const selectable = hasStock && !hasOpenDivergence && !alreadyAdded;
                           const checked = pickerSelectedSet.has(item.sku);
 
                           return (
@@ -1500,7 +1552,7 @@ export default function RequestManager({
                               className={`block rounded-xl border px-4 py-3 transition-colors ${
                                 selectable
                                   ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/10'
-                                  : !hasStock
+                                  : !hasStock || hasOpenDivergence
                                     ? 'bg-error-container/15 border-error/25 text-on-surface-variant'
                                     : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
                               }`}
@@ -1527,6 +1579,11 @@ export default function RequestManager({
                                   {!hasStock && (
                                     <p className="text-[11px] font-semibold text-error mt-1">
                                       Sem saldo: item bloqueado para solicitação
+                                    </p>
+                                  )}
+                                  {hasOpenDivergence && (
+                                    <p className="text-[11px] font-semibold text-error mt-1">
+                                      Divergencia aberta: recontar antes de solicitar
                                     </p>
                                   )}
                                   {alreadyAdded && (
@@ -1724,15 +1781,17 @@ export default function RequestManager({
             <div className="mt-3 grid gap-2">
               {filteredItems.map(item => {
                 const hasStock = item.quantity > 0;
+                const hasOpenDivergence = openDivergenceBySku.has(item.sku);
+                const canAddItem = hasStock && !hasOpenDivergence;
 
                 return (
                   <button
                     key={item.sku}
                     type="button"
                     onClick={() => addItemToDraft(item)}
-                    disabled={!hasStock}
+                    disabled={!canAddItem}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                      hasStock
+                      canAddItem
                         ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/15'
                         : 'bg-error-container/15 border-error/25 text-on-surface-variant cursor-not-allowed opacity-90'
                     }`}
@@ -1749,11 +1808,11 @@ export default function RequestManager({
                       </div>
                       <span
                         className={`shrink-0 inline-flex items-center gap-1 font-semibold text-sm ${
-                          hasStock ? 'text-primary' : 'text-error'
+                          canAddItem ? 'text-primary' : 'text-error'
                         }`}
                       >
                         <Plus size={16} />
-                        {hasStock ? 'Adicionar' : 'Sem saldo'}
+                        {canAddItem ? 'Adicionar' : hasOpenDivergence ? 'Divergencia' : 'Sem saldo'}
                       </span>
                     </div>
                   </button>
@@ -1782,11 +1841,16 @@ export default function RequestManager({
             <div className="space-y-3">
               {draft.items.map(requestItem => {
                 const availableQuantity = stockBySku.get(requestItem.sku) ?? 0;
+                const openDivergence = openDivergenceBySku.get(requestItem.sku);
 
                 return (
                   <div
                     key={requestItem.id}
-                    className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4"
+                    className={`rounded-xl border p-4 ${
+                      openDivergence
+                        ? 'border-error/30 bg-error-container/15'
+                        : 'border-outline-variant/15 bg-surface-container-low'
+                    }`}
                   >
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1803,6 +1867,11 @@ export default function RequestManager({
                         <p className={`text-[11px] font-semibold mt-2 ${availableQuantity > 0 ? 'text-on-surface-variant' : 'text-error'}`}>
                           Saldo disponível: {availableQuantity}
                         </p>
+                        {openDivergence ? (
+                          <p className="text-[11px] font-semibold mt-1 text-error">
+                            Divergencia aberta: recontar antes de salvar esta solicitacao
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-3">

@@ -19,6 +19,7 @@ import { InventoryItem, InventoryLog, InventorySettings } from '../types';
 import { calculateItemStatus, getItemAlertSettings } from '../inventoryRules';
 import { getVehicleTypeFromModel, listVehicleTypes, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { formatDivergenceDelta, getOpenDivergenceForSku } from '../divergenceRules';
 
 const APP_TIME_ZONE = 'America/Manaus';
 type StockOperationMode = 'adjustment' | 'receiving';
@@ -27,6 +28,7 @@ export default function StockUpdate({
   showToast,
   canAdjustStock,
   canReceiveStock,
+  canEditAlertRules,
   items,
   setItems,
   logs,
@@ -39,6 +41,7 @@ export default function StockUpdate({
   showToast: (m: string, t?: 'success' | 'info') => void,
   canAdjustStock: boolean,
   canReceiveStock: boolean,
+  canEditAlertRules: boolean,
   items: InventoryItem[],
   setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>,
   logs: InventoryLog[],
@@ -86,6 +89,7 @@ export default function StockUpdate({
 
   const item = items.find(i => i.sku === currentSku) || null;
   const itemLogs = item ? logs.filter(log => log.sku === item.sku) : [];
+  const openDivergence = item ? getOpenDivergenceForSku(logs, item.sku) : null;
   const itemCategory = item ? classifyInventoryCategory(item.name, item.sourceCategory || item.category) : null;
   const displayName = item ? normalizeUserFacingText(item.name) : '';
   const displayLocation = item ? normalizeLocationText(item.location) : '';
@@ -399,7 +403,7 @@ export default function StockUpdate({
 
     const criticalLimit = Number(alertCriticalLimit);
     const reorderLimit = Number(alertReorderLimit);
-    if (canAdjustStock) {
+    if (canEditAlertRules) {
       if (!Number.isFinite(criticalLimit) || !Number.isFinite(reorderLimit)) {
         showToast('Informe limites válidos para a regra dos alertas.', 'info');
         return;
@@ -416,8 +420,29 @@ export default function StockUpdate({
     const normalizedVehicleType = canAdjustStock ? normalizeOperationalVehicleType(vehicleType.trim()) : item.vehicleType || '';
     const now = new Date().toISOString();
 
+    if (!isReceivingMode && openDivergence) {
+      const confirmed = window.confirm(
+        `SKU ${item.sku} tem divergencia aberta (${formatDivergenceDelta(openDivergence.delta)}). Salvar este ajuste vai encerrar a pendencia como recontagem. Confirmar?`
+      );
+      if (!confirmed) return;
+    }
+
+    if (isReceivingMode && openDivergence) {
+      const confirmed = window.confirm(
+        `SKU ${item.sku} tem divergencia aberta. O recebimento sera registrado, mas a divergencia continuara pendente ate uma recontagem. Confirmar?`
+      );
+      if (!confirmed) return;
+    }
+
     setItems(prevItems => prevItems.map(i => {
       if (i.sku !== item.sku) return i;
+
+      const nextAlertCriticalLimit = canEditAlertRules ? criticalLimit : i.alertCriticalLimit;
+      const nextAlertReorderLimit = canEditAlertRules ? reorderLimit : i.alertReorderLimit;
+      const shouldStampAlertOverride =
+        canEditAlertRules &&
+        (Number(nextAlertCriticalLimit) !== Number(i.alertCriticalLimit) ||
+          Number(nextAlertReorderLimit) !== Number(i.alertReorderLimit));
 
       const updatedItem = canAdjustStock
         ? {
@@ -426,8 +451,9 @@ export default function StockUpdate({
             location: newLocation,
             vehicleModel: '',
             vehicleType: normalizedVehicleType,
-            alertCriticalLimit: criticalLimit,
-            alertReorderLimit: reorderLimit,
+            alertCriticalLimit: nextAlertCriticalLimit,
+            alertReorderLimit: nextAlertReorderLimit,
+            alertRuleOverrideAt: shouldStampAlertOverride ? now : i.alertRuleOverrideAt,
             updatedAt: now
           }
         : {
@@ -448,7 +474,8 @@ export default function StockUpdate({
         quantityAfter: newQuantity,
         location: newLocation,
         date: new Date().toISOString(),
-        source: isReceivingMode ? 'recebimento' : 'ajuste'
+        source: isReceivingMode ? 'recebimento' : 'ajuste',
+        clearsDivergence: !isReceivingMode && Boolean(openDivergence) ? true : undefined
       },
       ...prevLogs
     ]);
@@ -458,13 +485,15 @@ export default function StockUpdate({
     if (canAdjustStock) {
       setLocation(newLocation);
       setVehicleType(normalizedVehicleType);
-      setAlertCriticalLimit(criticalLimit);
-      setAlertReorderLimit(reorderLimit);
+      if (canEditAlertRules) {
+        setAlertCriticalLimit(criticalLimit);
+        setAlertReorderLimit(reorderLimit);
+      }
     }
     showToast(
       isReceivingMode
         ? `Recebimento registrado: +${incomingQuantity} un. Saldo atual ${newQuantity} un.`
-        : `Estoque salvo: ${newQuantity} un., local ${newLocation}, limites ${criticalLimit}/${reorderLimit}.`,
+        : `Estoque salvo: ${newQuantity} un., local ${newLocation}${canEditAlertRules ? `, limites ${criticalLimit}/${reorderLimit}` : ''}.`,
       'success'
     );
   };
@@ -929,7 +958,7 @@ export default function StockUpdate({
                     title={item.isActiveInWarehouse ? 'Remover dos ativos' : 'Marcar como ativo'}
                   >
                     {item.isActiveInWarehouse ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                    Ativo
+                    {item.isActiveInWarehouse ? 'Ativo' : 'Ativar'}
                   </button>
                   <span className="text-on-surface-variant font-mono bg-surface-container px-3 py-1 rounded-lg text-sm">
                     SKU: {item.sku}
@@ -985,6 +1014,27 @@ export default function StockUpdate({
               </div>
             </div>
           </section>
+
+          {openDivergence ? (
+            <section className="mb-6 rounded-2xl border border-error/30 bg-error-container/15 p-5">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-error">Divergencia aberta</p>
+                  <h3 className="mt-1 font-headline font-bold text-xl text-on-surface">
+                    Recontagem administrativa pendente
+                  </h3>
+                  <p className="mt-2 text-sm text-on-surface-variant">
+                    Referencia {openDivergence.referenceCode || 'sem codigo'}: sistema{' '}
+                    {openDivergence.expectedQuantityAfter ?? '--'} / real{' '}
+                    {openDivergence.reportedQuantityAfter ?? '--'} ({formatDivergenceDelta(openDivergence.delta)}).
+                  </p>
+                </div>
+                <div className="rounded-xl bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface">
+                  Ajuste de contagem encerra a pendencia
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <section className="space-y-6 xl:space-y-7">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1094,8 +1144,14 @@ export default function StockUpdate({
                 <div>
                   <h3 className="font-headline font-bold text-xl md:text-2xl tracking-tight">Regra dos Alertas deste item</h3>
                   <p className="text-sm text-on-surface-variant mt-1">
-                    Estes limites valem somente para o SKU {item.sku}. Crítico usa saldo até o limite crítico; reposição usa saldo acima do crítico e até o limite de reposição.
+                    Estes limites valem somente para o SKU {item.sku}. Crítico usa saldo até o limite crítico; reposição usa saldo acima do crítico e até o limite de reposição. Somente Admin pode alterar.
                   </p>
+                  {!canEditAlertRules && (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface-variant">
+                      <Info size={16} className="text-primary shrink-0" />
+                      Entre como Admin para alterar estes limites.
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                   <label className="flex flex-col gap-2 text-xs font-bold uppercase text-outline">
@@ -1106,7 +1162,7 @@ export default function StockUpdate({
                       min="0"
                       value={alertCriticalLimit}
                       onChange={(event) => setAlertCriticalLimit(event.target.value === '' ? '' : Number(event.target.value))}
-                      disabled={!canAdjustStock}
+                      disabled={!canEditAlertRules}
                     />
                   </label>
                   <label className="flex flex-col gap-2 text-xs font-bold uppercase text-outline">
@@ -1117,7 +1173,7 @@ export default function StockUpdate({
                       min="0"
                       value={alertReorderLimit}
                       onChange={(event) => setAlertReorderLimit(event.target.value === '' ? '' : Number(event.target.value))}
-                      disabled={!canAdjustStock}
+                      disabled={!canEditAlertRules}
                     />
                   </label>
                 </div>

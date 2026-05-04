@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { CheckCircle2, Cloud, Info } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, Info } from 'lucide-react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import StockWorkspace from './components/StockWorkspace';
@@ -32,6 +32,7 @@ import { sanitizeVehicles } from './vehicleBase';
 import { classifyInventoryCategory } from './categoryCatalog';
 import { getVehicleTypeFromModel, normalizeOfficialVehicleModel, normalizeOperationalVehicleType } from './vehicleCatalog';
 import { normalizeInventoryStatus, normalizeLocationText, normalizeUserFacingText } from './textUtils';
+import { formatDivergenceDelta, getOpenDivergences } from './divergenceRules';
 
 const initialData: InventoryItem[] = [
   { sku: '01074', name: 'CATALISADOR PARA TINTAS', quantity: 11, category: 'Grupo 0004', location: 'Sem localização', status: 'Repor em Breve' },
@@ -116,7 +117,8 @@ function normalizeStoredLogs(logs: InventoryLog[]) {
         log.source === 'divergencia'
           ? log.source
           : undefined,
-      referenceCode: log.referenceCode ? normalizeUserFacingText(log.referenceCode) : undefined
+      referenceCode: log.referenceCode ? normalizeUserFacingText(log.referenceCode) : undefined,
+      note: log.note ? normalizeUserFacingText(log.note) : undefined
     }))
     .filter(log => Boolean(log.id && log.sku));
 }
@@ -127,12 +129,14 @@ function normalizeInventoryItemRecord(item: InventoryItem): InventoryItem {
   const classified = classifyInventoryCategory(name, sourceCategory);
   const vehicleModel = normalizeOfficialVehicleModel(item.vehicleModel || '');
   const updatedAt = typeof item.updatedAt === 'string' ? item.updatedAt : undefined;
+  const alertRuleOverrideAt = typeof item.alertRuleOverrideAt === 'string' ? item.alertRuleOverrideAt : undefined;
 
   return {
     ...item,
     name,
     isActiveInWarehouse: item.isActiveInWarehouse === true,
     updatedAt,
+    alertRuleOverrideAt,
     imageUrl: normalizeImageUrl(item.imageUrl),
     imageHint: normalizeUserFacingText(item.imageHint),
     vehicleModel,
@@ -155,7 +159,15 @@ function normalizeImageUrl(value: string | undefined) {
 }
 
 type UserRole = 'consulta' | 'operacao' | 'admin';
-type AuthSession = { role: UserRole; token?: string; userId?: string; matricula?: string; name?: string; mustChangePassword?: boolean; mode?: 'password' };
+type AuthSession = {
+  role: UserRole;
+  token?: string;
+  userId?: string;
+  matricula?: string;
+  name?: string;
+  mustChangePassword?: boolean;
+  mode?: 'password' | 'stock-consulta';
+};
 
 type SyncEvent = { at: string; event: string; detail?: string };
 type CloudOutbox = { state: CloudInventoryState; queuedAt: string; localUpdatedAt: string };
@@ -309,7 +321,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
     <div className="min-h-screen bg-surface-container-lowest flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-[0_18px_48px_rgba(36,52,69,0.14)] overflow-hidden">
         <div className="p-6 border-b border-outline-variant/15">
-          <h1 className="text-2xl font-headline font-extrabold tracking-tight text-on-surface">Precision Inventory</h1>
+          <h1 className="text-2xl font-headline font-extrabold tracking-tight text-on-surface">Armazem 28</h1>
           <p className="text-sm text-on-surface-variant mt-2">Acesso por matrícula e senha.</p>
         </div>
 
@@ -391,6 +403,25 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                 >
                   {loading ? 'Entrando...' : 'Entrar'}
                 </button>
+
+                <div className="pt-3 border-t border-outline-variant/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onLogin({
+                        role: 'consulta',
+                        name: 'Consulta Estoque',
+                        mode: 'stock-consulta'
+                      });
+                    }}
+                    className="w-full h-12 rounded-xl bg-surface-container-highest text-primary font-bold hover:bg-surface-container-high transition-colors"
+                  >
+                    Consulta Estoque
+                  </button>
+                  <p className="mt-2 text-[11px] text-on-surface-variant font-medium">
+                    Acesso somente para visualização: Painel, Peças/Modelo, Kit Preventivas e Estoque.
+                  </p>
+                </div>
               </div>
 
               {hasUsers === null ? (
@@ -416,6 +447,7 @@ export default function App() {
   const [cloudLoaded, setCloudLoaded] = useState(false);
   const [cloudAvailable, setCloudAvailable] = useState(false);
   const [cloudHasState, setCloudHasState] = useState(false);
+  const [cloudUpdatePending, setCloudUpdatePending] = useState<{ updatedAt: string; reason: string } | null>(null);
   const [ocrAliases, setOcrAliases] = useState<Record<string, string>>({});
   const saveTimerRef = useRef<number | null>(null);
   const cloudRetryTimerRef = useRef<number | null>(null);
@@ -423,6 +455,8 @@ export default function App() {
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
+  const latestCloudResultRef = useRef<{ state: CloudInventoryState | null; updatedAt: string | null } | null>(null);
+  const ignoreCloudUpdatesUntilRef = useRef<number>(0);
   let initialOutbox: CloudOutbox | null = null;
   try {
     const stored = localStorage.getItem(cloudOutboxStorageKey);
@@ -449,7 +483,7 @@ export default function App() {
         matricula: typeof parsed.matricula === 'string' ? parsed.matricula : undefined,
         name: typeof parsed.name === 'string' ? parsed.name : undefined,
         mustChangePassword: typeof parsed.mustChangePassword === 'boolean' ? parsed.mustChangePassword : undefined,
-        mode: parsed.mode === 'password' ? parsed.mode : undefined
+        mode: parsed.mode === 'password' || parsed.mode === 'stock-consulta' ? parsed.mode : undefined
       };
     } catch {
       return null;
@@ -525,6 +559,7 @@ export default function App() {
   };
 
   const mustChangePassword = authSession?.mustChangePassword === true;
+  const isStockConsulta = authSession?.mode === 'stock-consulta';
 
   const handleForcePasswordChange = async () => {
     if (!authSession?.token) {
@@ -655,7 +690,42 @@ export default function App() {
     return true;
   };
 
+  const forceApplyCloudState = (
+    result: { state: CloudInventoryState | null; updatedAt: string | null },
+    reason: string
+  ) => {
+    setCloudHasState(Boolean(result.state));
+    if (!result.state) return false;
+
+    clearOutbox();
+    localDirtyRef.current = false;
+    localStorage.removeItem(localDirtyStorageKey);
+
+    setItems(normalizeStoredItems(result.state.items));
+    setLogs(normalizeStoredLogs(result.state.logs));
+    setSettings({ ...defaultInventorySettings, ...result.state.settings });
+    setRequests(sanitizeRequests(result.state.requests));
+    setVehicles(sanitizeVehicles(result.state.vehicles));
+    setPurchases(result.state.purchases || []);
+    setOcrAliases(
+      result.state.ocrAliases && typeof result.state.ocrAliases === 'object'
+        ? result.state.ocrAliases
+        : {}
+    );
+
+    localUpdatedAtRef.current = result.updatedAt || '';
+    if (result.updatedAt) {
+      localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
+    } else {
+      localStorage.removeItem(localUpdatedAtStorageKey);
+    }
+
+    appendSyncEvent('cloud_refresh_forced', reason);
+    return true;
+  };
+
   async function flushOutbox(reason: string) {
+    if (isStockConsulta) return;
     const outbox = outboxRef.current;
     if (!outbox) return;
     if (!cloudLoaded) return;
@@ -674,6 +744,7 @@ export default function App() {
       localUpdatedAtRef.current = result.updatedAt;
       localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
       clearOutbox();
+      setCloudUpdatePending(null);
       appendSyncEvent('flush_ok', reason);
       if (wasOfflineRef.current) {
         wasOfflineRef.current = false;
@@ -698,6 +769,7 @@ export default function App() {
         const result = await loadCloudState();
         if (cancelled) return;
 
+        latestCloudResultRef.current = result;
         applyCloudStateIfNewer(result, 'initial_load');
 
         setCloudAvailable(true);
@@ -797,6 +869,7 @@ export default function App() {
 
   useEffect(() => {
     if (!cloudLoaded) return;
+    if (isStockConsulta) return;
     if (outboxWriteTimerRef.current) {
       window.clearTimeout(outboxWriteTimerRef.current);
     }
@@ -821,6 +894,7 @@ export default function App() {
 
   useEffect(() => {
     if (!cloudLoaded || !cloudAvailable) return;
+    if (isStockConsulta) return;
     if (!localDirtyRef.current && !outboxRef.current) {
       setCloudStatus('online');
       return;
@@ -893,14 +967,27 @@ export default function App() {
 
     const refreshCloudState = async (reason: string) => {
       if (cancelled || inFlight) return;
-      if (cloudStatus === 'saving' || localDirtyRef.current || outboxRef.current) return;
+      if (cloudStatus === 'saving') return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
       inFlight = true;
       try {
         const result = await loadCloudState();
         if (cancelled) return;
-        applyCloudStateIfNewer(result, reason);
+        latestCloudResultRef.current = result;
+
+        const localUpdatedAt = new Date(localUpdatedAtRef.current || 0).getTime() || 0;
+        const cloudUpdatedAt = new Date(result.updatedAt || 0).getTime() || 0;
+        const hasNewerCloud = Boolean(cloudUpdatedAt && cloudUpdatedAt > localUpdatedAt);
+
+        if (hasNewerCloud && (localDirtyRef.current || outboxRef.current)) {
+          if (Date.now() >= ignoreCloudUpdatesUntilRef.current) {
+            setCloudUpdatePending({ updatedAt: result.updatedAt || '', reason });
+          }
+        } else {
+          applyCloudStateIfNewer(result, reason);
+          setCloudUpdatePending(null);
+        }
         setCloudAvailable(true);
         setCloudStatus('online');
       } catch {
@@ -943,7 +1030,36 @@ export default function App() {
     };
   }, [authSession, cloudLoaded, cloudStatus, mustChangePassword]);
 
+  const applyCloudUpdateNow = async () => {
+    let result = latestCloudResultRef.current;
+    if (!result || !result.state) {
+      try {
+        result = await loadCloudState();
+        latestCloudResultRef.current = result;
+      } catch {
+        showToast('Não foi possível carregar o estado online agora.', 'info');
+        return;
+      }
+    }
+
+    const applied = forceApplyCloudState(result, 'user_apply');
+    if (applied) {
+      setCloudAvailable(true);
+      setCloudStatus('online');
+      setCloudUpdatePending(null);
+      showToast('Tela atualizada com o estado online.', 'success');
+    }
+  };
+
+  const ignoreCloudUpdate = () => {
+    ignoreCloudUpdatesUntilRef.current = Date.now() + 60_000;
+    setCloudUpdatePending(null);
+    appendSyncEvent('cloud_update_ignored', 'user_ignore');
+    showToast('Atualização online detectada. Mantendo sua tela por 1 minuto.', 'info');
+  };
+
   const markLocalDirty = (updatedAt: string) => {
+    if (isStockConsulta) return;
     localDirtyRef.current = true;
     localStorage.setItem(localDirtyStorageKey, '1');
     localUpdatedAtRef.current = updatedAt;
@@ -957,7 +1073,7 @@ export default function App() {
     name: authSession?.name,
     role
   };
-  const canAdjustStock = role === 'admin';
+  const canAdjustStock = role === 'admin' || role === 'operacao';
   const canReceiveStock = role === 'admin' || role === 'operacao';
   const canOperateSeparation = role === 'admin' || role === 'operacao';
   const canCreateRequests = role === 'admin' || role === 'operacao' || role === 'consulta';
@@ -968,20 +1084,26 @@ export default function App() {
   const canWriteItemsAndLogs = role === 'admin' || role === 'operacao';
   const canWriteVehicles = role === 'admin' || role === 'operacao';
   const canWriteSettings = role === 'admin';
+  const canEditAlertRules = role === 'admin';
+
+  const openDivergences = useMemo(() => getOpenDivergences(logs), [logs]);
+  const divergenceGateBlocking =
+    !isStockConsulta && (role === 'admin' || role === 'operacao') && openDivergences.length > 0;
 
   useEffect(() => {
     if (!authSession) return;
-    const allowedTabs =
-      role === 'admin'
+    const allowedTabs = isStockConsulta
+      ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'inventory']
+      : role === 'admin'
         ? validTabs
         : role === 'operacao'
-          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'purchases']
+          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'inventory-operations', 'purchases']
           : ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests'];
 
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab('dashboard');
     }
-  }, [activeTab, authSession, role]);
+  }, [activeTab, authSession, isStockConsulta, role]);
   const setItemsGuarded: React.Dispatch<React.SetStateAction<InventoryItem[]>> = updater => {
     if (!canWriteItemsAndLogs) {
       showToast('Modo consulta: sem permissão para alterar o estoque.', 'info');
@@ -1169,9 +1291,31 @@ export default function App() {
     });
   };
 
+  const navigateToSku = (sku: string) => {
+    setSelectedSku(sku);
+    setRequestEditorRequestId(null);
+    setActiveTabState('inventory');
+    syncUrl('inventory', sku, null, inventoryFilter);
+  };
+
   const setActiveTab = (tab: string) => {
     const nextTab = tab === 'search' || tab === 'update' ? 'inventory' : tab;
     if (!validTabs.includes(nextTab)) return;
+
+    if (divergenceGateBlocking && nextTab !== 'inventory' && nextTab !== 'inventory-operations') {
+      const first = openDivergences[0];
+      if (first) {
+        showToast(
+          `Divergências pendentes (${openDivergences.length}). Corrija antes de continuar. Abrindo SKU ${first.sku}.`,
+          'info'
+        );
+        navigateToSku(first.sku);
+      } else {
+        setActiveTabState('inventory');
+        syncUrl('inventory', selectedSku, null, inventoryFilter);
+      }
+      return;
+    }
 
     const nextRequestId = nextTab === 'separation' ? selectedRequestId : null;
     if (nextTab !== 'separation') {
@@ -1182,10 +1326,7 @@ export default function App() {
   };
 
   const handleSelectSku = (sku: string) => {
-    setSelectedSku(sku);
-    setRequestEditorRequestId(null);
-    setActiveTabState('inventory');
-    syncUrl('inventory', sku, null, inventoryFilter);
+    navigateToSku(sku);
   };
 
   const handleOpenSeparation = (requestId: string) => {
@@ -1257,7 +1398,12 @@ export default function App() {
         setActiveTab={setActiveTab}
         requests={requests}
         authRole={authSession.role}
+        authMode={authSession.mode}
         cloudStatus={cloudStatus}
+        cloudUpdatePending={Boolean(cloudUpdatePending)}
+        cloudUpdateAt={cloudUpdatePending?.updatedAt}
+        onApplyCloudUpdate={() => void applyCloudUpdateNow()}
+        onIgnoreCloudUpdate={ignoreCloudUpdate}
         onLogout={() => {
           if (authSession.token) {
             void fetch('/api/auth?action=logout', {
@@ -1277,6 +1423,7 @@ export default function App() {
             settings={settings}
             requests={requests}
             authRole={role}
+            viewMode={isStockConsulta ? 'stock-consulta' : 'default'}
             onSelectSku={handleSelectSku}
             onOpenSeparation={handleOpenSeparation}
             onOpenRequest={handleEditRequest}
@@ -1328,6 +1475,7 @@ export default function App() {
         {activeTab === 'requests' && (
           <RequestManager
             items={items}
+            logs={logs}
             requests={requests}
             vehicles={vehicles}
             setRequests={setRequestsGuarded}
@@ -1390,6 +1538,7 @@ export default function App() {
             showToast={showToast}
             canAdjustStock={canAdjustStock}
             canReceiveStock={canReceiveStock}
+            canEditAlertRules={canEditAlertRules}
             items={items}
             setItems={setItemsGuarded}
             logs={logs}
@@ -1414,6 +1563,32 @@ export default function App() {
           />
         )}
       </Layout>
+
+      {divergenceGateBlocking && !mustChangePassword && (activeTab === 'inventory' || activeTab === 'inventory-operations') ? (
+        <DivergenceGateBanner
+          divergences={openDivergences}
+          onOpenNext={() => {
+            const next = openDivergences[0];
+            if (!next) return;
+            navigateToSku(next.sku);
+            showToast(`Abrindo SKU com divergencia: ${next.sku}.`, 'success');
+          }}
+          onOpenInventoryOperations={() => setActiveTab('inventory-operations')}
+        />
+      ) : null}
+
+      {divergenceGateBlocking && !mustChangePassword && activeTab !== 'inventory' && activeTab !== 'inventory-operations' ? (
+        <DivergenceGateModal
+          divergences={openDivergences}
+          onOpenNow={() => {
+            const next = openDivergences[0];
+            if (!next) return;
+            navigateToSku(next.sku);
+            showToast(`Abrindo SKU com divergencia: ${next.sku}.`, 'success');
+          }}
+          onOpenInventoryOperations={() => setActiveTab('inventory-operations')}
+        />
+      ) : null}
 
       {toast && (
         <div className="fixed bottom-24 md:bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -1467,5 +1642,129 @@ export default function App() {
       )}
 
     </>
+  );
+}
+
+function DivergenceGateBanner({
+  divergences,
+  onOpenNext,
+  onOpenInventoryOperations
+}: {
+  divergences: ReturnType<typeof getOpenDivergences>;
+  onOpenNext: () => void;
+  onOpenInventoryOperations: () => void;
+}) {
+  const count = divergences.length;
+  const preview = divergences.slice(0, 3).map(entry => entry.sku).join(', ');
+
+  return (
+    <div className="fixed bottom-4 left-4 right-4 z-[110]">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-error/25 bg-error-container/20 px-4 py-4 shadow-[0_18px_48px_rgba(36,52,69,0.22)]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-error flex items-center gap-2">
+              <AlertTriangle size={16} />
+              Divergencias pendentes
+            </p>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              {count} SKU(s) com divergencia aberta. {preview ? `Ex.: ${preview}.` : ''}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={onOpenInventoryOperations}
+              className="h-11 px-4 rounded-xl bg-surface-container-highest text-primary font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Inventario operacional
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNext}
+              className="h-11 px-4 rounded-xl bg-error text-white font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Abrir divergencia
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DivergenceGateModal({
+  divergences,
+  onOpenNow,
+  onOpenInventoryOperations
+}: {
+  divergences: ReturnType<typeof getOpenDivergences>;
+  onOpenNow: () => void;
+  onOpenInventoryOperations: () => void;
+}) {
+  const previewList = divergences.slice(0, 8);
+
+  return (
+    <div className="fixed inset-0 z-[115] bg-black/40 flex items-end sm:items-center justify-center p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_18px_48px_rgba(36,52,69,0.22)] overflow-hidden">
+        <div className="p-5 border-b border-outline-variant/15">
+          <p className="text-xs font-bold uppercase tracking-widest text-error flex items-center gap-2">
+            <AlertTriangle size={16} />
+            Divergencias pendentes
+          </p>
+          <p className="mt-1 font-extrabold text-on-surface">
+            Corrija antes de continuar
+          </p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Existem {divergences.length} SKU(s) com divergencia aberta. Elas continuam aparecendo ate ficar sem pendencias.
+          </p>
+        </div>
+
+        <div className="p-5">
+          <div className="grid gap-2">
+            {previewList.map(entry => (
+              <div
+                key={`div-${entry.sku}`}
+                className="rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wider text-outline">
+                      SKU {entry.sku} • {normalizeLocationText(entry.location)}
+                    </p>
+                    <p className="mt-1 font-semibold text-on-surface truncate">
+                      {normalizeUserFacingText(entry.itemName)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-sm font-bold text-error">
+                    {formatDivergenceDelta(entry.delta)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={onOpenInventoryOperations}
+              className="h-12 px-4 rounded-xl bg-surface-container-highest text-primary font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Inventario operacional
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNow}
+              className="h-12 px-4 rounded-xl bg-error text-white font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Abrir para recontar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

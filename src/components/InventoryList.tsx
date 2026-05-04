@@ -706,7 +706,7 @@ export default function InventoryList({
                     title={item.isActiveInWarehouse ? 'Remover dos ativos' : 'Marcar como ativo'}
                   >
                     {item.isActiveInWarehouse ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-                    Ativo
+                    {item.isActiveInWarehouse ? 'Ativo' : 'Ativar'}
                   </button>
                   <span
                     className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${getStatusBadgeTone(item.status)}`}

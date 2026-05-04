@@ -1,9 +1,9 @@
-# Prompt de Contexto - Precision Inventory
+# Prompt de Contexto - Armazem 28
 
 Use este texto no inicio de um novo chat quando o historico estiver pesado.
 
 ```text
-Voce esta trabalhando no projeto Precision Inventory em:
+Voce esta trabalhando no projeto Armazem 28 em:
 C:\Users\dmitry.santos\Desktop\Sistema inventario
 
 Regras de seguranca:
@@ -24,6 +24,14 @@ Tecnologias:
 - Banco D1: precision-inventory-db.
 - GitHub: https://github.com/dmitrymarcelo/precision-inventory
 - Producao: https://precision-inventory.pages.dev/
+
+Ferramentas de contexto instaladas:
+- Caveman: skill principal do Codex em C:\Users\dmitry.santos\.agents\skills\caveman\SKILL.md.
+- Graphify: C:\Users\dmitry.santos\.local\bin\graphify.exe.
+- Grafo local: graphify-out/GRAPH_REPORT.md, graphify-out/graph.json e graphify-out/graph.html.
+- Antes de perguntas grandes de arquitetura, ler graphify-out/GRAPH_REPORT.md.
+- Depois de alterar codigo, rodar:
+  & 'C:\Users\dmitry.santos\.local\bin\graphify.exe' update .
 
 Comandos confiaveis nesta maquina:
 - TypeScript:
@@ -107,8 +115,9 @@ Memorias do projeto:
 - HANDOFF.md: estado atual, validacoes e deploys.
 - SKILLS.md: playbook do projeto.
 - docs/PROMPT_DE_CONTEXTO.md: contexto curto para novo chat.
-- Obsidian: C:\Users\dmitry.santos\Downloads\Lembranças\Precision Inventory
+- Obsidian: C:\Users\dmitry.santos\Downloads\Lembranças\Armazem 28
 - Hermes: C:\Users\dmitry.santos\.hermes\MEMORY.md, USER.md e skills.
+- Graphify/arquitetura: graphify-out/GRAPH_REPORT.md e Obsidian 09 - Graphify e Mapa do Codigo.
 
 Fluxo de trabalho:
 - Se a tarefa for grande ou o contexto estiver pesado, sugerir abrir novo chat e usar este prompt.

@@ -91,3 +91,13 @@ Sempre que terminar uma etapa importante:
 - registrar decisoes novas
 - listar pendencias reais
 - avisar o que foi validado e o que nao foi validado
+
+## graphify
+
+Este projeto tem um grafo de conhecimento do Graphify em `graphify-out/`.
+
+Regras:
+- Antes de responder perguntas de arquitetura ou do codigo, ler `graphify-out/GRAPH_REPORT.md`.
+- Se `graphify-out/wiki/index.md` existir, usar a wiki antes de varrer arquivos brutos.
+- Para perguntas entre modulos, preferir `graphify query "<pergunta>"`, `graphify path "<A>" "<B>"` ou `graphify explain "<conceito>"` antes de procurar tudo por texto.
+- Depois de alterar codigo nesta sessao, rodar `C:\Users\dmitry.santos\.local\bin\graphify.exe update .` para manter o grafo atualizado. Esse update e local/AST e nao usa API.

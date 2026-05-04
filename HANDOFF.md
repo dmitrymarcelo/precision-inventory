@@ -1,6 +1,108 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-02
+Ultima atualizacao: 2026-05-04
+
+## Divergencias como bloqueio operacional + inventario ciclico (5 por dia) em 2026-05-04
+
+- `Admin` e `Operacao` passam a ser bloqueados por divergencias abertas:
+  - ao abrir o sistema, se existir divergencia pendente, aparece um popup obrigatorio
+  - o popup continua voltando ate que nao exista nenhuma pendencia
+  - a navegacao para outras abas fica bloqueada enquanto existir divergencia
+  - ao entrar em `Estoque` / `Inventario Operacional`, aparece um aviso fixo com atalho para abrir o proximo SKU com divergencia
+- `Inventario Operacional` ganhou `Inventario ciclico`:
+  - sorteia 5 itens por dia usando seed por data (mesmo dia = mesma lista)
+  - pondera o sorteio pela Curva ABC (Classe A tem mais chance)
+  - mostra os 5 itens do dia e permite abrir o SKU com 1 toque
+- Arquivos alterados:
+  - `src/App.tsx`
+  - `src/components/InventoryOperation.tsx`
+  - `src/divergenceRules.ts`
+  - `src/components/Layout.tsx`
+- Ajuste de permissao:
+  - `Operacao` agora tambem enxerga a aba `Inventario Operacional` e pode fazer `Ajuste de contagem` para encerrar divergencias
+- Regra de alertas por item (Admin):
+  - itens com politica automatica (Curva ABC/adaptativa) voltam a permitir ajuste manual, mas por 90 dias a regra manual tem prioridade
+  - depois de 90 dias, a politica automatica volta a ser usada
+  - edicao manual da regra de alertas foi restrita ao usuario `Admin`
+- Validado localmente:
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou
+  - `node .\node_modules\vite\bin\vite.js build` passou
+  - `graphify update .` passou
+
+## Endurecimento de divergencias sem mexer em Compras/Pagamentos em 2026-05-02
+
+- Foi criado `src/divergenceRules.ts` como regra compartilhada para divergencia em aberto.
+- Uma divergencia fica aberta ate existir um log posterior de `ajuste` para o mesmo SKU, tratado como recontagem administrativa.
+- `Inventario Operacional` passou a mostrar divergencias abertas de qualquer dia, nao apenas divergencias do dia atual.
+- `Buscar e Atualizar` passou a destacar SKU com divergencia aberta:
+  - ajuste de contagem pede confirmacao e encerra a pendencia como recontagem
+  - recebimento avisa que nao encerra divergencia
+- `Solicitacao de pecas` passou a bloquear SKU com divergencia aberta:
+  - busca direta
+  - leitor de etiqueta
+  - selecao por tipo/modelo
+  - kits preventivos
+  - validacao final ao salvar
+- `Solicitacao de pecas` tambem valida no salvamento:
+  - item precisa existir
+  - item precisa ter saldo
+  - quantidade solicitada nao pode passar do saldo atual
+  - item com divergencia aberta nao pode seguir na solicitacao
+- `Separacao de material` foi reforcada:
+  - divergencia exige motivo curto antes de registrar
+  - divergencia fica visivel no pedido e no item
+  - baixa final com divergencia exige usuario admin
+  - se a baixa for concluida em outro aparelho, o sistema reconstroi o saldo real a partir dos logs de divergencia da solicitacao
+  - operador nao admin fica bloqueado ao tentar separar SKU com divergencia aberta de outra solicitacao
+- `Historico` passou a mostrar uma secao propria de divergencias registradas por solicitacao, com sistema/real/diferenca/motivo.
+- `Compras` e pagamentos nao foram alterados nesta etapa, conforme pedido do usuario.
+- Validado localmente:
+  - `npm run lint` nao rodou porque `npm` nao esta disponivel nesta sessao
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou usando Node portatil
+  - `node .\node_modules\vite\bin\vite.js build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-r0ptwBYy.js`
+  - `/assets/index-Cx-z1rj1.css`
+  - chunks PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - primeiro preview: `https://8c2b1b49.precision-inventory.pages.dev`
+  - producao/main: `https://87ddfc3f.precision-inventory.pages.dev`
+  - producao final: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-r0ptwBYy.js`
+- Observacao:
+  - Vite manteve o aviso conhecido de chunks grandes
+  - `graphify update .` passou e atualizou `graphify-out/`
+
+## Instalacao Caveman e Graphify em 2026-05-02
+
+- `caveman` foi instalado como skill global/copied para Codex em:
+  - `C:\Users\dmitry.santos\.agents\skills\caveman\SKILL.md`
+- A instalacao foi feita em modo minimo:
+  - sem hooks automaticos do caveman
+  - sem MCP automatico do caveman
+  - sem alteracao de Windows, inicializacao ou sistema
+- `uv` portatil foi baixado para:
+  - `C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\uv-0.11.8\uv.exe`
+- `graphifyy` foi instalado com `uv tool install graphifyy --python 3.12 --managed-python`.
+- CLI do Graphify:
+  - `C:\Users\dmitry.santos\.local\bin\graphify.exe`
+- Integracao Graphify/Codex:
+  - `AGENTS.md` recebeu a secao `graphify`
+  - `.codex/hooks.json` foi criado com hook usando caminho absoluto do `graphify.exe`
+- Memoria procedural Hermes:
+  - `C:\Users\dmitry.santos\.hermes\skills\graphify\SKILL.md`
+  - `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-graphify\SKILL.md`
+- O grafo inicial foi gerado localmente:
+  - `graphify-out/GRAPH_REPORT.md`
+  - `graphify-out/graph.json`
+  - `graphify-out/graph.html`
+  - resultado inicial: 402 nos, 900 arestas, 12 comunidades
+  - custo de API informado pelo Graphify: 0 input / 0 output
+- Foi criado `.graphifyignore` para evitar varrer cache, build, instrucoes de agente e o proprio `graphify-out`.
+- Observacao:
+  - esta etapa foi de ferramentas/memoria do projeto; nao houve mudanca funcional no app e nao houve deploy.
 
 ## Resumo executivo
 
@@ -265,14 +367,14 @@ O sistema ja tem os modulos principais funcionando:
   - aplicado no detalhe de `Atualizar Estoque`
   - objetivo: evitar toque acidental no celular
 - Barra superior simplificada novamente:
-  - removido texto visual `Precision Inventory` do canto esquerdo, mantendo apenas o icone
+  - removido texto visual `Armazem 28` do canto esquerdo, mantendo apenas o icone
   - removidos `Admin` e `Sair` da barra
   - foto do usuario virou menu de conta
   - menu da foto mostra permissao, status do sistema, `Usuarios` para admin e `Sair`
   - aba `Usuarios` saiu da navegacao principal e fica acessivel pela foto
 - Proposta de `Compras Automaticas` ficou pronta para implementacao futura:
   - documento tecnico criado em `docs/COMPRAS_AUTOMATICAS.md`
-  - nota Obsidian `Precision Inventory/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
+  - nota Obsidian `Armazem 28/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
   - regra reforcada: compra aprovada/comprada nao altera estoque; entrada continua so por `Recebimento`
 - Validado localmente:
   - `tsc --noEmit` passou usando Node portatil
@@ -288,7 +390,7 @@ O sistema ja tem os modulos principais funcionando:
   - removido dropdown duplicado de alertas no `Layout`
   - `Layout` deixou de receber `items`, `settings` e `onSelectSku` apenas para alimentar o sino
 - Registrada proposta de modulo futuro `Compras Automaticas`:
-  - nota criada no Obsidian: `Precision Inventory/07 - Proposta Compras Automaticas`
+  - nota criada no Obsidian: `Armazem 28/07 - Proposta Compras Automaticas`
   - proposta usa alertas criticos, reposicao, Curva ABC, saidas recentes e pedidos manuais
   - regra de seguranca: aprovar compra nao aumenta estoque; entrada real continua somente pelo fluxo `Recebimento`
 - Validado localmente:
@@ -302,8 +404,8 @@ O sistema ja tem os modulos principais funcionando:
   - asset principal publicado: `assets/index-OfDveYJZ.js`
 - Configurado Obsidian como memoria ampla do projeto:
   - cofre localizado em `C:\Users\dmitry.santos\Downloads\Lembranças`
-  - criada pasta `Precision Inventory` dentro do cofre
-  - criado mapa principal `Precision Inventory/00 - Mapa do Projeto`
+  - criada pasta `Armazem 28` dentro do cofre
+  - criado mapa principal `Armazem 28/00 - Mapa do Projeto`
   - criadas notas para regras de negocio, modulos/fluxos, deploy/GitHub, Curva ABC, decisoes recentes, riscos/cuidados e diario de handoff
   - criados templates de `Registro de Decisao` e `Handoff Rapido`
   - nota `Bem-vindo.md` do cofre passou a apontar para o mapa do projeto
@@ -1751,7 +1853,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - A aba `Historico` ganhou o botao `Imprimir comprovante` no detalhe da solicitacao selecionada
 - A impressao abre uma janela propria, sem menus/filtros da tela, para gerar um comprovante limpo em A4
 - O layout impresso inclui:
-  - cabecalho com `Precision Inventory`, codigo e status da solicitacao
+  - cabecalho com `Armazem 28`, codigo e status da solicitacao
   - placa, centro de custo, datas, progresso e fechamento
   - tabela de itens solicitados e separados
   - auditoria da solicitacao
@@ -1879,7 +1981,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Cotacoes profissionais em Compras em 2026-05-02
@@ -1932,8 +2034,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Prompt de Contexto para novo chat em 2026-05-02
@@ -1950,8 +2052,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - regras de importacao de PDF em cotacoes
   - memorias que devem ser lidas antes de trabalhar
 - Obsidian atualizado:
-  - `Precision Inventory/08 - Prompt de Contexto`
-  - `Precision Inventory/00 - Mapa do Projeto`
+  - `Armazem 28/08 - Prompt de Contexto`
+  - `Armazem 28/00 - Mapa do Projeto`
 - Hermes atualizado:
   - `C:\Users\dmitry.santos\.hermes\MEMORY.md`
   - `C:\Users\dmitry.santos\.hermes\USER.md`
@@ -2018,6 +2120,6 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`

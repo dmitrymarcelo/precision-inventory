@@ -21,7 +21,7 @@ export async function onRequestGet({ env }) {
   }, { headers: jsonHeaders });
 }
 
-export async function onRequestPut({ request, env }) {
+export async function onRequestPut({ request, env, context }) {
   await ensureSchema(env.DB);
 
   const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
@@ -45,8 +45,9 @@ export async function onRequestPut({ request, env }) {
     .bind(STATE_KEY)
     .first();
 
+  const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
   const state = existingRow
-    ? mergeStates(normalizeState(JSON.parse(existingRow.value)), incomingState)
+    ? mergeStates(existingState, incomingState)
     : incomingState;
 
   await env.DB
@@ -59,6 +60,16 @@ export async function onRequestPut({ request, env }) {
     `)
     .bind(STATE_KEY, JSON.stringify(state), updatedAt)
     .run();
+
+  const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+  if (newDivergenceLogs.length > 0) {
+    const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+    if (context?.waitUntil) {
+      context.waitUntil(task);
+    } else {
+      void task;
+    }
+  }
 
   return Response.json({ ok: true, updatedAt }, { headers: jsonHeaders });
 }
@@ -242,4 +253,66 @@ function parseUpdatedAt(value) {
   if (!value || typeof value !== 'string') return 0;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function collectNewDivergenceLogs(existingState, mergedState) {
+  const existingIds = new Set(
+    (existingState?.logs || []).map(log => (log && log.id ? String(log.id) : '')).filter(Boolean)
+  );
+
+  return (mergedState?.logs || []).filter(log => {
+    if (!log || !log.id) return false;
+    if (log.source !== 'divergencia') return false;
+    return !existingIds.has(String(log.id));
+  });
+}
+
+async function sendDivergenceNotifications(logs, updatedAt, env) {
+  const urlList = String(env?.DIVERGENCE_WEBHOOK_URLS || env?.DIVERGENCE_WEBHOOK_URL || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  if (urlList.length === 0) return;
+
+  const payload = JSON.stringify({
+    event: 'divergence_created',
+    updatedAt,
+    divergences: logs.slice(0, 20).map(log => ({
+      id: log.id,
+      sku: log.sku,
+      itemName: log.itemName,
+      location: log.location,
+      delta: log.delta,
+      expectedQuantityAfter: log.expectedQuantityAfter,
+      reportedQuantityAfter: log.reportedQuantityAfter ?? log.quantityAfter,
+      referenceCode: log.referenceCode,
+      date: log.date,
+      note: log.note
+    }))
+  });
+
+  await Promise.allSettled(
+    urlList.map(url => postWebhook(url, payload, env))
+  );
+}
+
+async function postWebhook(url, payload, env) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        ...(env?.DIVERGENCE_WEBHOOK_AUTH ? { authorization: String(env.DIVERGENCE_WEBHOOK_AUTH) } : {}),
+        ...(env?.DIVERGENCE_WEBHOOK_SECRET ? { 'x-webhook-secret': String(env.DIVERGENCE_WEBHOOK_SECRET) } : {})
+      },
+      body: payload,
+      signal: controller.signal
+    });
+  } catch {} finally {
+    clearTimeout(timeout);
+  }
 }

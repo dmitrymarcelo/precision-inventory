@@ -212,15 +212,15 @@ Caminho do cofre:
 
 Notas principais:
 
-- `Precision Inventory/00 - Mapa do Projeto`
-- `Precision Inventory/01 - Regras de Negocio`
-- `Precision Inventory/02 - Modulos e Fluxos`
-- `Precision Inventory/03 - Deploy Cloudflare e GitHub`
-- `Precision Inventory/04 - Curva ABC e Inventario Operacional`
-- `Precision Inventory/05 - Decisoes Recentes`
-- `Precision Inventory/06 - Riscos e Cuidados`
-- `Precision Inventory/08 - Prompt de Contexto`
-- `Precision Inventory/99 - Diario de Handoff`
+- `Armazem 28/00 - Mapa do Projeto`
+- `Armazem 28/01 - Regras de Negocio`
+- `Armazem 28/02 - Modulos e Fluxos`
+- `Armazem 28/03 - Deploy Cloudflare e GitHub`
+- `Armazem 28/04 - Curva ABC e Inventario Operacional`
+- `Armazem 28/05 - Decisoes Recentes`
+- `Armazem 28/06 - Riscos e Cuidados`
+- `Armazem 28/08 - Prompt de Contexto`
+- `Armazem 28/99 - Diario de Handoff`
 
 Regra:
 
@@ -279,7 +279,7 @@ Cotacoes:
 
 Memoria Obsidian:
 
-- `Precision Inventory/07 - Proposta Compras Automaticas`
+- `Armazem 28/07 - Proposta Compras Automaticas`
 
 Documento tecnico no projeto:
 
@@ -301,7 +301,7 @@ Regra:
 - antes de iniciar um novo chat, usar o prompt de contexto como handoff
 - o novo agente deve ler `AGENTS.md`, `HANDOFF.md`, `SKILLS.md` e `docs/PROMPT_DE_CONTEXTO.md`
 - para modulo `Compras`, ler tambem `docs/COMPRAS_AUTOMATICAS.md`
-- para memoria ampla, consultar Obsidian `Precision Inventory/08 - Prompt de Contexto`
+- para memoria ampla, consultar Obsidian `Armazem 28/08 - Prompt de Contexto`
 - para memoria procedural Hermes, consultar `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-context\SKILL.md`
 
 Quando sugerir novo chat:
@@ -310,3 +310,57 @@ Quando sugerir novo chat:
 - muitas ferramentas chamadas
 - tarefa nova e grande depois de uma entrega concluida
 - risco de gastar credito relendo contexto antigo
+
+## Skill 15 - Graphify do projeto
+
+Objetivo:
+
+- usar Graphify como mapa rapido de arquitetura do projeto
+- reduzir buscas repetidas em arquivos quando a pergunta for sobre relacao entre modulos
+
+Instalacao local atual:
+
+- CLI: `C:\Users\dmitry.santos\.local\bin\graphify.exe`
+- Grafo do projeto: `graphify-out/`
+- Relatorio principal: `graphify-out/GRAPH_REPORT.md`
+- Hook local do Codex: `.codex/hooks.json`
+- Skill Hermes: `C:\Users\dmitry.santos\.hermes\skills\graphify\SKILL.md`
+- Skill Hermes do fluxo do projeto: `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-graphify\SKILL.md`
+
+Regras:
+
+- antes de perguntas grandes de arquitetura, ler `graphify-out/GRAPH_REPORT.md`
+- para relacoes entre modulos, usar `graphify query`, `graphify path` ou `graphify explain`
+- apos alterar codigo, rodar `C:\Users\dmitry.santos\.local\bin\graphify.exe update .`
+- nao adicionar `graphify-out/cache/`, `graphify-out/manifest.json` nem `graphify-out/cost.json` ao Git
+- manter `.graphifyignore` evitando `node_modules`, `dist`, `.codex-tools`, `AGENTS.md`, `.codex` e o proprio `graphify-out`
+
+## Skill 16 - Divergencias operacionais
+
+Objetivo:
+
+- tratar divergencia como pendencia operacional ate recontagem administrativa
+- reduzir risco de furo em estoque, solicitacao e separacao sem mexer em Compras/Pagamentos
+
+Regra atual:
+
+- a fonte compartilhada da regra e `src/divergenceRules.ts`
+- divergencia aberta = ultimo log `divergencia` do SKU sem log posterior `ajuste`
+- `ajuste` posterior representa recontagem e encerra a pendencia
+- `recebimento` nao encerra divergencia
+- `solicitacao` nao encerra divergencia
+
+Aplicacao:
+
+- `Inventario Operacional` mostra divergencias abertas mesmo se forem de outro dia
+- `Buscar e Atualizar` mostra alerta de divergencia aberta e pede confirmacao para encerrar por ajuste
+- `Solicitacao de pecas` bloqueia item com divergencia aberta antes de criar/salvar pedido
+- `Separacao de material` registra motivo quando o saldo real diverge do sistema
+- baixa final com divergencia exige admin
+- `Historico` mostra divergencias da solicitacao com sistema, real, diferenca e motivo
+
+Cuidados:
+
+- nao liberar item divergente em nova solicitacao sem recontagem
+- nao considerar recebimento como solucao automatica para divergencia antiga
+- se alterar esse fluxo, validar mobile e fluxo de separacao com leitor
