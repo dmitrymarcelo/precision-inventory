@@ -4,10 +4,26 @@ Este arquivo e a memoria operacional do projeto para qualquer agente que trabalh
 
 ## Ordem de leitura obrigatoria
 
-1. Ler `HANDOFF.md`
-2. Ler `SKILLS.md`
-3. Ler os arquivos que vao ser alterados
-4. So depois propor mudancas maiores
+1. Ler `CODEX.md` e aplicar o protocolo Karpathy primeiro
+2. Ler `HANDOFF.md`
+3. Ler `SKILLS.md`
+4. Ler os arquivos que vao ser alterados
+5. So depois propor mudancas maiores
+
+## Protocolo obrigatorio do Codex
+
+- O arquivo `CODEX.md` e o protocolo de trabalho do Codex neste projeto.
+- Antes de codar, revisar: pensar antes, simplicidade primeiro, mudancas cirurgicas e execucao guiada por objetivo.
+- A skill global instalada e `karpathy-guidelines`.
+- O protocolo nao substitui as regras de negocio deste `AGENTS.md`; ele reforca cuidado, clareza e verificacao.
+
+## Superpowers
+
+- Superpowers esta instalado como conjunto de skills em `C:\Users\dmitry.santos\.agents\skills\superpowers`.
+- Clone principal: `C:\Users\dmitry.santos\.codex\superpowers`.
+- Clone de referencia do projeto: `.codex-tools/superpowers`.
+- Usar quando a tarefa pedir metodologia especifica: brainstorming, plano, TDD, debug sistematico, revisao, execucao de plano, finalizacao de branch ou verificacao antes de concluir.
+- Nao usar Superpowers para pular a ordem de leitura obrigatoria nem para contrariar regra de negocio do estoque.
 
 ## O que este sistema e
 
@@ -28,6 +44,7 @@ Aplicativo web de inventario e operacao de estoque, com foco em:
 - A localizacao do inventario importado vem da coluna `K`, campo `locacao`, da planilha principal.
 - Em `Solicitacao de pecas`, o formulario principal gira em torno de `placa` e `centro de custo`.
 - Nao pode adicionar item sem saldo na solicitacao. O item deve ficar bloqueado e visivelmente em vermelho.
+- Se a mesma placa solicitar bateria antes da validade da ultima bateria atendida, o sistema deve abrir popup de confirmacao antes de incluir o item; bateria geral vale 12 meses e SKU `12047` vale 6 meses.
 - Em `Separacao de material`, o leitor so confirma item se o codigo pertencer ao pedido aberto.
 - Pedido entregue vira somente consulta. Nao pode editar nem excluir depois disso.
 - A equipe usa o sistema em celular. Toda mudanca relevante precisa respeitar uso mobile.

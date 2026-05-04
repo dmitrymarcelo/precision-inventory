@@ -19,6 +19,7 @@ import {
   PackageCheck,
   Search,
   Send,
+  ShieldAlert,
   Trash2,
   Truck,
   X
@@ -50,6 +51,12 @@ import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
 import { preventiveKitCatalog } from '../preventiveKitCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 import { getOpenDivergenceMap } from '../divergenceRules';
+import {
+  findActiveBatteryWarrantyAlert,
+  formatBatteryWarrantyDate,
+  isBatteryInventoryItem,
+  isBatteryRequestItem
+} from '../batteryWarrantyRules';
 
 interface RequestManagerProps {
   items: InventoryItem[];
@@ -213,7 +220,14 @@ export default function RequestManager({
         aliasRef.current[candidate] = detected.matchedSku as string;
       });
 
-      addItemToDraft(item);
+      const wasAdded = addItemToDraft(item);
+      if (!wasAdded) {
+        setSkuScannerStatus(`Inclusão do SKU ${detected.matchedSku} não realizada.`);
+        if (shouldCloseScanner) {
+          closeSkuScanner();
+        }
+        return;
+      }
       setSkuScannerStatus(`Código ${detected.matchedSku} confirmado.`);
       void playConfirmTone(skuAudioContextRef);
       if ('vibrate' in navigator) {
@@ -554,6 +568,38 @@ export default function RequestManager({
     : canCreateRequests;
   const draftSkuSet = useMemo(() => new Set(draft.items.map(item => item.sku)), [draft.items]);
   const pickerSelectedSet = useMemo(() => new Set(pickerSelectedSkus), [pickerSelectedSkus]);
+  const batteryWarrantyAlert = useMemo(() => {
+    if (!draft.items.some(isBatteryRequestItem)) return null;
+    return findActiveBatteryWarrantyAlert(requests, draft.vehiclePlate, draft.id || editingRequestId || undefined);
+  }, [draft.id, draft.items, draft.vehiclePlate, editingRequestId, requests]);
+
+  const confirmBatteryWarrantyBeforeAdd = (candidateItems: InventoryItem[]) => {
+    if (!candidateItems.some(isBatteryInventoryItem)) return true;
+
+    const alert = findActiveBatteryWarrantyAlert(requests, draft.vehiclePlate, draft.id || editingRequestId || undefined);
+    if (!alert) return true;
+
+    const batteryNames = candidateItems
+      .filter(isBatteryInventoryItem)
+      .map(item => `${normalizeUserFacingText(item.name)} (SKU ${item.sku})`)
+      .join(', ');
+
+    return window.confirm(
+      [
+        'Atenção: bateria ainda dentro da validade.',
+        '',
+        `Placa: ${normalizePlate(draft.vehiclePlate) || 'sem placa'}`,
+        `Bateria anterior: ${alert.itemName} (SKU ${alert.sku})`,
+        `Atendida em: ${formatBatteryWarrantyDate(alert.fulfilledAt)}`,
+        `Validade: ${alert.validityMonths} meses, até ${formatBatteryWarrantyDate(alert.validUntil)}`,
+        `Faltam ${alert.daysRemaining} dias para vencer.`,
+        '',
+        `Item que você está incluindo: ${batteryNames || 'bateria'}`,
+        '',
+        'Clique em OK para confirmar a inclusão mesmo assim.'
+      ].join('\n')
+    );
+  };
 
   const appendAuditEntry = (request: MaterialRequest, entry: Omit<MaterialRequestAuditEntry, 'id'>) => {
     const trail = Array.isArray(request.auditTrail) ? request.auditTrail : [];
@@ -732,6 +778,16 @@ export default function RequestManager({
       return;
     }
 
+    const currentSelectedSkuSet = new Set(draft.items.map(entry => entry.sku));
+    const addableSelectedItems = selectedItems.filter(
+      item => !currentSelectedSkuSet.has(item.sku) && item.quantity > 0 && !openDivergenceBySku.has(item.sku)
+    );
+
+    if (!confirmBatteryWarrantyBeforeAdd(addableSelectedItems)) {
+      showToast('Inclusão da bateria cancelada.', 'info');
+      return;
+    }
+
     let added = 0;
     let withoutStock = 0;
     let withDivergence = 0;
@@ -789,6 +845,21 @@ export default function RequestManager({
     const kit = preventiveKitCatalog.find(entry => entry.id === kitId) || null;
     if (!kit) {
       showToast('Kit não encontrado.', 'info');
+      return;
+    }
+
+    const currentKitSkuSet = new Set(draft.items.map(entry => entry.sku));
+    const kitItems = kit.items
+      .map(component => {
+        const item = stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
+        if (!item || currentKitSkuSet.has(item.sku)) return null;
+        if (item.quantity < component.requiredQuantity || openDivergenceBySku.has(item.sku)) return null;
+        return item;
+      })
+      .filter((value): value is InventoryItem => Boolean(value));
+
+    if (!confirmBatteryWarrantyBeforeAdd(kitItems)) {
+      showToast('Inclusão da bateria cancelada.', 'info');
       return;
     }
 
@@ -998,23 +1069,28 @@ export default function RequestManager({
   const addItemToDraft = (item: InventoryItem) => {
     if (!canMutateDraft) {
       showToast('Esta solicitação está bloqueada para edição.', 'info');
-      return;
+      return false;
     }
 
     if (item.quantity <= 0) {
       showToast(`O item ${item.sku} está sem saldo e não pode entrar na solicitação.`, 'info');
-      return;
+      return false;
     }
 
     if (openDivergenceBySku.has(item.sku)) {
       showToast(`SKU ${item.sku} tem divergencia aberta. Reconte antes de solicitar.`, 'info');
-      return;
+      return false;
     }
 
     const alreadyAdded = draft.items.some(requestItem => requestItem.sku === item.sku);
     if (alreadyAdded) {
       showToast(`O item ${item.sku} já está nesta solicitação.`, 'info');
-      return;
+      return false;
+    }
+
+    if (!confirmBatteryWarrantyBeforeAdd([item])) {
+      showToast('Inclusão da bateria cancelada.', 'info');
+      return false;
     }
 
     setDraft(current => ({
@@ -1023,6 +1099,7 @@ export default function RequestManager({
       updatedAt: new Date().toISOString()
     }));
     setItemQuery('');
+    return true;
   };
 
   const removeItemFromDraft = (itemId: string) => {
@@ -1276,6 +1353,24 @@ export default function RequestManager({
               clique em <strong>Usuários</strong> e carregue a planilha.
             </div>
           )}
+
+          {batteryWarrantyAlert ? (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 flex items-start gap-3">
+              <ShieldAlert size={20} className="text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-950">Atenção: bateria ainda dentro da validade</p>
+                <p className="text-sm text-amber-950/85 mt-1">
+                  Esta placa recebeu {normalizeUserFacingText(batteryWarrantyAlert.itemName)} em{' '}
+                  {formatBatteryWarrantyDate(batteryWarrantyAlert.fulfilledAt)} na solicitação{' '}
+                  {batteryWarrantyAlert.requestCode}. A validade operacional é de {batteryWarrantyAlert.validityMonths} meses e vai até{' '}
+                  {formatBatteryWarrantyDate(batteryWarrantyAlert.validUntil)}.
+                </p>
+                <p className="text-xs font-semibold text-amber-900 mt-2">
+                  Faltam {batteryWarrantyAlert.daysRemaining} dias para vencer. Revise antes de liberar outra bateria.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4">
             <button
