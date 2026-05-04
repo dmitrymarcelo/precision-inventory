@@ -4,8 +4,10 @@ import {
   Barcode,
   Camera,
   Loader2,
+  Minus,
   PackageCheck,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -95,6 +97,7 @@ export default function MaterialSeparation({
   const [quantityConfirmationValue, setQuantityConfirmationValue] = useState('');
   const [quantityConfirmationNote, setQuantityConfirmationNote] = useState('');
   const [reportedRemainingBySku, setReportedRemainingBySku] = useState<Record<string, number>>({});
+  const [manualSeparationEnabled, setManualSeparationEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
@@ -169,11 +172,13 @@ export default function MaterialSeparation({
     setQuantityConfirmationValue('');
     setQuantityConfirmationNote('');
     setReportedRemainingBySku({});
+    setManualSeparationEnabled(false);
   }, [currentRequest?.id]);
 
   const requestProgress = currentRequest ? getRequestProgress(currentRequest) : null;
   const currentStatus = normalizeUserFacingText(currentRequest?.status);
   const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
+  const canManualSeparate = canMutate && auditActor.role === 'admin' && !isCurrentRequestLocked;
   const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
   const requestDivergenceLogs = useMemo(
     () => getRequestDivergenceLogs(currentRequest, logs),
@@ -357,6 +362,44 @@ export default function MaterialSeparation({
     setIsScannerOpen(false);
     setScannerStatus('Leitor pronto para apoiar a separação com QR Code.');
     setScannerFeedback('neutral');
+  };
+
+  const applyManualSeparatedChange = (sku: string, amount: number) => {
+    if (!currentRequest) {
+      showToast('Abra uma solicitação para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (!manualSeparationEnabled) {
+      showToast('Ative o modo manual para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (!canManualSeparate) {
+      showToast('Somente administradores podem separar manualmente.', 'info');
+      return;
+    }
+
+    const { request: updatedRequest, updated } = bumpSeparatedQuantity(currentRequest, sku, amount);
+    if (!updated) return;
+
+    const now = new Date().toISOString();
+    const nextRequest = {
+      ...updatedRequest,
+      updatedAt: now
+    };
+    nextRequest.status = recalculateRequestStatus(nextRequest);
+
+    setRequests(previous => previous.map(request => (request.id === nextRequest.id ? nextRequest : request)));
+    setLastConfirmedSku(sku);
+
+    const requestItem = nextRequest.items.find(item => item.sku === sku);
+    if (requestItem) {
+      showToast(
+        `Separação manual: SKU ${sku} agora ${requestItem.separatedQuantity}/${requestItem.requestedQuantity}.`,
+        'success'
+      );
+    }
   };
 
   const startScanner = () => {
@@ -917,6 +960,33 @@ export default function MaterialSeparation({
                 </div>
               </div>
 
+              {auditActor.role === 'admin' && !isCurrentRequestLocked ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canMutate) {
+                        showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                        return;
+                      }
+                      if (isScannerOpen) closeScanner();
+                      setManualSeparationEnabled(previous => {
+                        const next = !previous;
+                        showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                        return next;
+                      });
+                    }}
+                    className={`h-11 w-full px-4 rounded-lg font-bold flex items-center justify-center ${
+                      manualSeparationEnabled
+                        ? 'bg-primary-container text-on-primary-container'
+                        : 'bg-surface-container-highest text-primary'
+                    }`}
+                  >
+                    Itens para separar
+                  </button>
+                </div>
+              ) : null}
+
               {isCurrentRequestLocked && (
                 <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
                   <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
@@ -1086,9 +1156,41 @@ export default function MaterialSeparation({
                 <div>
                   <h3 className="font-headline font-bold text-xl text-on-surface">Itens para separar</h3>
                   <p className="text-sm text-on-surface-variant mt-1">
-                    A separação só avança pela leitura da etiqueta correta do item.
+                    {manualSeparationEnabled && auditActor.role === 'admin'
+                      ? 'Admin: use + e - para ajustar manualmente quando a etiqueta não ler.'
+                      : 'A separação só avança pela leitura da etiqueta correta do item.'}
                   </p>
                 </div>
+                {!isCurrentRequestLocked ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canMutate) {
+                          showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                          return;
+                        }
+                        if (auditActor.role !== 'admin') {
+                          showToast('Somente administradores podem separar manualmente.', 'info');
+                          return;
+                        }
+                        if (isScannerOpen) closeScanner();
+                        setManualSeparationEnabled(previous => {
+                          const next = !previous;
+                          showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                          return next;
+                        });
+                      }}
+                      className={`h-11 px-4 rounded-lg font-bold flex items-center justify-center ${
+                        manualSeparationEnabled
+                          ? 'bg-primary-container text-on-primary-container'
+                          : 'bg-surface-container-highest text-primary'
+                      }`}
+                    >
+                      Itens para separar
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-3">
@@ -1135,6 +1237,28 @@ export default function MaterialSeparation({
                               {requestItem.separatedQuantity}/{requestItem.requestedQuantity}
                             </p>
                           </div>
+                          {auditActor.role === 'admin' ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, -1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity <= 0}
+                                className="h-11 w-11 rounded-lg bg-surface-container-highest text-primary font-bold flex items-center justify-center disabled:opacity-50"
+                                aria-label={`Retirar 1 de ${requestItem.sku}`}
+                              >
+                                <Minus size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, 1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity >= requestItem.requestedQuantity}
+                                className="h-11 w-11 rounded-lg bg-primary text-on-primary font-bold flex items-center justify-center disabled:opacity-60"
+                                aria-label={`Separar 1 de ${requestItem.sku}`}
+                              >
+                                <Plus size={18} />
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 

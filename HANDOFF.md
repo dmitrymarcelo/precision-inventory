@@ -2,6 +2,163 @@
 
 Ultima atualizacao: 2026-05-04
 
+## Separacao: modo manual admin (Itens para separar) em 2026-05-04
+
+- Pedido do usuario:
+  - em `Separacao` > `Solicitacao ativa`, voltar com um botao `Itens para separar` para adicionar (+1) ou retirar (-1) item manualmente
+  - somente administradores
+- Implementado:
+  - `src/components/MaterialSeparation.tsx` ganhou `Modo manual de separacao` com toggle `Itens para separar` (visivel apenas para `admin`)
+  - quando o modo manual esta ligado, aparecem botoes `+` e `-` por item para ajustar `separatedQuantity`
+  - solicitacoes `Atendida`/`Estornada` continuam travadas (consulta)
+- Deploy:
+  - `npm run deploy` falhou nesta maquina por policy (bloqueio do `npm.ps1`)
+  - deploy feito via `npm.cmd run build` + `npx.cmd wrangler pages deploy dist --project-name precision-inventory`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+
+## Popup de confirmacao para bateria e validade de moto em 2026-05-04
+
+- Ajuste pedido pelo usuario:
+  - a mensagem anterior era pequena
+  - agora deve abrir popup com `OK` confirmando a inclusao do item
+  - `12047 - BATERIA 5A 12V`, bateria de moto, deve valer 6 meses
+- Implementado:
+  - `src/batteryWarrantyRules.ts` agora calcula validade por meses
+  - bateria geral vale 12 meses
+  - SKU `12047` vale 6 meses
+  - `src/components/RequestManager.tsx` agora abre popup de confirmacao antes de incluir bateria quando a placa ainda tem bateria dentro da validade
+- Comportamento:
+  - `OK` confirma a inclusao mesmo com bateria ainda valida
+  - `Cancelar` aborta a inclusao da bateria
+  - o aviso fixo do formulario fala em `dentro da validade`, nao mais `dentro de 1 ano`
+  - funciona para busca, leitor de etiqueta, seletor por modelo e kit
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-Dwlcyw7V.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://d5fd3961.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-Dwlcyw7V.js`
+
+## Aviso automatico de bateria dentro da validade em 2026-05-04
+
+- Pedido do usuario:
+  - quando um veiculo pegar uma bateria, considerar a bateria valida por prazo operacional
+  - se a mesma placa solicitar outra bateria antes do vencimento, mostrar aviso automatico
+- Implementado:
+  - nova regra em `src/batteryWarrantyRules.ts`
+  - integracao no formulario `Solicitacao de pecas` em `src/components/RequestManager.tsx`
+- Regra aplicada:
+  - compara por placa normalizada
+  - considera apenas solicitacoes `Atendida`
+  - usa `fulfilledAt` como data da bateria; fallback para `updatedAt`/`createdAt` em registros antigos
+  - validade operacional padrao = 12 meses
+  - SKU `12047 - BATERIA 5A 12V` (moto) = 6 meses
+  - ignora solicitacoes excluidas, estornadas e o proprio pedido em edicao
+  - identifica bateria por descricao/categoria contendo `BATERIA`
+  - evita falso positivo em acessorios como terminal/cabo/suporte/tampa/carregador e bateria pequena/litio tipo `CR2032`
+- UX:
+  - popup confirmavel antes da inclusao quando existir bateria ainda valida para a placa
+  - `OK` inclui o item; `Cancelar` aborta a inclusao
+  - alerta aparece tambem se a bateria foi adicionada antes de informar a placa e a placa for preenchida depois
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-CJytAlaw.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://803c495e.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-CJytAlaw.js`
+
+## Superpowers instalado no Codex em 2026-05-04
+
+- Pedido do usuario:
+  - instalar no projeto `https://github.com/obra/superpowers.git`
+- Instalacao feita:
+  - clone principal em `C:\Users\dmitry.santos\.codex\superpowers`
+  - junction de descoberta em `C:\Users\dmitry.santos\.agents\skills\superpowers`
+  - clone de referencia local em `.codex-tools/superpowers`
+- Skills disponiveis apos reiniciar o Codex:
+  - `brainstorming`
+  - `dispatching-parallel-agents`
+  - `executing-plans`
+  - `finishing-a-development-branch`
+  - `receiving-code-review`
+  - `requesting-code-review`
+  - `subagent-driven-development`
+  - `systematic-debugging`
+  - `test-driven-development`
+  - `using-git-worktrees`
+  - `using-superpowers`
+  - `verification-before-completion`
+  - `writing-plans`
+  - `writing-skills`
+- Regra registrada:
+  - `CODEX.md` continua sendo a primeira consulta obrigatoria
+  - Superpowers entra como metodologia complementar quando a tarefa pedir brainstorming, plano, TDD, debug, revisao, execucao ou verificacao final
+  - regras de negocio do inventario continuam acima das skills externas
+- Validado:
+  - todas as 14 skills passaram no `quick_validate.py` com `PYTHONUTF8=1`
+- Observacao:
+  - e necessario reiniciar o Codex para a descoberta nativa listar as novas skills nesta interface
+- Nao houve alteracao funcional no app e nao houve deploy.
+
+## Kit preventiva MOTO atualizado para filtro 18002 em 2026-05-04
+
+- Pedido do usuario:
+  - trocar o filtro antigo do kit `MOTO` pelo SKU `18002`
+  - manter o SKU `17902` como oleo do kit
+- Kit `MOTO` agora fica com:
+  - `18002` - `FILTRO COMBUSTIVEL GI80 HONDA NXR BROS`
+  - `17902` - `OLEO 20W50 MOTO - LITRO`
+- Arquivo alterado:
+  - `src/preventiveKitCatalog.ts`
+- Impacto:
+  - a tela `Kit Preventivas` passa a calcular MOTO com `18002`
+  - o seletor de kits em `Solicitacao de pecas` usa o mesmo catalogo e tambem passa a puxar `18002`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-sV0C0iw-.js`
+  - `/assets/index-BJ7-PtxX.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://801cf3a8.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-sV0C0iw-.js`
+
+## Protocolo Karpathy integrado ao Codex em 2026-05-04
+
+- Repositorio clonado para referencia local:
+  - `.codex-tools/andrej-karpathy-skills`
+- Observacao:
+  - `gh` nao estava instalado nesta maquina, entao foi usado `git clone https://github.com/forrestchang/andrej-karpathy-skills.git`
+  - `.codex-tools/` ja esta ignorado pelo Git do projeto
+- Criado `CODEX.md` no projeto como protocolo obrigatorio de primeira consulta.
+- `AGENTS.md` passou a exigir leitura de `CODEX.md` antes de `HANDOFF.md` e `SKILLS.md`.
+- Criada skill global do Codex:
+  - `C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\SKILL.md`
+  - referencias originais copiadas para `references/protocol.md` e `references/examples.md`
+- `SKILLS.md` ganhou a `Skill 17 - Protocolo Karpathy para Codex`.
+- Validado:
+  - skill validada com `quick_validate.py` via `uv run --with pyyaml`
+- Nao houve alteracao funcional no app e nao houve deploy.
+
 ## Divergencias como bloqueio operacional + inventario ciclico (5 por dia) em 2026-05-04
 
 - `Admin` e `Operacao` passam a ser bloqueados por divergencias abertas:
