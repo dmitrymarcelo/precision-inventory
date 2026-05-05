@@ -61,6 +61,7 @@ const syncEventsStorageKey = 'precisionInventory.sync.events.v1';
 const authSessionStorageKey = 'precisionInventory.auth.session.v1';
 const authPinStorageKey = 'precisionInventory.auth.pin.v1';
 const cloudRefreshIntervalMs = 5000;
+const cloudFastRefreshIntervalMs = 1000;
 const cloudFocusRefreshCooldownMs = 1200;
 const validTabs = [
   'dashboard',
@@ -457,6 +458,7 @@ export default function App() {
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
   const latestCloudResultRef = useRef<{ state: CloudInventoryState | null; updatedAt: string | null } | null>(null);
   const ignoreCloudUpdatesUntilRef = useRef<number>(0);
+  const suppressOutboxWriteRef = useRef(false);
   let initialOutbox: CloudOutbox | null = null;
   try {
     const stored = localStorage.getItem(cloudOutboxStorageKey);
@@ -468,6 +470,13 @@ export default function App() {
     initialOutbox = null;
   }
   const outboxRef = useRef<CloudOutbox | null>(initialOutbox);
+
+  useEffect(() => {
+    if (outboxRef.current && !localDirtyRef.current) {
+      localDirtyRef.current = true;
+      localStorage.setItem(localDirtyStorageKey, '1');
+    }
+  }, []);
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     try {
       const stored = localStorage.getItem(authSessionStorageKey);
@@ -670,6 +679,7 @@ export default function App() {
       return false;
     }
 
+    suppressOutboxWriteRef.current = true;
     setItems(normalizeStoredItems(result.state.items));
     setLogs(normalizeStoredLogs(result.state.logs));
     setSettings({ ...defaultInventorySettings, ...result.state.settings });
@@ -701,6 +711,7 @@ export default function App() {
     localDirtyRef.current = false;
     localStorage.removeItem(localDirtyStorageKey);
 
+    suppressOutboxWriteRef.current = true;
     setItems(normalizeStoredItems(result.state.items));
     setLogs(normalizeStoredLogs(result.state.logs));
     setSettings({ ...defaultInventorySettings, ...result.state.settings });
@@ -743,6 +754,20 @@ export default function App() {
       localStorage.removeItem(localDirtyStorageKey);
       localUpdatedAtRef.current = result.updatedAt;
       localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
+      if (result.state) {
+        suppressOutboxWriteRef.current = true;
+        setItems(normalizeStoredItems(result.state.items));
+        setLogs(normalizeStoredLogs(result.state.logs));
+        setSettings({ ...defaultInventorySettings, ...result.state.settings });
+        setRequests(sanitizeRequests(result.state.requests));
+        setVehicles(sanitizeVehicles(result.state.vehicles));
+        setPurchases(result.state.purchases || []);
+        setOcrAliases(
+          result.state.ocrAliases && typeof result.state.ocrAliases === 'object'
+            ? result.state.ocrAliases
+            : {}
+        );
+      }
       clearOutbox();
       setCloudUpdatePending(null);
       appendSyncEvent('flush_ok', reason);
@@ -750,7 +775,11 @@ export default function App() {
         wasOfflineRef.current = false;
         showToast('Internet voltou. Alterações sincronizadas.', 'success');
       }
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'AUTH') {
+        showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
+      }
       setCloudAvailable(false);
       setCloudStatus('offline');
       wasOfflineRef.current = true;
@@ -870,6 +899,11 @@ export default function App() {
   useEffect(() => {
     if (!cloudLoaded) return;
     if (isStockConsulta) return;
+    if (suppressOutboxWriteRef.current) {
+      suppressOutboxWriteRef.current = false;
+      return;
+    }
+    if (!localDirtyRef.current && !outboxRef.current) return;
     if (outboxWriteTimerRef.current) {
       window.clearTimeout(outboxWriteTimerRef.current);
     }
@@ -964,6 +998,7 @@ export default function App() {
     let cancelled = false;
     let inFlight = false;
     let lastFocusRefresh = 0;
+    const refreshInterval = activeTab === 'separation' ? cloudFastRefreshIntervalMs : cloudRefreshIntervalMs;
 
     const refreshCloudState = async (reason: string) => {
       if (cancelled || inFlight) return;
@@ -1004,7 +1039,7 @@ export default function App() {
       if (document.visibilityState === 'visible') {
         void refreshCloudState('interval');
       }
-    }, cloudRefreshIntervalMs);
+    }, refreshInterval);
 
     const handleFocusRefresh = () => {
       const now = Date.now();
@@ -1028,7 +1063,7 @@ export default function App() {
       window.removeEventListener('focus', handleFocusRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [authSession, cloudLoaded, cloudStatus, mustChangePassword]);
+  }, [activeTab, authSession, cloudLoaded, cloudStatus, mustChangePassword]);
 
   const applyCloudUpdateNow = async () => {
     if (!isStockConsulta && (localDirtyRef.current || outboxRef.current)) {

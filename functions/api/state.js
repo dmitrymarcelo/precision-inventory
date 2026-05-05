@@ -71,7 +71,7 @@ export async function onRequestPut({ request, env, context }) {
     }
   }
 
-  return Response.json({ ok: true, updatedAt }, { headers: jsonHeaders });
+  return Response.json({ ok: true, updatedAt, state }, { headers: jsonHeaders });
 }
 
 export function onRequestOptions() {

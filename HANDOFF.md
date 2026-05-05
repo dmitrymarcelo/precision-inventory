@@ -19,6 +19,24 @@ Ultima atualizacao: 2026-05-05
   - producao atualizada: `https://precision-inventory.pages.dev/`
   - asset principal em producao: `/assets/index-vgOrvBzS.js`
 
+## Sync: espelho quase-instantaneo e sem sobrescrever offline em 2026-05-05
+
+- Pedido do usuario:
+  - o que for feito no celular deve refletir no web praticamente na hora
+  - evitar repetir o erro antigo de manter dado local e depois sobrescrever automaticamente ao voltar a internet
+- Ajustes feitos:
+  - refresh online mais rapido quando estiver na aba `Separacao` (1s)
+  - evitar "ping-pong" (aplicar estado do cloud e salvar de volta sem alteracao): agora o autosave so dispara quando existe alteracao local (dirty/outbox)
+  - PUT /api/state agora retorna o estado mesclado, e o cliente aplica esse retorno para ficar alinhado com o canonical
+  - se o token expirar (401/403), exibe aviso de sessao expirada em vez de ficar preso em local
+- Arquivos:
+  - `src/App.tsx`
+  - `src/cloudState.ts`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BoKsXDxd.js`
+
 ## Separacao: modo manual admin (Itens para separar) em 2026-05-04
 
 - Pedido do usuario:
