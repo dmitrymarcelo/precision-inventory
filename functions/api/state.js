@@ -181,9 +181,122 @@ function mergeRequestsById(existingRequests, incomingRequests) {
     if (!incoming || !incoming.id) continue;
     const id = String(incoming.id);
     const current = merged.get(id);
-    merged.set(id, chooseNewerRecord(current, incoming, 'updatedAt'));
+    merged.set(id, current ? mergeMaterialRequest(current, incoming) : incoming);
   }
   return Array.from(merged.values());
+}
+
+function mergeMaterialRequest(a, b) {
+  const newer = chooseNewerRecord(a, b, 'updatedAt');
+  const older = newer === a ? b : a;
+
+  const merged = { ...older, ...newer };
+
+  merged.items = mergeRequestItems(older?.items || [], newer?.items || []);
+  merged.auditTrail = mergeAuditTrail(older?.auditTrail || [], newer?.auditTrail || []);
+
+  const status = mergeRequestStatus(a, b);
+  merged.status = status;
+
+  if (status === 'Atendida') {
+    merged.fulfilledAt = merged.fulfilledAt || a?.fulfilledAt || b?.fulfilledAt;
+    merged.reversedAt = undefined;
+  }
+
+  if (status === 'Estornada') {
+    merged.reversedAt = merged.reversedAt || a?.reversedAt || b?.reversedAt;
+  }
+
+  const updatedAtTime = Math.max(parseUpdatedAt(a?.updatedAt), parseUpdatedAt(b?.updatedAt));
+  merged.updatedAt = updatedAtTime > 0 ? new Date(updatedAtTime).toISOString() : merged.updatedAt;
+
+  if (a?.deletedAt || b?.deletedAt) {
+    const deletedAtTime = Math.max(parseUpdatedAt(a?.deletedAt), parseUpdatedAt(b?.deletedAt));
+    merged.deletedAt = deletedAtTime > 0 ? new Date(deletedAtTime).toISOString() : a?.deletedAt || b?.deletedAt;
+  }
+
+  return merged;
+}
+
+function mergeRequestStatus(a, b) {
+  const statusA = typeof a?.status === 'string' ? a.status : '';
+  const statusB = typeof b?.status === 'string' ? b.status : '';
+
+  if (a?.reversedAt || b?.reversedAt) return 'Estornada';
+  if (a?.fulfilledAt || b?.fulfilledAt) return 'Atendida';
+
+  const rankA = requestStatusRank(statusA);
+  const rankB = requestStatusRank(statusB);
+  return rankA >= rankB ? statusA || statusB || 'Aberta' : statusB || statusA || 'Aberta';
+}
+
+function requestStatusRank(value) {
+  switch (value) {
+    case 'Estornada':
+      return 5;
+    case 'Atendida':
+      return 4;
+    case 'Separada':
+      return 3;
+    case 'Em separação':
+      return 2;
+    case 'Aberta':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function mergeRequestItems(existingItems, incomingItems) {
+  const merged = new Map();
+
+  for (const item of existingItems) {
+    if (item && item.sku) merged.set(String(item.sku), item);
+  }
+
+  for (const incoming of incomingItems) {
+    if (!incoming || !incoming.sku) continue;
+    const sku = String(incoming.sku);
+    const current = merged.get(sku);
+
+    if (!current) {
+      merged.set(sku, incoming);
+      continue;
+    }
+
+    const requestedQuantity = Math.max(Number(current.requestedQuantity) || 0, Number(incoming.requestedQuantity) || 0);
+    const separatedQuantity = Math.max(Number(current.separatedQuantity) || 0, Number(incoming.separatedQuantity) || 0);
+
+    const base = chooseNewerRecord(current, incoming, 'updatedAt');
+    merged.set(sku, {
+      ...current,
+      ...incoming,
+      ...base,
+      requestedQuantity,
+      separatedQuantity: Math.min(separatedQuantity, requestedQuantity)
+    });
+  }
+
+  return Array.from(merged.values());
+}
+
+function mergeAuditTrail(existingEntries, incomingEntries) {
+  if (!Array.isArray(existingEntries) && !Array.isArray(incomingEntries)) return undefined;
+  const merged = new Map();
+  const all = []
+    .concat(Array.isArray(existingEntries) ? existingEntries : [])
+    .concat(Array.isArray(incomingEntries) ? incomingEntries : []);
+
+  for (const entry of all) {
+    if (!entry) continue;
+    const key = entry.id ? String(entry.id) : '';
+    if (!key) continue;
+    if (!merged.has(key)) merged.set(key, entry);
+  }
+
+  const result = Array.from(merged.values());
+  result.sort((left, right) => parseUpdatedAt(left?.at) - parseUpdatedAt(right?.at));
+  return result;
 }
 
 function mergeVehiclesById(existingVehicles, incomingVehicles) {

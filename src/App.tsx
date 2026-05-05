@@ -1031,6 +1031,13 @@ export default function App() {
   }, [authSession, cloudLoaded, cloudStatus, mustChangePassword]);
 
   const applyCloudUpdateNow = async () => {
+    if (!isStockConsulta && (localDirtyRef.current || outboxRef.current)) {
+      const confirmApply = window.confirm(
+        'Existe alteração local pendente neste aparelho. Atualizar agora vai substituir sua tela pelo estado online e descartar o que ainda não sincronizou. Continuar?'
+      );
+      if (!confirmApply) return;
+    }
+
     let result = latestCloudResultRef.current;
     if (!result || !result.state) {
       try {

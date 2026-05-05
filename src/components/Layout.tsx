@@ -11,6 +11,7 @@ import {
   Minimize2,
   Package,
   PackageCheck,
+  RefreshCw,
   ScanLine,
   Shield,
   ShoppingCart,
@@ -205,6 +206,17 @@ export default function Layout({
                   {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </button>
               )}
+              {authMode !== 'stock-consulta' && authRole !== 'consulta' && onApplyCloudUpdate ? (
+                <button
+                  type="button"
+                  onClick={onApplyCloudUpdate}
+                  className="relative h-9 px-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold text-sm flex items-center gap-2 hover:bg-surface-container-low transition-colors active:scale-95 duration-150"
+                  aria-label="Atualizar do online"
+                >
+                  <RefreshCw size={18} />
+                  <span className="hidden sm:inline">Atualizar</span>
+                </button>
+              ) : null}
             </div>
 
             {authMode === 'stock-consulta' ? (
