@@ -459,6 +459,7 @@ export default function App() {
   const latestCloudResultRef = useRef<{ state: CloudInventoryState | null; updatedAt: string | null } | null>(null);
   const ignoreCloudUpdatesUntilRef = useRef<number>(0);
   const suppressOutboxWriteRef = useRef(false);
+  const lastLocalMutationAtRef = useRef<number>(0);
   let initialOutbox: CloudOutbox | null = null;
   try {
     const stored = localStorage.getItem(cloudOutboxStorageKey);
@@ -475,6 +476,13 @@ export default function App() {
     if (outboxRef.current && !localDirtyRef.current) {
       localDirtyRef.current = true;
       localStorage.setItem(localDirtyStorageKey, '1');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!localDirtyRef.current && !outboxRef.current) {
+      localUpdatedAtRef.current = '';
+      localStorage.removeItem(localUpdatedAtStorageKey);
     }
   }, []);
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
@@ -1016,7 +1024,18 @@ export default function App() {
         const hasNewerCloud = Boolean(cloudUpdatedAt && cloudUpdatedAt > localUpdatedAt);
 
         if (hasNewerCloud && (localDirtyRef.current || outboxRef.current)) {
-          if (Date.now() >= ignoreCloudUpdatesUntilRef.current) {
+          const idleMs = Date.now() - (lastLocalMutationAtRef.current || 0);
+          const shouldAutoAcceptRemote = idleMs > 2500;
+          if (shouldAutoAcceptRemote) {
+            if (outboxRef.current && navigator.onLine) {
+              await flushOutbox('pre_apply_remote');
+            } else if (localDirtyRef.current && !outboxRef.current) {
+              localDirtyRef.current = false;
+              localStorage.removeItem(localDirtyStorageKey);
+            }
+            applyCloudStateIfNewer(result, reason);
+            setCloudUpdatePending(null);
+          } else if (Date.now() >= ignoreCloudUpdatesUntilRef.current) {
             setCloudUpdatePending({ updatedAt: result.updatedAt || '', reason });
           }
         } else {
@@ -1100,12 +1119,18 @@ export default function App() {
     showToast('Atualização online detectada. Mantendo sua tela por 1 minuto.', 'info');
   };
 
-  const markLocalDirty = (updatedAt: string) => {
+  const markLocalDirty = (_updatedAt: string) => {
     if (isStockConsulta) return;
     localDirtyRef.current = true;
     localStorage.setItem(localDirtyStorageKey, '1');
-    localUpdatedAtRef.current = updatedAt;
-    localStorage.setItem(localUpdatedAtStorageKey, updatedAt);
+    lastLocalMutationAtRef.current = Date.now();
+  };
+
+  const shouldBlockMutationForCloudUpdate = () => {
+    if (isStockConsulta) return false;
+    if (!cloudUpdatePending) return false;
+    showToast('Outro dispositivo salvou mudanças. Toque em Atualizar para continuar.', 'info');
+    return true;
   };
 
   const role: UserRole = authSession?.role || 'consulta';
@@ -1151,6 +1176,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para alterar o estoque.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setItems(previous => {
         const resolved =
@@ -1169,6 +1195,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para registrar alterações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setLogs(previous => {
         const resolved =
@@ -1187,6 +1214,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para alterar configurações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setSettings(previous => {
         const resolved =
@@ -1205,6 +1233,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para alterar solicitações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setRequests(previous => {
         const resolved =
@@ -1223,6 +1252,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para importar base de veículos.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setVehicles(previous => {
         const resolved =
@@ -1238,6 +1268,7 @@ export default function App() {
   };
   const setOcrAliasesGuarded: React.Dispatch<React.SetStateAction<Record<string, string>>> = updater => {
     if (!canWriteItemsAndLogs) return;
+    if (shouldBlockMutationForCloudUpdate()) return;
     markLocalDirty(new Date().toISOString());
     setOcrAliases(updater);
   };

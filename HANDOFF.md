@@ -26,6 +26,8 @@ Ultima atualizacao: 2026-05-05
   - evitar repetir o erro antigo de manter dado local e depois sobrescrever automaticamente ao voltar a internet
 - Ajustes feitos:
   - refresh online mais rapido quando estiver na aba `Separacao` (1s)
+  - se existir atualizacao online pendente, bloqueia novas edicoes e pede para tocar em `Atualizar` (evita confusao com duas telas abertas)
+  - `updatedAt` local nao concorre mais com o `updatedAt` do cloud (dirty separado), para nao "travar" o auto-sync em outra tela
   - evitar "ping-pong" (aplicar estado do cloud e salvar de volta sem alteracao): agora o autosave so dispara quando existe alteracao local (dirty/outbox)
   - PUT /api/state agora retorna o estado mesclado, e o cliente aplica esse retorno para ficar alinhado com o canonical
   - se o token expirar (401/403), exibe aviso de sessao expirada em vez de ficar preso em local
