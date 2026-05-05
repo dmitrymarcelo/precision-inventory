@@ -19,6 +19,7 @@ export interface InventoryItem {
   status: InventoryStatus;
   alertCriticalLimit?: number;
   alertReorderLimit?: number;
+  alertRuleOverrideAt?: string;
 }
 
 export interface InventoryLog {
@@ -34,11 +35,26 @@ export interface InventoryLog {
   referenceCode?: string;
   expectedQuantityAfter?: number;
   reportedQuantityAfter?: number;
+  clearsDivergence?: boolean;
+  note?: string;
 }
+
+export type PreventiveKitItem = {
+  sku: string;
+  description: string;
+  requiredQuantity: number;
+};
+
+export type PreventiveKitDefinition = {
+  id: string;
+  name: string;
+  items: PreventiveKitItem[];
+};
 
 export interface InventorySettings {
   criticalLimit: number;
   reorderLimit: number;
+  preventiveKits?: PreventiveKitDefinition[];
 }
 
 export interface VehicleRecord {
@@ -169,6 +185,11 @@ export interface PurchaseRequest {
   approvedQuantity?: number;
   receivedQuantity?: number;
   reason: string;
+  manualBatchId?: string;
+  vehiclePlate?: string;
+  costCenter?: string;
+  vehicleDescription?: string;
+  vehicleDetails?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;

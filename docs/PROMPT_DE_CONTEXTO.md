@@ -1,15 +1,15 @@
-# Prompt de Contexto - Precision Inventory
+# Prompt de Contexto - Armazem 28
 
 Use este texto no inicio de um novo chat quando o historico estiver pesado.
 
 ```text
-Voce esta trabalhando no projeto Precision Inventory em:
+Voce esta trabalhando no projeto Armazem 28 em:
 C:\Users\dmitry.santos\Desktop\Sistema inventario
 
 Regras de seguranca:
 - Nunca mexer em pastas do Windows, boot, registro, drivers, inicializacao ou arquivos de sistema.
 - Trabalhar somente dentro do projeto e nas memorias autorizadas: HANDOFF.md, SKILLS.md, docs, Obsidian e ~/.hermes.
-- Antes de alterar codigo, ler AGENTS.md, HANDOFF.md, SKILLS.md e os arquivos que serao alterados.
+- Antes de alterar codigo, ler CODEX.md, AGENTS.md, HANDOFF.md, SKILLS.md e os arquivos que serao alterados.
 - Nao reverter mudancas do usuario ou de outra IDE sem pedido explicito.
 
 Tecnologias:
@@ -24,6 +24,17 @@ Tecnologias:
 - Banco D1: precision-inventory-db.
 - GitHub: https://github.com/dmitrymarcelo/precision-inventory
 - Producao: https://precision-inventory.pages.dev/
+
+Ferramentas de contexto instaladas:
+- Caveman: skill principal do Codex em C:\Users\dmitry.santos\.agents\skills\caveman\SKILL.md.
+- Karpathy Guidelines: skill global do Codex em C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\SKILL.md.
+- Protocolo obrigatorio do projeto: CODEX.md. Consultar primeiro antes de codar.
+- Superpowers: skills em C:\Users\dmitry.santos\.agents\skills\superpowers, clone em C:\Users\dmitry.santos\.codex\superpowers, referencia em .codex-tools\superpowers. Usar como metodologia complementar para brainstorming, planos, TDD, debug, revisao e verificacao final.
+- Graphify: C:\Users\dmitry.santos\.local\bin\graphify.exe.
+- Grafo local: graphify-out/GRAPH_REPORT.md, graphify-out/graph.json e graphify-out/graph.html.
+- Antes de perguntas grandes de arquitetura, ler graphify-out/GRAPH_REPORT.md.
+- Depois de alterar codigo, rodar:
+  & 'C:\Users\dmitry.santos\.local\bin\graphify.exe' update .
 
 Comandos confiaveis nesta maquina:
 - TypeScript:
@@ -54,10 +65,12 @@ Regras de negocio que nao podem quebrar:
 - Em Atualizar Estoque, quantidade digitada = saldo final contado. Nao e entrada nem saida.
 - Entrada real de material acontece somente pelo fluxo Recebimento.
 - Compra, cotacao, aprovacao ou marcar como comprada nunca altera saldo.
+- O botao `Ativo` pede confirmacao antes de marcar ou desmarcar um SKU.
 - Alertas sao por item; o Painel nao deve virar regra unica centralizada.
 - Localizacao importada vem da coluna K, campo locacao, da planilha principal.
 - Solicitacao de pecas gira em torno de placa e centro de custo.
 - Nao adicionar item sem saldo na solicitacao; bloquear visualmente.
+- Bateria por placa: se a mesma placa ja recebeu bateria em solicitacao Atendida ainda dentro da validade, abrir popup de confirmacao antes de incluir outra bateria; bateria geral vale 12 meses e SKU 12047 vale 6 meses; regra em src/batteryWarrantyRules.ts.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
 - Pedido entregue/atendido vira consulta: nao editar nem excluir.
 - Mobile e prioridade operacional.
@@ -78,6 +91,9 @@ Compras Automaticas:
 - VW deve aparecer como SAVEIRO/GOL.
 - CHEVROLET deve aparecer como S-10.
 - OLEO permanece como tipo operacional de compra quando salvo no item.
+- Pedido manual de compra usa placa e centro de custo editaveis; placa deve buscar a base de veiculos e SKU deve sugerir itens automaticamente ao digitar.
+- Pedido manual pode ser criado com varios SKUs; as linhas do mesmo pedido ficam vinculadas por `manualBatchId`.
+- Pedido manual em `Manual` ou `Em analise` pode ser editado/removido depois de criado.
 - Aprovacao de item/pacote exige no minimo 3 cotacoes recebidas.
 - Cotacao completa exige fornecedor e valor unitario.
 - Pontuacao sugerida: preco/custo total 45%, tecnica 35%, prazo 20%.
@@ -94,18 +110,23 @@ Regras de importacao de PDF em cotacoes:
 - Permitir vincular manualmente quando o PDF nao reconhecer.
 - Ao salvar, replicar a cotacao para outros itens reconhecidos, mas sem escolher vencedor/aprovar automaticamente nesses itens.
 - Cada cotacao tem botao pequeno Imprimir mapa para layout de impressao.
+- Ao imprimir cotacao com item vinculado, mostrar como um unico orcamento com varias linhas de item.
+- Se o item vinculado ja tiver cotacoes no proprio SKU, o mapa deve puxar quantidade, valor unitario e total dessa cotacao; nao deixar a linha vinculada com `-`.
+- Em mapas impressos, revisar codificacao para evitar texto quebrado; usar charset explicito e rotulos seguros quando necessario.
 
 Memorias do projeto:
 - AGENTS.md: regras obrigatorias para agentes.
+- CODEX.md: protocolo obrigatorio do Codex, com pensar antes, simplicidade, mudancas cirurgicas e verificacao.
 - HANDOFF.md: estado atual, validacoes e deploys.
 - SKILLS.md: playbook do projeto.
 - docs/PROMPT_DE_CONTEXTO.md: contexto curto para novo chat.
-- Obsidian: C:\Users\dmitry.santos\Downloads\Lembranças\Precision Inventory
+- Obsidian: C:\Users\dmitry.santos\Downloads\Lembranças\Armazem 28
 - Hermes: C:\Users\dmitry.santos\.hermes\MEMORY.md, USER.md e skills.
+- Graphify/arquitetura: graphify-out/GRAPH_REPORT.md e Obsidian 09 - Graphify e Mapa do Codigo.
 
 Fluxo de trabalho:
 - Se a tarefa for grande ou o contexto estiver pesado, sugerir abrir novo chat e usar este prompt.
-- Para mudancas de codigo: alterar pouco por vez, validar com tsc e vite build.
+- Para mudancas de codigo: consultar CODEX.md primeiro, alterar pouco por vez, validar com tsc e vite build.
 - Para mudancas de app: publicar no Cloudflare Pages e validar / e /api/state.
 - Atualizar HANDOFF.md e memoria relevante ao concluir.
 - Sincronizar GitHub quando o usuario pedir ou quando a etapa importante precisar ficar registrada.

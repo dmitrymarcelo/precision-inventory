@@ -39,9 +39,12 @@ export async function saveCloudState(state: CloudInventoryState, token?: string)
     body: JSON.stringify(state)
   });
 
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('AUTH');
+  }
   if (!response.ok) {
-    throw new Error('Não foi possível salvar no Cloudflare');
+    throw new Error(`Não foi possível salvar no Cloudflare (HTTP ${response.status})`);
   }
 
-  return response.json() as Promise<{ ok: boolean; updatedAt: string }>;
+  return response.json() as Promise<{ ok: boolean; updatedAt: string; state?: CloudInventoryState }>;
 }

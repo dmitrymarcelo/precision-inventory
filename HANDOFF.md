@@ -1,6 +1,321 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-02
+Ultima atualizacao: 2026-05-05
+
+## Kit Preventivas: editar/remover itens (admin) em 2026-05-05
+
+- Pedido do usuario:
+  - em `Kit Preventivas`, adicionar botoes para `Editar` e `Remover` itens do kit
+  - somente `Admin`
+- Implementado:
+  - a tela `Kit Preventivas` permite editar SKU/descricao/quantidade por kit e remover itens (apenas admin)
+  - a edicao cria um catalogo customizado em `settings.preventiveKits` e passa a usar esse catalogo como fonte de verdade
+  - `Solicitacao de pecas` (adicionar kit no pedido) passou a respeitar o catalogo customizado do `settings`
+- Arquivos:
+  - `src/components/PreventiveKits.tsx`
+  - `src/components/RequestManager.tsx`
+  - `src/preventiveKitCatalog.ts`
+  - `src/types.ts`
+  - `src/App.tsx`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BLj0w3P0.js`
+
+## Sync: botao Atualizar e merge robusto de solicitacoes em 2026-05-05
+
+- Problema reportado:
+  - botao do modo manual nao aparecia (porque producao estava em bundle antigo)
+  - separacao concluida no celular nao refletia no computador mesmo apos atualizar
+- Ajustes feitos:
+  - UI: botao `Atualizar` (sync do online) agora fica sempre disponivel no topo para `admin`/`operacao`
+  - UI: ao clicar em `Atualizar`, se existir alteracao local pendente, o sistema pede confirmacao antes de sobrescrever
+  - API: merge de `requests` agora preserva avancos de status e quantidades (evita perder `Atendida/Estornada` por conflito de `updatedAt` entre aparelhos)
+- Arquivos:
+  - `src/components/Layout.tsx`
+  - `src/App.tsx`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-vgOrvBzS.js`
+
+## Sync: espelho quase-instantaneo e sem sobrescrever offline em 2026-05-05
+
+- Pedido do usuario:
+  - o que for feito no celular deve refletir no web praticamente na hora
+  - evitar repetir o erro antigo de manter dado local e depois sobrescrever automaticamente ao voltar a internet
+- Ajustes feitos:
+  - refresh online mais rapido quando estiver na aba `Separacao` (1s)
+  - se existir atualizacao online pendente, bloqueia novas edicoes e pede para tocar em `Atualizar` (evita confusao com duas telas abertas)
+  - `updatedAt` local nao concorre mais com o `updatedAt` do cloud (dirty separado), para nao "travar" o auto-sync em outra tela
+  - evitar "ping-pong" (aplicar estado do cloud e salvar de volta sem alteracao): agora o autosave so dispara quando existe alteracao local (dirty/outbox)
+  - PUT /api/state agora retorna o estado mesclado, e o cliente aplica esse retorno para ficar alinhado com o canonical
+  - se o token expirar (401/403), exibe aviso de sessao expirada em vez de ficar preso em local
+- Arquivos:
+  - `src/App.tsx`
+  - `src/cloudState.ts`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BoKsXDxd.js`
+
+## Separacao: modo manual admin (Itens para separar) em 2026-05-04
+
+- Pedido do usuario:
+  - em `Separacao` > `Solicitacao ativa`, voltar com um botao `Itens para separar` para adicionar (+1) ou retirar (-1) item manualmente
+  - somente administradores
+- Implementado:
+  - `src/components/MaterialSeparation.tsx` ganhou `Modo manual de separacao` com toggle `Itens para separar` (visivel apenas para `admin`)
+  - quando o modo manual esta ligado, aparecem botoes `+` e `-` por item para ajustar `separatedQuantity`
+  - solicitacoes `Atendida`/`Estornada` continuam travadas (consulta)
+- Deploy:
+  - `npm run deploy` falhou nesta maquina por policy (bloqueio do `npm.ps1`)
+  - deploy feito via `npm.cmd run build` + `npx.cmd wrangler pages deploy dist --project-name precision-inventory`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+
+## Popup de confirmacao para bateria e validade de moto em 2026-05-04
+
+- Ajuste pedido pelo usuario:
+  - a mensagem anterior era pequena
+  - agora deve abrir popup com `OK` confirmando a inclusao do item
+  - `12047 - BATERIA 5A 12V`, bateria de moto, deve valer 6 meses
+- Implementado:
+  - `src/batteryWarrantyRules.ts` agora calcula validade por meses
+  - bateria geral vale 12 meses
+  - SKU `12047` vale 6 meses
+  - `src/components/RequestManager.tsx` agora abre popup de confirmacao antes de incluir bateria quando a placa ainda tem bateria dentro da validade
+- Comportamento:
+  - `OK` confirma a inclusao mesmo com bateria ainda valida
+  - `Cancelar` aborta a inclusao da bateria
+  - o aviso fixo do formulario fala em `dentro da validade`, nao mais `dentro de 1 ano`
+  - funciona para busca, leitor de etiqueta, seletor por modelo e kit
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-Dwlcyw7V.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://d5fd3961.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-Dwlcyw7V.js`
+
+## Aviso automatico de bateria dentro da validade em 2026-05-04
+
+- Pedido do usuario:
+  - quando um veiculo pegar uma bateria, considerar a bateria valida por prazo operacional
+  - se a mesma placa solicitar outra bateria antes do vencimento, mostrar aviso automatico
+- Implementado:
+  - nova regra em `src/batteryWarrantyRules.ts`
+  - integracao no formulario `Solicitacao de pecas` em `src/components/RequestManager.tsx`
+- Regra aplicada:
+  - compara por placa normalizada
+  - considera apenas solicitacoes `Atendida`
+  - usa `fulfilledAt` como data da bateria; fallback para `updatedAt`/`createdAt` em registros antigos
+  - validade operacional padrao = 12 meses
+  - SKU `12047 - BATERIA 5A 12V` (moto) = 6 meses
+  - ignora solicitacoes excluidas, estornadas e o proprio pedido em edicao
+  - identifica bateria por descricao/categoria contendo `BATERIA`
+  - evita falso positivo em acessorios como terminal/cabo/suporte/tampa/carregador e bateria pequena/litio tipo `CR2032`
+- UX:
+  - popup confirmavel antes da inclusao quando existir bateria ainda valida para a placa
+  - `OK` inclui o item; `Cancelar` aborta a inclusao
+  - alerta aparece tambem se a bateria foi adicionada antes de informar a placa e a placa for preenchida depois
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-CJytAlaw.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://803c495e.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-CJytAlaw.js`
+
+## Superpowers instalado no Codex em 2026-05-04
+
+- Pedido do usuario:
+  - instalar no projeto `https://github.com/obra/superpowers.git`
+- Instalacao feita:
+  - clone principal em `C:\Users\dmitry.santos\.codex\superpowers`
+  - junction de descoberta em `C:\Users\dmitry.santos\.agents\skills\superpowers`
+  - clone de referencia local em `.codex-tools/superpowers`
+- Skills disponiveis apos reiniciar o Codex:
+  - `brainstorming`
+  - `dispatching-parallel-agents`
+  - `executing-plans`
+  - `finishing-a-development-branch`
+  - `receiving-code-review`
+  - `requesting-code-review`
+  - `subagent-driven-development`
+  - `systematic-debugging`
+  - `test-driven-development`
+  - `using-git-worktrees`
+  - `using-superpowers`
+  - `verification-before-completion`
+  - `writing-plans`
+  - `writing-skills`
+- Regra registrada:
+  - `CODEX.md` continua sendo a primeira consulta obrigatoria
+  - Superpowers entra como metodologia complementar quando a tarefa pedir brainstorming, plano, TDD, debug, revisao, execucao ou verificacao final
+  - regras de negocio do inventario continuam acima das skills externas
+- Validado:
+  - todas as 14 skills passaram no `quick_validate.py` com `PYTHONUTF8=1`
+- Observacao:
+  - e necessario reiniciar o Codex para a descoberta nativa listar as novas skills nesta interface
+- Nao houve alteracao funcional no app e nao houve deploy.
+
+## Kit preventiva MOTO atualizado para filtro 18002 em 2026-05-04
+
+- Pedido do usuario:
+  - trocar o filtro antigo do kit `MOTO` pelo SKU `18002`
+  - manter o SKU `17902` como oleo do kit
+- Kit `MOTO` agora fica com:
+  - `18002` - `FILTRO COMBUSTIVEL GI80 HONDA NXR BROS`
+  - `17902` - `OLEO 20W50 MOTO - LITRO`
+- Arquivo alterado:
+  - `src/preventiveKitCatalog.ts`
+- Impacto:
+  - a tela `Kit Preventivas` passa a calcular MOTO com `18002`
+  - o seletor de kits em `Solicitacao de pecas` usa o mesmo catalogo e tambem passa a puxar `18002`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-sV0C0iw-.js`
+  - `/assets/index-BJ7-PtxX.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://801cf3a8.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-sV0C0iw-.js`
+
+## Protocolo Karpathy integrado ao Codex em 2026-05-04
+
+- Repositorio clonado para referencia local:
+  - `.codex-tools/andrej-karpathy-skills`
+- Observacao:
+  - `gh` nao estava instalado nesta maquina, entao foi usado `git clone https://github.com/forrestchang/andrej-karpathy-skills.git`
+  - `.codex-tools/` ja esta ignorado pelo Git do projeto
+- Criado `CODEX.md` no projeto como protocolo obrigatorio de primeira consulta.
+- `AGENTS.md` passou a exigir leitura de `CODEX.md` antes de `HANDOFF.md` e `SKILLS.md`.
+- Criada skill global do Codex:
+  - `C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\SKILL.md`
+  - referencias originais copiadas para `references/protocol.md` e `references/examples.md`
+- `SKILLS.md` ganhou a `Skill 17 - Protocolo Karpathy para Codex`.
+- Validado:
+  - skill validada com `quick_validate.py` via `uv run --with pyyaml`
+- Nao houve alteracao funcional no app e nao houve deploy.
+
+## Divergencias como bloqueio operacional + inventario ciclico (5 por dia) em 2026-05-04
+
+- `Admin` e `Operacao` passam a ser bloqueados por divergencias abertas:
+  - ao abrir o sistema, se existir divergencia pendente, aparece um popup obrigatorio
+  - o popup continua voltando ate que nao exista nenhuma pendencia
+  - a navegacao para outras abas fica bloqueada enquanto existir divergencia
+  - ao entrar em `Estoque` / `Inventario Operacional`, aparece um aviso fixo com atalho para abrir o proximo SKU com divergencia
+- `Inventario Operacional` ganhou `Inventario ciclico`:
+  - sorteia 5 itens por dia usando seed por data (mesmo dia = mesma lista)
+  - pondera o sorteio pela Curva ABC (Classe A tem mais chance)
+  - mostra os 5 itens do dia e permite abrir o SKU com 1 toque
+- Arquivos alterados:
+  - `src/App.tsx`
+  - `src/components/InventoryOperation.tsx`
+  - `src/divergenceRules.ts`
+  - `src/components/Layout.tsx`
+- Ajuste de permissao:
+  - `Operacao` agora tambem enxerga a aba `Inventario Operacional` e pode fazer `Ajuste de contagem` para encerrar divergencias
+- Regra de alertas por item (Admin):
+  - itens com politica automatica (Curva ABC/adaptativa) voltam a permitir ajuste manual, mas por 90 dias a regra manual tem prioridade
+  - depois de 90 dias, a politica automatica volta a ser usada
+  - edicao manual da regra de alertas foi restrita ao usuario `Admin`
+- Validado localmente:
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou
+  - `node .\node_modules\vite\bin\vite.js build` passou
+  - `graphify update .` passou
+
+## Endurecimento de divergencias sem mexer em Compras/Pagamentos em 2026-05-02
+
+- Foi criado `src/divergenceRules.ts` como regra compartilhada para divergencia em aberto.
+- Uma divergencia fica aberta ate existir um log posterior de `ajuste` para o mesmo SKU, tratado como recontagem administrativa.
+- `Inventario Operacional` passou a mostrar divergencias abertas de qualquer dia, nao apenas divergencias do dia atual.
+- `Buscar e Atualizar` passou a destacar SKU com divergencia aberta:
+  - ajuste de contagem pede confirmacao e encerra a pendencia como recontagem
+  - recebimento avisa que nao encerra divergencia
+- `Solicitacao de pecas` passou a bloquear SKU com divergencia aberta:
+  - busca direta
+  - leitor de etiqueta
+  - selecao por tipo/modelo
+  - kits preventivos
+  - validacao final ao salvar
+- `Solicitacao de pecas` tambem valida no salvamento:
+  - item precisa existir
+  - item precisa ter saldo
+  - quantidade solicitada nao pode passar do saldo atual
+  - item com divergencia aberta nao pode seguir na solicitacao
+- `Separacao de material` foi reforcada:
+  - divergencia exige motivo curto antes de registrar
+  - divergencia fica visivel no pedido e no item
+  - baixa final com divergencia exige usuario admin
+  - se a baixa for concluida em outro aparelho, o sistema reconstroi o saldo real a partir dos logs de divergencia da solicitacao
+  - operador nao admin fica bloqueado ao tentar separar SKU com divergencia aberta de outra solicitacao
+- `Historico` passou a mostrar uma secao propria de divergencias registradas por solicitacao, com sistema/real/diferenca/motivo.
+- `Compras` e pagamentos nao foram alterados nesta etapa, conforme pedido do usuario.
+- Validado localmente:
+  - `npm run lint` nao rodou porque `npm` nao esta disponivel nesta sessao
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou usando Node portatil
+  - `node .\node_modules\vite\bin\vite.js build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-r0ptwBYy.js`
+  - `/assets/index-Cx-z1rj1.css`
+  - chunks PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - primeiro preview: `https://8c2b1b49.precision-inventory.pages.dev`
+  - producao/main: `https://87ddfc3f.precision-inventory.pages.dev`
+  - producao final: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-r0ptwBYy.js`
+- Observacao:
+  - Vite manteve o aviso conhecido de chunks grandes
+  - `graphify update .` passou e atualizou `graphify-out/`
+
+## Instalacao Caveman e Graphify em 2026-05-02
+
+- `caveman` foi instalado como skill global/copied para Codex em:
+  - `C:\Users\dmitry.santos\.agents\skills\caveman\SKILL.md`
+- A instalacao foi feita em modo minimo:
+  - sem hooks automaticos do caveman
+  - sem MCP automatico do caveman
+  - sem alteracao de Windows, inicializacao ou sistema
+- `uv` portatil foi baixado para:
+  - `C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\uv-0.11.8\uv.exe`
+- `graphifyy` foi instalado com `uv tool install graphifyy --python 3.12 --managed-python`.
+- CLI do Graphify:
+  - `C:\Users\dmitry.santos\.local\bin\graphify.exe`
+- Integracao Graphify/Codex:
+  - `AGENTS.md` recebeu a secao `graphify`
+  - `.codex/hooks.json` foi criado com hook usando caminho absoluto do `graphify.exe`
+- Memoria procedural Hermes:
+  - `C:\Users\dmitry.santos\.hermes\skills\graphify\SKILL.md`
+  - `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-graphify\SKILL.md`
+- O grafo inicial foi gerado localmente:
+  - `graphify-out/GRAPH_REPORT.md`
+  - `graphify-out/graph.json`
+  - `graphify-out/graph.html`
+  - resultado inicial: 402 nos, 900 arestas, 12 comunidades
+  - custo de API informado pelo Graphify: 0 input / 0 output
+- Foi criado `.graphifyignore` para evitar varrer cache, build, instrucoes de agente e o proprio `graphify-out`.
+- Observacao:
+  - esta etapa foi de ferramentas/memoria do projeto; nao houve mudanca funcional no app e nao houve deploy.
 
 ## Resumo executivo
 
@@ -15,6 +330,78 @@ O sistema ja tem os modulos principais funcionando:
 - Impressao de etiquetas
 - Compras Automaticas
 - Persistencia online via Cloudflare D1
+
+## Pedido manual de Compras com varios SKUs em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora permite montar uma lista com varios SKUs antes de salvar.
+- Cada SKU adicionado ao pedido manual pode ter a quantidade editada ou ser removido ainda dentro do formulario.
+- Ao salvar varios SKUs juntos, as linhas ficam ligadas por `manualBatchId`, preservando o pedido manual como um lote operacional.
+- Pedidos manuais em status `Manual` ou `Em analise` ganharam acoes:
+  - `Editar`: reabre o lote com placa, centro de custo, motivo e todos os SKUs vinculados.
+  - `Remover`: remove o lote manual inteiro, com confirmacao no navegador.
+- Ao editar um pedido manual, o sistema permite acrescentar novos SKUs, alterar quantidades e remover linhas do lote.
+- O sistema bloqueia salvar SKU que ja exista em uma compra ativa persistida, exceto quando o SKU pertence ao proprio lote em edicao.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `npm run lint` foi tentado, mas o npm desta maquina retornou `Acesso negado` ao chamar o shim de `tsc`; o mesmo TypeScript passou pelo comando portatil direto
+- Build gerou:
+  - `/assets/index-9UhVHBkA.js`
+  - `/assets/index-CQVUaZT9.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://045ce448.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
+## Pedido manual de Compras com placa/centro em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora exige e salva:
+  - placa
+  - centro de custo
+  - modelo/descricao do veiculo
+  - SKU
+  - quantidade
+  - motivo
+- A placa e o centro de custo continuam editaveis.
+- Ao digitar a placa, o formulario consulta a base de veiculos e preenche centro de custo/modelo quando encontra correspondencia.
+- Ao digitar SKU, nome, tipo ou localizacao, o formulario mostra sugestoes de itens automaticamente.
+- O card do pedido manual passa a exibir placa e centro de custo.
+- A busca da aba `Compras` tambem considera placa, centro de custo e modelo do pedido manual.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DARTOjoM.js`
+  - `/assets/index-BZBUqCex.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://c66545a2.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
+## Correcao de Compras vinculadas em 2026-05-02
+
+- Corrigido o print do mapa de cotacao quando um item e vinculado manualmente a outro SKU ja cotado.
+- Agora, se o item vinculado ja tem cotacoes salvas no proprio SKU, a linha do mapa reaproveita:
+  - quantidade sugerida do SKU vinculado
+  - valor unitario da cotacao correspondente/selecionada
+  - total calculado da linha
+- O agrupamento continua como um unico orcamento com varias linhas de item.
+- O mapa impresso passou a usar rotulos seguros e `<meta charset="utf-8">` para evitar texto quebrado como ocorria em `Mapa de cotacao`, `Criterio` e `Aprovacao`.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DSaH-M0u.js`
+  - `/assets/index-BH_JqPai.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://99639141.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
 
 ## Estado atual por modulo
 
@@ -162,15 +549,45 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Painel:
+  - o card grande `Nivel global de estoque (SKUs)` continua removido
+  - os numeros `Total` e `Ativos` voltaram em um bloco compacto no topo
+- Compras:
+  - impressao de cotacao vinculada agora monta `Itens deste orcamento`
+  - o mapa inclui o item atual e os itens vinculados como linhas de um unico orcamento
+  - deixou de depender da tabela de `Item detectado` como representacao principal do print
+- Validado nesta correcao:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Deploy publicado nesta correcao:
+  - preview: `https://f3032d3c.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+- O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
+  - aplicado no Estoque
+  - aplicado no detalhe de `Atualizar Estoque`
+  - objetivo: evitar toque acidental no celular
+- Esta etapa foi validada com:
+  - `tsc --noEmit`
+  - `vite build`
+- Deploy publicado em:
+  - preview: `https://5c24af63.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/`
+- Branch GitHub enviada:
+  - `codex/active-button-confirmation`
+- O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
+  - aplicado no Estoque
+  - aplicado no detalhe de `Atualizar Estoque`
+  - objetivo: evitar toque acidental no celular
 - Barra superior simplificada novamente:
-  - removido texto visual `Precision Inventory` do canto esquerdo, mantendo apenas o icone
+  - removido texto visual `Armazem 28` do canto esquerdo, mantendo apenas o icone
   - removidos `Admin` e `Sair` da barra
   - foto do usuario virou menu de conta
   - menu da foto mostra permissao, status do sistema, `Usuarios` para admin e `Sair`
   - aba `Usuarios` saiu da navegacao principal e fica acessivel pela foto
 - Proposta de `Compras Automaticas` ficou pronta para implementacao futura:
   - documento tecnico criado em `docs/COMPRAS_AUTOMATICAS.md`
-  - nota Obsidian `Precision Inventory/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
+  - nota Obsidian `Armazem 28/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
   - regra reforcada: compra aprovada/comprada nao altera estoque; entrada continua so por `Recebimento`
 - Validado localmente:
   - `tsc --noEmit` passou usando Node portatil
@@ -186,7 +603,7 @@ O sistema ja tem os modulos principais funcionando:
   - removido dropdown duplicado de alertas no `Layout`
   - `Layout` deixou de receber `items`, `settings` e `onSelectSku` apenas para alimentar o sino
 - Registrada proposta de modulo futuro `Compras Automaticas`:
-  - nota criada no Obsidian: `Precision Inventory/07 - Proposta Compras Automaticas`
+  - nota criada no Obsidian: `Armazem 28/07 - Proposta Compras Automaticas`
   - proposta usa alertas criticos, reposicao, Curva ABC, saidas recentes e pedidos manuais
   - regra de seguranca: aprovar compra nao aumenta estoque; entrada real continua somente pelo fluxo `Recebimento`
 - Validado localmente:
@@ -200,8 +617,8 @@ O sistema ja tem os modulos principais funcionando:
   - asset principal publicado: `assets/index-OfDveYJZ.js`
 - Configurado Obsidian como memoria ampla do projeto:
   - cofre localizado em `C:\Users\dmitry.santos\Downloads\Lembranças`
-  - criada pasta `Precision Inventory` dentro do cofre
-  - criado mapa principal `Precision Inventory/00 - Mapa do Projeto`
+  - criada pasta `Armazem 28` dentro do cofre
+  - criado mapa principal `Armazem 28/00 - Mapa do Projeto`
   - criadas notas para regras de negocio, modulos/fluxos, deploy/GitHub, Curva ABC, decisoes recentes, riscos/cuidados e diario de handoff
   - criados templates de `Registro de Decisao` e `Handoff Rapido`
   - nota `Bem-vindo.md` do cofre passou a apontar para o mapa do projeto
@@ -1649,7 +2066,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - A aba `Historico` ganhou o botao `Imprimir comprovante` no detalhe da solicitacao selecionada
 - A impressao abre uma janela propria, sem menus/filtros da tela, para gerar um comprovante limpo em A4
 - O layout impresso inclui:
-  - cabecalho com `Precision Inventory`, codigo e status da solicitacao
+  - cabecalho com `Armazem 28`, codigo e status da solicitacao
   - placa, centro de custo, datas, progresso e fechamento
   - tabela de itens solicitados e separados
   - auditoria da solicitacao
@@ -1777,7 +2194,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Cotacoes profissionais em Compras em 2026-05-02
@@ -1830,8 +2247,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Prompt de Contexto para novo chat em 2026-05-02
@@ -1848,8 +2265,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - regras de importacao de PDF em cotacoes
   - memorias que devem ser lidas antes de trabalhar
 - Obsidian atualizado:
-  - `Precision Inventory/08 - Prompt de Contexto`
-  - `Precision Inventory/00 - Mapa do Projeto`
+  - `Armazem 28/08 - Prompt de Contexto`
+  - `Armazem 28/00 - Mapa do Projeto`
 - Hermes atualizado:
   - `C:\Users\dmitry.santos\.hermes\MEMORY.md`
   - `C:\Users\dmitry.santos\.hermes\USER.md`
@@ -1916,6 +2333,6 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`

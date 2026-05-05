@@ -79,6 +79,9 @@ Regras:
 - permitir selecionar manualmente um item quando o PDF nao reconhecer
 - ao salvar, replicar a cotacao para os outros itens reconhecidos, sem escolher vencedor automaticamente nesses outros SKUs
 - cada cotacao deve ter botao pequeno para imprimir o mapa de cotacao
+- ao imprimir uma cotacao com itens vinculados, tratar como um unico orcamento com varias linhas de item
+- quando um item vinculado ja tem cotacoes salvas no proprio SKU, o mapa impresso deve reaproveitar quantidade, valor unitario e total dessa cotacao
+- textos do mapa impresso devem sair sem mojibake; se houver risco de codificacao, preferir rotulos ASCII ou HTML com charset explicito
 
 Pontuacao sugerida:
 
@@ -127,10 +130,23 @@ Cards ordenados por:
 
 Campos minimos:
 
-- SKU
+- placa
+- centro de custo
+- um ou varios SKUs
 - quantidade solicitada
 - motivo
 - observacao
+
+Regras do formulario:
+
+- placa e centro de custo ficam editaveis
+- ao digitar a placa, consultar a base de veiculos e preencher centro de custo automaticamente quando houver correspondencia
+- ao digitar SKU, descricao, tipo ou localizacao, mostrar sugestoes de itens automaticamente
+- permitir adicionar varios SKUs antes de criar o pedido manual
+- permitir editar quantidade e remover SKU da lista antes de salvar
+- quando varios SKUs forem salvos juntos, manter as linhas vinculadas pelo mesmo `manualBatchId`
+- pedidos manuais em status `Manual` ou `Em analise` podem ser editados ou removidos depois de criados
+- o card do pedido manual deve exibir placa e centro de custo quando existirem
 
 ### Card do item
 

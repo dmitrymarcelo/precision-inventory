@@ -21,7 +21,7 @@ export async function onRequestGet({ env }) {
   }, { headers: jsonHeaders });
 }
 
-export async function onRequestPut({ request, env }) {
+export async function onRequestPut({ request, env, context }) {
   await ensureSchema(env.DB);
 
   const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
@@ -45,8 +45,9 @@ export async function onRequestPut({ request, env }) {
     .bind(STATE_KEY)
     .first();
 
+  const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
   const state = existingRow
-    ? mergeStates(normalizeState(JSON.parse(existingRow.value)), incomingState)
+    ? mergeStates(existingState, incomingState)
     : incomingState;
 
   await env.DB
@@ -60,7 +61,17 @@ export async function onRequestPut({ request, env }) {
     .bind(STATE_KEY, JSON.stringify(state), updatedAt)
     .run();
 
-  return Response.json({ ok: true, updatedAt }, { headers: jsonHeaders });
+  const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+  if (newDivergenceLogs.length > 0) {
+    const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+    if (context?.waitUntil) {
+      context.waitUntil(task);
+    } else {
+      void task;
+    }
+  }
+
+  return Response.json({ ok: true, updatedAt, state }, { headers: jsonHeaders });
 }
 
 export function onRequestOptions() {
@@ -170,9 +181,122 @@ function mergeRequestsById(existingRequests, incomingRequests) {
     if (!incoming || !incoming.id) continue;
     const id = String(incoming.id);
     const current = merged.get(id);
-    merged.set(id, chooseNewerRecord(current, incoming, 'updatedAt'));
+    merged.set(id, current ? mergeMaterialRequest(current, incoming) : incoming);
   }
   return Array.from(merged.values());
+}
+
+function mergeMaterialRequest(a, b) {
+  const newer = chooseNewerRecord(a, b, 'updatedAt');
+  const older = newer === a ? b : a;
+
+  const merged = { ...older, ...newer };
+
+  merged.items = mergeRequestItems(older?.items || [], newer?.items || []);
+  merged.auditTrail = mergeAuditTrail(older?.auditTrail || [], newer?.auditTrail || []);
+
+  const status = mergeRequestStatus(a, b);
+  merged.status = status;
+
+  if (status === 'Atendida') {
+    merged.fulfilledAt = merged.fulfilledAt || a?.fulfilledAt || b?.fulfilledAt;
+    merged.reversedAt = undefined;
+  }
+
+  if (status === 'Estornada') {
+    merged.reversedAt = merged.reversedAt || a?.reversedAt || b?.reversedAt;
+  }
+
+  const updatedAtTime = Math.max(parseUpdatedAt(a?.updatedAt), parseUpdatedAt(b?.updatedAt));
+  merged.updatedAt = updatedAtTime > 0 ? new Date(updatedAtTime).toISOString() : merged.updatedAt;
+
+  if (a?.deletedAt || b?.deletedAt) {
+    const deletedAtTime = Math.max(parseUpdatedAt(a?.deletedAt), parseUpdatedAt(b?.deletedAt));
+    merged.deletedAt = deletedAtTime > 0 ? new Date(deletedAtTime).toISOString() : a?.deletedAt || b?.deletedAt;
+  }
+
+  return merged;
+}
+
+function mergeRequestStatus(a, b) {
+  const statusA = typeof a?.status === 'string' ? a.status : '';
+  const statusB = typeof b?.status === 'string' ? b.status : '';
+
+  if (a?.reversedAt || b?.reversedAt) return 'Estornada';
+  if (a?.fulfilledAt || b?.fulfilledAt) return 'Atendida';
+
+  const rankA = requestStatusRank(statusA);
+  const rankB = requestStatusRank(statusB);
+  return rankA >= rankB ? statusA || statusB || 'Aberta' : statusB || statusA || 'Aberta';
+}
+
+function requestStatusRank(value) {
+  switch (value) {
+    case 'Estornada':
+      return 5;
+    case 'Atendida':
+      return 4;
+    case 'Separada':
+      return 3;
+    case 'Em separação':
+      return 2;
+    case 'Aberta':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function mergeRequestItems(existingItems, incomingItems) {
+  const merged = new Map();
+
+  for (const item of existingItems) {
+    if (item && item.sku) merged.set(String(item.sku), item);
+  }
+
+  for (const incoming of incomingItems) {
+    if (!incoming || !incoming.sku) continue;
+    const sku = String(incoming.sku);
+    const current = merged.get(sku);
+
+    if (!current) {
+      merged.set(sku, incoming);
+      continue;
+    }
+
+    const requestedQuantity = Math.max(Number(current.requestedQuantity) || 0, Number(incoming.requestedQuantity) || 0);
+    const separatedQuantity = Math.max(Number(current.separatedQuantity) || 0, Number(incoming.separatedQuantity) || 0);
+
+    const base = chooseNewerRecord(current, incoming, 'updatedAt');
+    merged.set(sku, {
+      ...current,
+      ...incoming,
+      ...base,
+      requestedQuantity,
+      separatedQuantity: Math.min(separatedQuantity, requestedQuantity)
+    });
+  }
+
+  return Array.from(merged.values());
+}
+
+function mergeAuditTrail(existingEntries, incomingEntries) {
+  if (!Array.isArray(existingEntries) && !Array.isArray(incomingEntries)) return undefined;
+  const merged = new Map();
+  const all = []
+    .concat(Array.isArray(existingEntries) ? existingEntries : [])
+    .concat(Array.isArray(incomingEntries) ? incomingEntries : []);
+
+  for (const entry of all) {
+    if (!entry) continue;
+    const key = entry.id ? String(entry.id) : '';
+    if (!key) continue;
+    if (!merged.has(key)) merged.set(key, entry);
+  }
+
+  const result = Array.from(merged.values());
+  result.sort((left, right) => parseUpdatedAt(left?.at) - parseUpdatedAt(right?.at));
+  return result;
 }
 
 function mergeVehiclesById(existingVehicles, incomingVehicles) {
@@ -242,4 +366,66 @@ function parseUpdatedAt(value) {
   if (!value || typeof value !== 'string') return 0;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function collectNewDivergenceLogs(existingState, mergedState) {
+  const existingIds = new Set(
+    (existingState?.logs || []).map(log => (log && log.id ? String(log.id) : '')).filter(Boolean)
+  );
+
+  return (mergedState?.logs || []).filter(log => {
+    if (!log || !log.id) return false;
+    if (log.source !== 'divergencia') return false;
+    return !existingIds.has(String(log.id));
+  });
+}
+
+async function sendDivergenceNotifications(logs, updatedAt, env) {
+  const urlList = String(env?.DIVERGENCE_WEBHOOK_URLS || env?.DIVERGENCE_WEBHOOK_URL || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  if (urlList.length === 0) return;
+
+  const payload = JSON.stringify({
+    event: 'divergence_created',
+    updatedAt,
+    divergences: logs.slice(0, 20).map(log => ({
+      id: log.id,
+      sku: log.sku,
+      itemName: log.itemName,
+      location: log.location,
+      delta: log.delta,
+      expectedQuantityAfter: log.expectedQuantityAfter,
+      reportedQuantityAfter: log.reportedQuantityAfter ?? log.quantityAfter,
+      referenceCode: log.referenceCode,
+      date: log.date,
+      note: log.note
+    }))
+  });
+
+  await Promise.allSettled(
+    urlList.map(url => postWebhook(url, payload, env))
+  );
+}
+
+async function postWebhook(url, payload, env) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        ...(env?.DIVERGENCE_WEBHOOK_AUTH ? { authorization: String(env.DIVERGENCE_WEBHOOK_AUTH) } : {}),
+        ...(env?.DIVERGENCE_WEBHOOK_SECRET ? { 'x-webhook-secret': String(env.DIVERGENCE_WEBHOOK_SECRET) } : {})
+      },
+      body: payload,
+      signal: controller.signal
+    });
+  } catch {} finally {
+    clearTimeout(timeout);
+  }
 }

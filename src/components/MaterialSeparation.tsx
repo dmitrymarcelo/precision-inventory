@@ -4,8 +4,10 @@ import {
   Barcode,
   Camera,
   Loader2,
+  Minus,
   PackageCheck,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -30,6 +32,12 @@ import {
   startPreparedScanner
 } from '../barcodeUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import {
+  formatDivergenceDelta,
+  getOpenDivergenceForSku,
+  getReportedRemainingBySkuFromDivergences,
+  getRequestDivergenceLogs
+} from '../divergenceRules';
 
 interface MaterialSeparationProps {
   items: InventoryItem[];
@@ -87,7 +95,9 @@ export default function MaterialSeparation({
     separatedAfter: number;
   } | null>(null);
   const [quantityConfirmationValue, setQuantityConfirmationValue] = useState('');
+  const [quantityConfirmationNote, setQuantityConfirmationNote] = useState('');
   const [reportedRemainingBySku, setReportedRemainingBySku] = useState<Record<string, number>>({});
+  const [manualSeparationEnabled, setManualSeparationEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
@@ -160,15 +170,35 @@ export default function MaterialSeparation({
   useEffect(() => {
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
     setReportedRemainingBySku({});
+    setManualSeparationEnabled(false);
   }, [currentRequest?.id]);
 
   const requestProgress = currentRequest ? getRequestProgress(currentRequest) : null;
   const currentStatus = normalizeUserFacingText(currentRequest?.status);
   const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
+  const canManualSeparate = canMutate && auditActor.role === 'admin' && !isCurrentRequestLocked;
   const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
-  const canFinalizeCurrentRequest =
-    Boolean(currentRequest) && !isCurrentRequestLocked && Boolean(requestProgress) && requestProgress?.pending === 0;
+  const requestDivergenceLogs = useMemo(
+    () => getRequestDivergenceLogs(currentRequest, logs),
+    [currentRequest, logs]
+  );
+  const requestDivergenceBySku = useMemo(() => {
+    const next = new Map<string, InventoryLog>();
+    requestDivergenceLogs.forEach(log => {
+      if (!next.has(log.sku)) next.set(log.sku, log);
+    });
+    return next;
+  }, [requestDivergenceLogs]);
+  const hasRequestDivergence = requestDivergenceLogs.length > 0;
+  const canFinalizeDivergentRequest = !hasRequestDivergence || auditActor.role === 'admin';
+  const isRequestReadyForFinalization =
+    Boolean(currentRequest) &&
+    !isCurrentRequestLocked &&
+    Boolean(requestProgress) &&
+    requestProgress?.pending === 0;
+  const canFinalizeCurrentRequest = isRequestReadyForFinalization && canFinalizeDivergentRequest;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -334,6 +364,44 @@ export default function MaterialSeparation({
     setScannerFeedback('neutral');
   };
 
+  const applyManualSeparatedChange = (sku: string, amount: number) => {
+    if (!currentRequest) {
+      showToast('Abra uma solicitação para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (!manualSeparationEnabled) {
+      showToast('Ative o modo manual para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (!canManualSeparate) {
+      showToast('Somente administradores podem separar manualmente.', 'info');
+      return;
+    }
+
+    const { request: updatedRequest, updated } = bumpSeparatedQuantity(currentRequest, sku, amount);
+    if (!updated) return;
+
+    const now = new Date().toISOString();
+    const nextRequest = {
+      ...updatedRequest,
+      updatedAt: now
+    };
+    nextRequest.status = recalculateRequestStatus(nextRequest);
+
+    setRequests(previous => previous.map(request => (request.id === nextRequest.id ? nextRequest : request)));
+    setLastConfirmedSku(sku);
+
+    const requestItem = nextRequest.items.find(item => item.sku === sku);
+    if (requestItem) {
+      showToast(
+        `Separação manual: SKU ${sku} agora ${requestItem.separatedQuantity}/${requestItem.requestedQuantity}.`,
+        'success'
+      );
+    }
+  };
+
   const startScanner = () => {
     if (!requestRef.current) {
       showToast('Abra uma solicitação antes de iniciar a separação.', 'info');
@@ -419,6 +487,14 @@ export default function MaterialSeparation({
       return;
     }
 
+    const openDivergence = getOpenDivergenceForSku(logs, detected.matchedSku);
+    if (openDivergence && openDivergence.referenceCode !== activeRequest.code && auditActor.role !== 'admin') {
+      setScannerStatus(`SKU ${detected.matchedSku} tem divergencia aberta. Recontagem administrativa necessaria.`);
+      lockScannerBriefly('error', 1400);
+      showToast(`SKU ${detected.matchedSku} bloqueado por divergencia aberta.`, 'info');
+      return;
+    }
+
     const nextSeparated = requestItem.separatedQuantity + 1;
     if (nextSeparated > requestItem.requestedQuantity) {
       setScannerStatus(`O SKU ${detected.matchedSku} já está completo nesta separação.`);
@@ -476,6 +552,7 @@ export default function MaterialSeparation({
         separatedAfter: nextSeparated
       });
       setQuantityConfirmationValue(expectedRemaining === null ? '' : String(expectedRemaining));
+      setQuantityConfirmationNote('');
       return;
     }
 
@@ -518,6 +595,11 @@ export default function MaterialSeparation({
       return;
     }
 
+    if (hasRequestDivergence && auditActor.role !== 'admin') {
+      showToast('Esta separacao tem divergencia. Um administrador precisa revisar e concluir.', 'info');
+      return;
+    }
+
     const stockMap = new Map(items.map(item => [item.sku, item]));
     const insufficientItems = currentRequest.items.filter(requestItem => {
       const stockItem = stockMap.get(requestItem.sku);
@@ -532,13 +614,18 @@ export default function MaterialSeparation({
 
     const now = new Date().toISOString();
     const requestItemsBySku = new Map(currentRequest.items.map(requestItem => [requestItem.sku, requestItem]));
+    const effectiveReportedRemainingBySku = getReportedRemainingBySkuFromDivergences(
+      currentRequest,
+      logs,
+      reportedRemainingBySku
+    );
 
     setItems(previous =>
       previous.map(item => {
         const requestItem = requestItemsBySku.get(item.sku);
         if (!requestItem) return item;
 
-        const reportedRemaining = reportedRemainingBySku[item.sku];
+        const reportedRemaining = effectiveReportedRemainingBySku[item.sku];
         const nextQuantity = Number.isFinite(reportedRemaining)
           ? Math.max(0, Math.floor(reportedRemaining))
           : Math.max(0, item.quantity - requestItem.separatedQuantity);
@@ -559,7 +646,7 @@ export default function MaterialSeparation({
     const generatedLogs: InventoryLog[] = currentRequest.items.map(requestItem => {
       const stockItem = stockMap.get(requestItem.sku)!;
       const expectedAfter = Math.max(0, stockItem.quantity - requestItem.separatedQuantity);
-      const reportedRemaining = reportedRemainingBySku[requestItem.sku];
+      const reportedRemaining = effectiveReportedRemainingBySku[requestItem.sku];
       const quantityAfter = Number.isFinite(reportedRemaining) ? Math.max(0, Math.floor(reportedRemaining)) : expectedAfter;
 
       return {
@@ -591,7 +678,9 @@ export default function MaterialSeparation({
                 at: now,
                 event: 'separation_fulfilled',
                 actor: auditActor,
-                detail: 'Concluiu e baixou estoque'
+                detail: hasRequestDivergence
+                  ? `Concluiu com ${requestDivergenceLogs.length} divergencia(s) registrada(s)`
+                  : 'Concluiu e baixou estoque'
               }
             )
           : request
@@ -603,6 +692,7 @@ export default function MaterialSeparation({
     setReportedRemainingBySku({});
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
   };
 
   const reverseRequest = () => {
@@ -721,6 +811,7 @@ export default function MaterialSeparation({
     setReportedRemainingBySku({});
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
     showToast(`Solicitação ${currentRequest.code} estornada. Estoque devolvido.`, 'success');
   };
 
@@ -869,6 +960,33 @@ export default function MaterialSeparation({
                 </div>
               </div>
 
+              {auditActor.role === 'admin' && !isCurrentRequestLocked ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canMutate) {
+                        showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                        return;
+                      }
+                      if (isScannerOpen) closeScanner();
+                      setManualSeparationEnabled(previous => {
+                        const next = !previous;
+                        showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                        return next;
+                      });
+                    }}
+                    className={`h-11 w-full px-4 rounded-lg font-bold flex items-center justify-center ${
+                      manualSeparationEnabled
+                        ? 'bg-primary-container text-on-primary-container'
+                        : 'bg-surface-container-highest text-primary'
+                    }`}
+                  >
+                    Itens para separar
+                  </button>
+                </div>
+              ) : null}
+
               {isCurrentRequestLocked && (
                 <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
                   <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
@@ -894,6 +1012,18 @@ export default function MaterialSeparation({
                   </div>
                 </div>
               )}
+
+              {!isCurrentRequestLocked && hasRequestDivergence ? (
+                <div className="mt-4 rounded-xl border border-error/25 bg-error-container/20 px-4 py-4 flex items-start gap-3">
+                  <ShieldAlert size={18} className="text-error shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Divergencia registrada nesta separacao</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      {requestDivergenceLogs.length} ocorrencia(s). Operacao pode separar, mas a baixa final exige administrador.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
@@ -906,14 +1036,15 @@ export default function MaterialSeparation({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {canFinalizeCurrentRequest ? (
+                  {isRequestReadyForFinalization ? (
                     <button
                       type="button"
                       onClick={finalizeRequest}
-                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2"
+                      disabled={!canFinalizeCurrentRequest}
+                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       <PackageCheck size={18} />
-                      Concluir e baixar estoque
+                      {canFinalizeCurrentRequest ? 'Concluir e baixar estoque' : 'Revisao admin necessaria'}
                     </button>
                   ) : (
                     <button
@@ -1025,21 +1156,56 @@ export default function MaterialSeparation({
                 <div>
                   <h3 className="font-headline font-bold text-xl text-on-surface">Itens para separar</h3>
                   <p className="text-sm text-on-surface-variant mt-1">
-                    A separação só avança pela leitura da etiqueta correta do item.
+                    {manualSeparationEnabled && auditActor.role === 'admin'
+                      ? 'Admin: use + e - para ajustar manualmente quando a etiqueta não ler.'
+                      : 'A separação só avança pela leitura da etiqueta correta do item.'}
                   </p>
                 </div>
+                {!isCurrentRequestLocked ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canMutate) {
+                          showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                          return;
+                        }
+                        if (auditActor.role !== 'admin') {
+                          showToast('Somente administradores podem separar manualmente.', 'info');
+                          return;
+                        }
+                        if (isScannerOpen) closeScanner();
+                        setManualSeparationEnabled(previous => {
+                          const next = !previous;
+                          showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                          return next;
+                        });
+                      }}
+                      className={`h-11 px-4 rounded-lg font-bold flex items-center justify-center ${
+                        manualSeparationEnabled
+                          ? 'bg-primary-container text-on-primary-container'
+                          : 'bg-surface-container-highest text-primary'
+                      }`}
+                    >
+                      Itens para separar
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-3">
                 {currentRequest.items.map(requestItem => {
                   const isHighlighted = lastConfirmedSku === requestItem.sku;
                   const separatedDone = requestItem.separatedQuantity >= requestItem.requestedQuantity;
+                  const divergence = requestDivergenceBySku.get(requestItem.sku);
 
                   return (
                     <div
                       key={requestItem.id}
                       className={`rounded-xl border p-4 transition-colors ${
-                        isHighlighted
+                        divergence
+                          ? 'border-error/30 bg-error-container/15'
+                          : isHighlighted
                           ? 'border-primary bg-primary-container/15'
                           : 'border-outline-variant/15 bg-surface-container-low'
                       }`}
@@ -1056,6 +1222,12 @@ export default function MaterialSeparation({
                           <p className="text-xs text-on-surface-variant mt-1">
                             SKU {requestItem.sku} • {normalizeLocationText(requestItem.location)} • {normalizeUserFacingText(requestItem.category)}
                           </p>
+                          {divergence ? (
+                            <p className="text-[11px] font-semibold text-error mt-2">
+                              Divergencia: sistema {divergence.expectedQuantityAfter ?? '--'} / real{' '}
+                              {divergence.reportedQuantityAfter ?? divergence.quantityAfter} ({formatDivergenceDelta(divergence.delta)})
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -1065,6 +1237,28 @@ export default function MaterialSeparation({
                               {requestItem.separatedQuantity}/{requestItem.requestedQuantity}
                             </p>
                           </div>
+                          {auditActor.role === 'admin' ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, -1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity <= 0}
+                                className="h-11 w-11 rounded-lg bg-surface-container-highest text-primary font-bold flex items-center justify-center disabled:opacity-50"
+                                aria-label={`Retirar 1 de ${requestItem.sku}`}
+                              >
+                                <Minus size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, 1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity >= requestItem.requestedQuantity}
+                                className="h-11 w-11 rounded-lg bg-primary text-on-primary font-bold flex items-center justify-center disabled:opacity-60"
+                                aria-label={`Separar 1 de ${requestItem.sku}`}
+                              >
+                                <Plus size={18} />
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1141,8 +1335,24 @@ export default function MaterialSeparation({
               ) : null}
             </div>
 
+            {quantityConfirmation.expectedRemaining !== null &&
+            Number.isFinite(Number(quantityConfirmationValue)) &&
+            Math.floor(Number(quantityConfirmationValue)) !== quantityConfirmation.expectedRemaining ? (
+              <div className="mt-4">
+                <label className="block text-xs font-bold uppercase tracking-widest text-outline mb-2">
+                  Motivo da divergencia
+                </label>
+                <input
+                  className="w-full h-12 rounded-lg bg-surface-container-highest border border-outline-variant/20 px-4 text-on-surface"
+                  value={quantityConfirmationNote}
+                  onChange={event => setQuantityConfirmationNote(event.target.value)}
+                  placeholder="Ex.: falta fisica, sobra na locacao, embalagem aberta"
+                />
+              </div>
+            ) : null}
+
             <form
-              className="mt-5 flex flex-col-reverse sm:flex-row gap-2 justify-end"
+              className="mt-5 flex justify-end"
               onSubmit={event => {
                 event.preventDefault();
 
@@ -1150,6 +1360,7 @@ export default function MaterialSeparation({
                 if (!active || !currentRequest || active.requestId !== currentRequest.id) {
                   setQuantityConfirmation(null);
                   setQuantityConfirmationValue('');
+                  setQuantityConfirmationNote('');
                   lockScannerBriefly('neutral', 250);
                   return;
                 }
@@ -1163,6 +1374,12 @@ export default function MaterialSeparation({
                 const reportedRemaining = Math.floor(parsed);
                 const expectedRemaining = active.expectedRemaining;
                 const isDivergent = expectedRemaining !== null && reportedRemaining !== expectedRemaining;
+                const note = normalizeUserFacingText(quantityConfirmationNote);
+
+                if (isDivergent && note.length < 6) {
+                  showToast('Informe um motivo curto para registrar a divergencia.', 'info');
+                  return;
+                }
 
                 setReportedRemainingBySku(previous => ({
                   ...previous,
@@ -1184,7 +1401,8 @@ export default function MaterialSeparation({
                       source: 'divergencia',
                       referenceCode: currentRequest.code,
                       expectedQuantityAfter: expectedRemaining,
-                      reportedQuantityAfter: reportedRemaining
+                      reportedQuantityAfter: reportedRemaining,
+                      note
                     },
                     ...previous
                   ]);
@@ -1195,38 +1413,18 @@ export default function MaterialSeparation({
                 showToast(confirmationMessage, 'success');
                 setQuantityConfirmation(null);
                 setQuantityConfirmationValue('');
+                setQuantityConfirmationNote('');
                 lockScannerBriefly('success', 900);
               }}
             >
               <button
-                type="button"
-                className="h-11 px-4 rounded-lg bg-surface-container-highest text-on-surface font-bold"
-                onClick={() => {
-                  const active = quantityConfirmation;
-                  if (active?.expectedRemaining !== null && active?.expectedRemaining !== undefined) {
-                    setReportedRemainingBySku(previous => ({
-                      ...previous,
-                      [active.sku]: active.expectedRemaining as number
-                    }));
-                    const confirmationMessage = buildRemainingMessage(
-                      active.sku,
-                      active.itemName,
-                      active.expectedRemaining,
-                      active.location
-                    );
-                    setScannerStatus(confirmationMessage);
-                    showToast(confirmationMessage, 'success');
-                  }
-                  setQuantityConfirmation(null);
-                  setQuantityConfirmationValue('');
-                  lockScannerBriefly('success', 900);
-                }}
-              >
-                Usar saldo do sistema
-              </button>
-              <button
                 type="submit"
                 className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold"
+                disabled={
+                  quantityConfirmationValue.trim() === '' ||
+                  !Number.isFinite(Number(quantityConfirmationValue)) ||
+                  Number(quantityConfirmationValue) < 0
+                }
               >
                 {quantityConfirmation.expectedRemaining !== null &&
                 Number.isFinite(Number(quantityConfirmationValue)) &&
@@ -1237,7 +1435,7 @@ export default function MaterialSeparation({
             </form>
 
             <p className="text-[11px] text-on-surface-variant mt-3">
-              Se estiver diferente do sistema, digite o valor real e confirme. A divergência fica registrada e será aplicada ao baixar o estoque.
+              Digite o saldo real conferido na locação. Se estiver diferente do sistema, a divergência fica registrada e será aplicada ao baixar o estoque.
             </p>
           </div>
         </div>

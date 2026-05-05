@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ChevronDown,
@@ -7,10 +7,12 @@ import {
   FileText,
   Link2,
   Package,
+  Pencil,
   Plus,
   Printer,
   Search,
   ShoppingCart,
+  Trash2,
   Upload,
   X
 } from 'lucide-react';
@@ -21,18 +23,22 @@ import {
   PurchaseQuotation,
   PurchaseQuotationLinkedItem,
   PurchaseRequest,
-  PurchaseRequestStatus
+  PurchaseRequestStatus,
+  VehicleRecord
 } from '../types';
 import { calculateItemStatus, getItemAlertSettings } from '../inventoryRules';
 import { getAbcAnalysisForSku, getAdaptiveAbcStockPolicy } from '../abcAnalysis';
+import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
 import { normalizeUserFacingText } from '../textUtils';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
+import { formatDivergenceDelta, getOpenDivergenceMap, type OpenDivergence } from '../divergenceRules';
 
 interface AutomaticPurchasesProps {
   items: InventoryItem[];
   logs: InventoryLog[];
   settings: InventorySettings;
   purchases: PurchaseRequest[];
+  vehicles: VehicleRecord[];
   setPurchases: React.Dispatch<React.SetStateAction<PurchaseRequest[]>>;
   canManagePurchases: boolean;
   showToast: (message: string, type?: 'success' | 'info') => void;
@@ -71,6 +77,14 @@ type QuotationFormRow = {
   sourceFileName: string;
   sourceFileImportedAt: string;
   linkedItems: PurchaseQuotationLinkedItem[];
+};
+
+type ManualPurchaseDraftItem = {
+  id: string;
+  purchaseId?: string;
+  sku: string;
+  itemName: string;
+  quantity: string;
 };
 
 const ACTIVE_PURCHASE_STATUSES = new Set<PurchaseRequestStatus>([
@@ -112,6 +126,32 @@ function findItemBySku(items: InventoryItem[], sku: string) {
     }
     return false;
   });
+}
+
+function buildItemIndex(items: InventoryItem[]) {
+  const index = new Map<string, InventoryItem>();
+  items.forEach(item => {
+    for (const candidate of getSkuCandidates(item.sku)) {
+      if (!index.has(candidate)) index.set(candidate, item);
+    }
+  });
+  return index;
+}
+
+function findItemBySkuIndex(index: Map<string, InventoryItem>, sku: string) {
+  for (const candidate of getSkuCandidates(sku)) {
+    const match = index.get(candidate);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function hasMatchingSku(firstSku: unknown, secondSku: unknown) {
+  const firstCandidates = getSkuCandidates(firstSku);
+  for (const candidate of getSkuCandidates(secondSku)) {
+    if (firstCandidates.has(candidate)) return true;
+  }
+  return false;
 }
 
 function normalizePurchaseType(value: unknown) {
@@ -194,6 +234,17 @@ function getMatchConfidenceLabel(value: PurchaseQuotationLinkedItem['matchConfid
 
 function getTodayInputDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getVehicleModelFromRecord(vehicle: VehicleRecord | null) {
+  if (!vehicle) return '';
+  const normalizedTarget = 'modelo';
+  const modelFromDetails =
+    Object.entries(vehicle.details || {}).find(([label]) => {
+      const normalized = normalizeUserFacingText(label).trim().toLowerCase();
+      return normalized === normalizedTarget;
+    })?.[1] || '';
+  return normalizeUserFacingText(modelFromDetails || vehicle.description || '');
 }
 
 function createEmptyQuotationRow(index: number): QuotationFormRow {
@@ -398,6 +449,160 @@ function buildLinkedQuotationId(row: QuotationFormRow, purchaseId: string) {
     .replace(/\s+/g, '-')
     .slice(0, 96);
   return `pdf-${basis || purchaseId}`;
+}
+
+function getQuotationPrintGroupKey(row: QuotationFormRow) {
+  const sourceFileKey = normalizeSearchText(row.sourceFileName || '');
+  const quoteNumberKey = normalizeSearchText(row.quoteNumber || '');
+  const supplierKey = normalizeSearchText(row.supplierName || '');
+
+  if (sourceFileKey || quoteNumberKey || supplierKey) {
+    return [sourceFileKey, quoteNumberKey, supplierKey].filter(Boolean).join('|');
+  }
+
+  return row.id;
+}
+
+function createQuotationBudgetItem(
+  purchase: PurchaseRequest,
+  items: InventoryItem[],
+  options?: {
+    quantity?: number;
+    unitPrice?: number;
+    matchConfidence?: PurchaseQuotationLinkedItem['matchConfidence'];
+  }
+): PurchaseQuotationLinkedItem {
+  const item = findItemBySku(items, purchase.sku);
+  const quantity = options?.quantity ?? purchase.suggestedQuantity;
+  const unitPrice = options?.unitPrice;
+
+  return {
+    id: `budget-${purchase.id}`,
+    purchaseId: purchase.id,
+    sku: purchase.sku,
+    itemName: normalizeUserFacingText(purchase.itemName),
+    purchaseType: getEffectivePurchaseType(item),
+    classification: getPurchaseClassificationMeta(getPurchaseClassification(purchase)).label,
+    quantity,
+    unitPrice,
+    totalPrice: unitPrice && quantity ? unitPrice * quantity : undefined,
+    matchConfidence: options?.matchConfidence || 'manual',
+    selected: true
+  };
+}
+
+function mergeQuotationBudgetItems(items: PurchaseQuotationLinkedItem[]) {
+  return items.reduce<PurchaseQuotationLinkedItem[]>((merged, item) => {
+    const existingIndex = merged.findIndex(
+      current => current.purchaseId === item.purchaseId || current.sku === item.sku
+    );
+
+    if (existingIndex < 0) {
+      merged.push(item);
+      return merged;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      ...item,
+      quantity: item.quantity ?? existing.quantity,
+      unitPrice: item.unitPrice ?? existing.unitPrice,
+      totalPrice: item.totalPrice ?? existing.totalPrice,
+      selected: true
+    };
+    return merged;
+  }, []);
+}
+
+function findPurchaseForLinkedItem(linkedItem: PurchaseQuotationLinkedItem, purchases: PurchaseRequest[]) {
+  if (linkedItem.purchaseId) {
+    const byId = purchases.find(purchase => purchase.id === linkedItem.purchaseId);
+    if (byId) return byId;
+  }
+
+  const linkedCandidates = getSkuCandidates(linkedItem.sku);
+  return purchases.find(purchase => {
+    const purchaseCandidates = getSkuCandidates(purchase.sku);
+    for (const candidate of linkedCandidates) {
+      if (purchaseCandidates.has(candidate)) return true;
+    }
+    return false;
+  });
+}
+
+function getMatchedQuotationForLinkedItem(referenceRow: QuotationFormRow, targetPurchase: PurchaseRequest) {
+  const quotations = (targetPurchase.quotations || []).filter(quotation => Number(quotation.unitPrice) > 0);
+  if (quotations.length === 0) return undefined;
+
+  const referenceFile = normalizeSearchText(referenceRow.sourceFileName || '');
+  const referenceQuote = normalizeSearchText(referenceRow.quoteNumber || '');
+  const referenceSupplier = normalizeSearchText(referenceRow.supplierName || '');
+
+  return quotations
+    .map((quotation, index) => {
+      const quotationFile = normalizeSearchText(quotation.sourceFileName || '');
+      const quotationNumber = normalizeSearchText(quotation.quoteNumber || '');
+      const quotationSupplier = normalizeSearchText(quotation.supplierName || '');
+      let score = 0;
+
+      if (referenceFile && referenceFile === quotationFile) score += 30;
+      if (referenceQuote && referenceQuote === quotationNumber) score += 25;
+      if (referenceSupplier && referenceSupplier === quotationSupplier) score += 20;
+      if (quotation.id === targetPurchase.selectedQuotationId || quotation.isSelected) score += 10;
+      if (quotation.status === 'Recebida') score += 5;
+
+      return { quotation, score, index };
+    })
+    .sort((first, second) => second.score - first.score || first.index - second.index)[0]?.quotation;
+}
+
+function enrichLinkedQuotationItem(
+  linkedItem: PurchaseQuotationLinkedItem,
+  referenceRow: QuotationFormRow,
+  purchases: PurchaseRequest[],
+  items: InventoryItem[]
+): PurchaseQuotationLinkedItem {
+  const targetPurchase = findPurchaseForLinkedItem(linkedItem, purchases);
+  if (!targetPurchase) return linkedItem;
+
+  const item = findItemBySku(items, targetPurchase.sku);
+  const matchedQuotation = getMatchedQuotationForLinkedItem(referenceRow, targetPurchase);
+  const quantity = linkedItem.quantity ?? targetPurchase.suggestedQuantity;
+  const unitPrice = linkedItem.unitPrice ?? matchedQuotation?.unitPrice;
+  const totalPrice = linkedItem.totalPrice ?? (unitPrice && quantity ? unitPrice * quantity : undefined);
+
+  return {
+    ...linkedItem,
+    purchaseId: targetPurchase.id,
+    sku: targetPurchase.sku,
+    itemName: normalizeUserFacingText(linkedItem.itemName || targetPurchase.itemName),
+    purchaseType: linkedItem.purchaseType || getEffectivePurchaseType(item),
+    classification: linkedItem.classification || getPurchaseClassificationMeta(getPurchaseClassification(targetPurchase)).label,
+    quantity,
+    unitPrice,
+    totalPrice
+  };
+}
+
+function buildQuotationBudgetItems(
+  row: QuotationFormRow,
+  currentPurchase: PurchaseRequest,
+  items: InventoryItem[],
+  purchases: PurchaseRequest[]
+) {
+  const currentUnitPrice = parsePositiveNumber(row.unitPrice) || undefined;
+  const currentItem = createQuotationBudgetItem(currentPurchase, items, {
+    unitPrice: currentUnitPrice,
+    matchConfidence: 'manual'
+  });
+
+  return mergeQuotationBudgetItems([
+    currentItem,
+    ...row.linkedItems
+      .filter(item => item.selected)
+      .map(item => enrichLinkedQuotationItem(item, row, purchases, items))
+  ]);
 }
 
 function upsertQuotation(quotations: PurchaseQuotation[], quotation: PurchaseQuotation) {
@@ -630,6 +835,17 @@ function formatCurrency(value: unknown) {
   return `R$ ${(Number(value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 }
 
+function formatPurchaseDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return normalizeUserFacingText(value);
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
 function buildSuggestionReason(item: InventoryItem, source: PurchaseRequest['source'], settings: InventorySettings, logs: InventoryLog[]) {
   const abc = getAbcAnalysisForSku(item.sku);
   const policy = getAdaptiveAbcStockPolicy(item.sku, logs);
@@ -672,11 +888,20 @@ function comparePurchases(first: PurchaseRequest, second: PurchaseRequest) {
   return new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime();
 }
 
+function getManualBatchId(purchase: PurchaseRequest) {
+  return purchase.manualBatchId || purchase.id;
+}
+
+function canEditManualPurchase(purchase: PurchaseRequest) {
+  return purchase.source === 'manual' && ['Manual', 'Em analise'].includes(purchase.status);
+}
+
 export default function AutomaticPurchases({
   items,
   logs,
   settings,
   purchases,
+  vehicles,
   setPurchases,
   canManagePurchases,
   showToast,
@@ -685,15 +910,201 @@ export default function AutomaticPurchases({
   const [activeTab, setActiveTab] = useState<PurchaseTab>('fila');
   const [searchQuery, setSearchQuery] = useState('');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualPlate, setManualPlate] = useState('');
+  const [manualCostCenter, setManualCostCenter] = useState('');
+  const [manualVehicleDescription, setManualVehicleDescription] = useState('');
   const [manualSku, setManualSku] = useState('');
   const [manualQuantity, setManualQuantity] = useState('');
   const [manualReason, setManualReason] = useState('');
+  const [manualDraftItems, setManualDraftItems] = useState<ManualPurchaseDraftItem[]>([]);
+  const [editingManualBatchId, setEditingManualBatchId] = useState<string | null>(null);
+  const [isManualPlateSuggestionOpen, setIsManualPlateSuggestionOpen] = useState(false);
   const [quotePurchase, setQuotePurchase] = useState<PurchaseRequest | null>(null);
   const [quoteRows, setQuoteRows] = useState<QuotationFormRow[]>(() => buildInitialQuotationRows(null));
   const [quotationDecisionNote, setQuotationDecisionNote] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [importingPdfRowId, setImportingPdfRowId] = useState<string | null>(null);
   const [manualLinkTargets, setManualLinkTargets] = useState<Record<string, string>>({});
+
+  const itemIndex = useMemo(() => buildItemIndex(items), [items]);
+  const openDivergences = useMemo(() => {
+    const unique = new Map<string, OpenDivergence>();
+    for (const divergence of getOpenDivergenceMap(logs).values()) {
+      if (!unique.has(divergence.sku)) unique.set(divergence.sku, divergence);
+    }
+    return Array.from(unique.values()).sort((first, second) => new Date(second.date).getTime() - new Date(first.date).getTime());
+  }, [logs]);
+
+  const purchaseProgressBlocked = openDivergences.length > 0;
+  const purchaseBlockPreview = useMemo(() => {
+    const preview = openDivergences.slice(0, 6);
+    const previewText = preview
+      .map(entry => `${entry.sku} (${formatDivergenceDelta(entry.delta)})`)
+      .join(', ');
+    return {
+      preview,
+      previewText
+    };
+  }, [openDivergences]);
+
+  const blockPaymentProgressIfHasDivergences = (newStatus: PurchaseRequestStatus) => {
+    if (newStatus !== 'Aprovada' && newStatus !== 'Comprada') return false;
+    if (openDivergences.length === 0) return false;
+
+    const previewSkus = purchaseBlockPreview.previewText || openDivergences.slice(0, 5).map(entry => entry.sku).join(', ');
+    showToast(
+      `Bloqueado: existem divergências abertas (${openDivergences.length} SKU(s)). Corrija antes de marcar como ${newStatus}. ${previewSkus ? `Ex.: ${previewSkus}.` : ''}`,
+      'info'
+    );
+    onSelectSku(openDivergences[0].sku);
+    return true;
+  };
+
+  const normalizedManualVehicles = useMemo(
+    () =>
+      vehicles.map(vehicle => ({
+        vehicle,
+        plate: normalizePlate(vehicle.plate)
+      })),
+    [vehicles]
+  );
+
+  const manualMatchedVehicle = useMemo(
+    () => findVehicleByPlate(vehicles, manualPlate),
+    [vehicles, manualPlate]
+  );
+
+  const manualMatchedVehicleModel = useMemo(
+    () => getVehicleModelFromRecord(manualMatchedVehicle),
+    [manualMatchedVehicle]
+  );
+
+  useEffect(() => {
+    if (!manualMatchedVehicle) return;
+    setManualCostCenter(manualMatchedVehicle.costCenter);
+    setManualVehicleDescription(manualMatchedVehicleModel);
+  }, [manualMatchedVehicle, manualMatchedVehicleModel]);
+
+  const manualPlateSuggestions = useMemo(() => {
+    if (!isManualPlateSuggestionOpen) return [];
+    const query = normalizePlate(manualPlate);
+    if (!query || normalizedManualVehicles.length === 0) return [];
+
+    return normalizedManualVehicles
+      .filter(entry => entry.plate.includes(query))
+      .slice(0, 6)
+      .map(entry => entry.vehicle);
+  }, [isManualPlateSuggestionOpen, manualPlate, normalizedManualVehicles]);
+
+  const manualSelectedItem = useMemo(
+    () => findItemBySkuIndex(itemIndex, manualSku),
+    [itemIndex, manualSku]
+  );
+
+  const manualSkuSuggestions = useMemo(() => {
+    const query = normalizeSearchText(manualSku);
+    if (!query) return [];
+
+    return items
+      .filter(item => {
+        const haystack = [
+          item.sku,
+          item.name,
+          item.category,
+          item.location,
+          item.vehicleModel,
+          item.vehicleType,
+          getEffectivePurchaseType(item)
+        ]
+          .map(value => normalizeSearchText(value))
+          .filter(Boolean)
+          .join(' ');
+        return haystack.includes(query);
+      })
+      .sort((first, second) => {
+        const firstExact = getSkuCandidates(first.sku).has(normalizeSku(manualSku));
+        const secondExact = getSkuCandidates(second.sku).has(normalizeSku(manualSku));
+        if (firstExact !== secondExact) return firstExact ? -1 : 1;
+        return normalizeUserFacingText(first.name).localeCompare(normalizeUserFacingText(second.name), 'pt-BR');
+      })
+      .slice(0, 8);
+  }, [items, manualSku]);
+
+  const resetManualForm = () => {
+    setManualPlate('');
+    setManualCostCenter('');
+    setManualVehicleDescription('');
+    setManualSku('');
+    setManualQuantity('');
+    setManualReason('');
+    setManualDraftItems([]);
+    setEditingManualBatchId(null);
+    setIsManualPlateSuggestionOpen(false);
+  };
+
+  const openManualCreator = () => {
+    resetManualForm();
+    setIsManualModalOpen(true);
+  };
+
+  const closeManualModal = () => {
+    resetManualForm();
+    setIsManualModalOpen(false);
+  };
+
+  const handleSelectManualSku = (item: InventoryItem) => {
+    setManualSku(item.sku);
+    if (!manualQuantity) setManualQuantity('1');
+  };
+
+  const handleAddManualDraftItem = () => {
+    const exactSuggestion = manualSkuSuggestions.find(item => hasMatchingSku(item.sku, manualSku));
+    const item = manualSelectedItem || exactSuggestion || (manualSkuSuggestions.length === 1 ? manualSkuSuggestions[0] : null);
+
+    if (!item) {
+      showToast('Selecione um SKU da lista para adicionar ao pedido.', 'info');
+      return;
+    }
+
+    const qty = Number.parseInt(manualQuantity, 10);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      showToast('Informe uma quantidade valida para o SKU.', 'info');
+      return;
+    }
+
+    setManualDraftItems(previous => {
+      const existingIndex = previous.findIndex(line => hasMatchingSku(line.sku, item.sku));
+      const nextLine: ManualPurchaseDraftItem = {
+        id: existingIndex >= 0 ? previous[existingIndex].id : `manual-line-${normalizeSku(item.sku)}-${Date.now()}`,
+        purchaseId: existingIndex >= 0 ? previous[existingIndex].purchaseId : undefined,
+        sku: item.sku,
+        itemName: normalizeUserFacingText(item.name),
+        quantity: String(qty)
+      };
+
+      if (existingIndex >= 0) {
+        const next = [...previous];
+        next[existingIndex] = nextLine;
+        return next;
+      }
+
+      return [...previous, nextLine];
+    });
+
+    setManualSku('');
+    setManualQuantity('');
+    showToast('SKU adicionado ao pedido manual.', 'success');
+  };
+
+  const updateManualDraftQuantity = (lineId: string, quantity: string) => {
+    setManualDraftItems(previous =>
+      previous.map(line => line.id === lineId ? { ...line, quantity } : line)
+    );
+  };
+
+  const removeManualDraftItem = (lineId: string) => {
+    setManualDraftItems(previous => previous.filter(line => line.id !== lineId));
+  };
 
   const suggestions = useMemo(() => {
     const generated: PurchaseRequest[] = [];
@@ -783,11 +1194,14 @@ export default function AutomaticPurchases({
     if (!query) return filtered;
 
     return filtered.filter(purchase => {
-      const item = findItemBySku(items, purchase.sku);
+      const item = findItemBySkuIndex(itemIndex, purchase.sku);
       const type = getEffectivePurchaseType(item).toLowerCase();
       const haystack = [
         purchase.sku,
         purchase.itemName,
+        purchase.vehiclePlate,
+        purchase.costCenter,
+        purchase.vehicleDescription,
         item?.name,
         item?.category,
         item?.location,
@@ -798,13 +1212,13 @@ export default function AutomaticPurchases({
 
       return haystack.includes(query);
     });
-  }, [allPurchases, activeTab, searchQuery, items]);
+  }, [allPurchases, activeTab, searchQuery, itemIndex]);
 
-  const groupedPurchases = useMemo(() => {
+  const purchasePackages = useMemo(() => {
     const groups = new Map<string, PurchasePackageGroup>();
 
     filteredPurchases.forEach(purchase => {
-      const item = findItemBySku(items, purchase.sku);
+      const item = findItemBySkuIndex(itemIndex, purchase.sku);
       const type = getEffectivePurchaseType(item);
       const classification = getPurchaseClassification(purchase);
       const meta = getPurchaseClassificationMeta(classification);
@@ -842,7 +1256,43 @@ export default function AutomaticPurchases({
           getPurchaseClassificationMeta(second.classification).priority
         );
       });
-  }, [filteredPurchases, items]);
+  }, [filteredPurchases, itemIndex]);
+
+  const purchasePackagesByType = useMemo(() => {
+    const byType = new Map<
+      string,
+      { type: string; packages: PurchasePackageGroup[]; totalSkus: number; totalSuggested: number }
+    >();
+
+    purchasePackages.forEach(pkg => {
+      const current = byType.get(pkg.type);
+      if (current) {
+        current.packages.push(pkg);
+        current.totalSkus += pkg.items.length;
+        current.totalSuggested += pkg.totalSuggested;
+        return;
+      }
+
+      byType.set(pkg.type, {
+        type: pkg.type,
+        packages: [pkg],
+        totalSkus: pkg.items.length,
+        totalSuggested: pkg.totalSuggested
+      });
+    });
+
+    return Array.from(byType.values())
+      .map(group => ({
+        ...group,
+        packages: group.packages.slice().sort((first, second) => {
+          return (
+            getPurchaseClassificationMeta(first.classification).priority -
+            getPurchaseClassificationMeta(second.classification).priority
+          );
+        })
+      }))
+      .sort((first, second) => first.type.localeCompare(second.type, 'pt-BR'));
+  }, [purchasePackages]);
 
   const stats = useMemo(() => {
     return {
@@ -856,9 +1306,9 @@ export default function AutomaticPurchases({
         purchase => purchase.source === 'manual' && ['Manual', 'Em analise'].includes(purchase.status)
       ).length,
       aguardando: allPurchases.filter(purchase => WAITING_PURCHASE_STATUSES.has(purchase.status)).length,
-      pacotes: groupedPurchases.length
+      pacotes: purchasePackages.length
     };
-  }, [allPurchases, groupedPurchases.length]);
+  }, [allPurchases, purchasePackages.length]);
 
   const quotationSelectablePurchases = useMemo(
     () =>
@@ -924,7 +1374,7 @@ export default function AutomaticPurchases({
 
     const now = new Date().toISOString();
     const quotations: PurchaseQuotation[] = completeRows.map(row =>
-      buildQuotationPayload(row, row.id === selectedRow.id, row.linkedItems.filter(item => item.selected))
+      buildQuotationPayload(row, row.id === selectedRow.id, buildQuotationBudgetItems(row, quotePurchase, items, allPurchases))
     );
     const linkedQuotationUpdates = completeRows.flatMap(row =>
       row.linkedItems
@@ -932,16 +1382,20 @@ export default function AutomaticPurchases({
         .map(linkedItem => {
           const targetPurchase = allPurchases.find(purchase => purchase.id === linkedItem.purchaseId);
           if (!targetPurchase) return null;
+          const budgetItems = buildQuotationBudgetItems(row, quotePurchase, items, allPurchases);
+          const targetBudgetItem = budgetItems.find(
+            item => item.purchaseId === targetPurchase.id || item.sku === targetPurchase.sku
+          );
 
           return {
             targetPurchase,
             quotation: buildQuotationPayload(
               row,
               false,
-              row.linkedItems.filter(item => item.selected),
+              budgetItems,
               {
                 id: buildLinkedQuotationId(row, targetPurchase.id),
-                unitPrice: linkedItem.unitPrice || 0,
+                unitPrice: targetBudgetItem?.unitPrice ?? linkedItem.unitPrice ?? 0,
                 notesSuffix: `Cotação vinculada automaticamente pelo PDF do SKU ${quotePurchase.sku}.`
               }
             )
@@ -1064,56 +1518,317 @@ export default function AutomaticPurchases({
   const printQuotationMap = () => {
     if (!quotePurchase) return;
 
-    const rowsHtml = quoteRows
+    const groupedRows = quoteRows
       .filter(row => isCompleteQuotationRow(row) || row.supplierName || row.sourceFileName)
-      .map((row, index) => {
-        const selected = row.isSelected ? 'Fornecedor escolhido' : '';
-        const linkedItemsHtml = row.linkedItems
-          .filter(item => item.selected)
-          .map(
-            item => `
-              <tr>
-                <td>${escapeHtml(item.sku)}</td>
-                <td>${escapeHtml(item.itemName)}</td>
-                <td>${escapeHtml(item.purchaseType || '-')}</td>
-                <td>${escapeHtml(item.classification || '-')}</td>
-                <td>${escapeHtml(getMatchConfidenceLabel(item.matchConfidence))}</td>
-              </tr>
-            `
-          )
+      .map(row => ({ row, groupKey: getQuotationPrintGroupKey(row) }))
+      .reduce<Array<{ representative: QuotationFormRow; rows: QuotationFormRow[] }>>((groups, entry) => {
+        const existingGroup = groups.find(group => getQuotationPrintGroupKey(group.representative) === entry.groupKey);
+        if (existingGroup) {
+          existingGroup.rows.push(entry.row);
+          return groups;
+        }
+        groups.push({ representative: entry.row, rows: [entry.row] });
+        return groups;
+      }, []);
+
+    const orderedSuppliers = groupedRows
+      .map(group => {
+        const representative = group.representative;
+        const isSelected = group.rows.some(row => row.isSelected);
+        const budgetItems = mergeQuotationBudgetItems(
+          group.rows.flatMap(row => buildQuotationBudgetItems(row, quotePurchase, items, allPurchases))
+        );
+
+        const subtotal = budgetItems.reduce((sum, item) => {
+          const quantity = Number(item.quantity) || 0;
+          const unit = Number(item.unitPrice) || 0;
+          const total = Number(item.totalPrice) || (quantity && unit ? quantity * unit : 0);
+          return sum + total;
+        }, 0);
+        const freight = parsePositiveNumber(representative.freightCost);
+        const total = subtotal + freight;
+        const key = getQuotationPrintGroupKey(representative);
+
+        return {
+          key,
+          representative,
+          isSelected,
+          budgetItems,
+          subtotal,
+          freight,
+          total
+        };
+      })
+      .filter(entry => entry.representative.supplierName || entry.budgetItems.length > 0)
+      .sort((first, second) => {
+        if (first.isSelected !== second.isSelected) return first.isSelected ? -1 : 1;
+        return first.total - second.total;
+      })
+      .map((supplier, index) => ({ ...supplier, index: index + 1 }));
+
+    const maxSuppliersPerPage = 3;
+    const chunkSuppliers = <T,>(list: T[], size: number) => {
+      const result: T[][] = [];
+      for (let start = 0; start < list.length; start += size) {
+        result.push(list.slice(start, start + size));
+      }
+      return result.length > 0 ? result : [[]];
+    };
+
+    const itemBySku = new Map(items.map(item => [item.sku, item] as const));
+    const unionSkuList = Array.from(
+      new Set(orderedSuppliers.flatMap(supplier => supplier.budgetItems.map(item => String(item.sku || '').trim()).filter(Boolean)))
+    );
+    const sortedSkuList = unionSkuList.sort((first, second) => first.localeCompare(second, 'pt-BR'));
+
+    const lineInfoBySku = new Map<
+      string,
+      {
+        sku: string;
+        description: string;
+        quantity?: number;
+        totalsBySupplierKey: Map<string, { unit: number; total: number }>;
+        minTotal: number;
+      }
+    >();
+
+    sortedSkuList.forEach(sku => {
+      const item = itemBySku.get(sku);
+      const description = item ? normalizeUserFacingText(item.name) : '';
+
+      const quantities = orderedSuppliers
+        .map(supplier => supplier.budgetItems.find(budget => String(budget.sku || '').trim() === sku)?.quantity)
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value) && value > 0) as number[];
+      const quantity = quantities.length > 0 ? Math.max(...quantities) : undefined;
+
+      const totalsBySupplierKey = new Map<string, { unit: number; total: number }>();
+      orderedSuppliers.forEach(supplier => {
+        const line = supplier.budgetItems.find(budget => String(budget.sku || '').trim() === sku);
+        const unit = line ? Number(line.unitPrice) || 0 : 0;
+        const qty = line ? Number(line.quantity) || quantity || 0 : quantity || 0;
+        const total = line ? Number(line.totalPrice) || (qty && unit ? qty * unit : 0) : 0;
+        totalsBySupplierKey.set(supplier.key, { unit, total });
+      });
+
+      const minTotal = Array.from(totalsBySupplierKey.values())
+        .map(entry => entry.total)
+        .filter(value => Number.isFinite(value) && value > 0)
+        .reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
+
+      lineInfoBySku.set(sku, {
+        sku,
+        description,
+        quantity,
+        totalsBySupplierKey,
+        minTotal: Number.isFinite(minTotal) ? minTotal : 0
+      });
+    });
+
+    const minSupplierTotal = orderedSuppliers
+      .map(supplier => supplier.total)
+      .filter(value => Number.isFinite(value) && value > 0)
+      .reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
+    const safeMinSupplierTotal = Number.isFinite(minSupplierTotal) ? minSupplierTotal : 0;
+
+    const getSupplierDisplay = (supplier: (typeof orderedSuppliers)[number]) => ({
+      key: supplier.key,
+      index: supplier.index,
+      name: supplier.representative.supplierName
+        ? normalizeUserFacingText(supplier.representative.supplierName)
+        : `Fornecedor ${supplier.index}`,
+      contact: normalizeUserFacingText(supplier.representative.contactInfo || '-'),
+      deliveryDays: normalizeUserFacingText(supplier.representative.deliveryDays || '-'),
+      paymentTerms: normalizeUserFacingText(supplier.representative.paymentTerms || '-'),
+      total: supplier.total,
+      isSelected: supplier.isSelected
+    });
+
+    const buildPageHtml = (chunk: Array<(typeof orderedSuppliers)[number]>) => {
+      const display = chunk.map(getSupplierDisplay);
+      while (display.length < maxSuppliersPerPage) {
+        display.push({
+          key: `empty-${display.length}`,
+          index: display.length + 1,
+          name: '',
+          contact: '',
+          deliveryDays: '',
+          paymentTerms: '',
+          total: 0,
+          isSelected: false
+        });
+      }
+
+      const supplierHeadersHtml = display
+        .map(supplier => {
+          const chosen = supplier.isSelected ? '<span class="tag chosen">Escolhido</span>' : '';
+          return `
+            <th colspan="2">
+              <div class="supplier-line">
+                <div class="supplier-label">Fornecedor ${escapeHtml(supplier.index)}</div>
+                <div class="supplier-name">${escapeHtml(supplier.name || '-')} ${chosen}</div>
+                <div class="supplier-contact">${escapeHtml(supplier.contact || '-')}</div>
+              </div>
+            </th>
+          `;
+        })
+        .join('');
+
+      const comparisonRowsHtml = sortedSkuList
+        .map(sku => {
+          const line = lineInfoBySku.get(sku);
+          if (!line) return '';
+
+          const cells = display
+            .map(supplier => {
+              const values = line.totalsBySupplierKey.get(supplier.key);
+              const unit = values?.unit || 0;
+              const total = values?.total || 0;
+              const highlight = line.minTotal > 0 && total === line.minTotal ? 'min' : '';
+              return `
+                <td class="num ${highlight}">${unit ? formatCurrency(unit) : '-'}</td>
+                <td class="num ${highlight}">${total ? formatCurrency(total) : '-'}</td>
+              `;
+            })
+            .join('');
+
+          return `
+            <tr>
+              <td class="desc">
+                <div class="sku">SKU ${escapeHtml(sku)}</div>
+                <div class="name">${escapeHtml(line.description || 'Item não informado')}</div>
+              </td>
+              <td class="num">${line.quantity ? escapeHtml(line.quantity) : '-'}</td>
+              <td class="center">UN</td>
+              ${cells}
+              <td class="num min">${line.minTotal ? formatCurrency(line.minTotal) : '-'}</td>
+            </tr>
+          `;
+        })
+        .join('');
+
+      const summaryCellsBySupplier = (valueHtmlBySupplier: (supplier: typeof display[number]) => string) =>
+        display.map(supplier => `<td colspan="2" class="sum-cell">${valueHtmlBySupplier(supplier)}</td>`).join('');
+
+      const summaryValueRow = (
+        label: string,
+        valueHtmlBySupplier: (supplier: typeof display[number]) => string,
+        highlightMin: boolean
+      ) => {
+        const cells = display
+          .map(supplier => {
+            const isMin = highlightMin && safeMinSupplierTotal > 0 && supplier.total === safeMinSupplierTotal;
+            const extraClass = isMin ? 'min' : '';
+            return `<td colspan="2" class="sum-cell ${extraClass}">${valueHtmlBySupplier(supplier)}</td>`;
+          })
           .join('');
 
         return `
-          <section class="quote ${row.isSelected ? 'selected' : ''}">
-            <div class="quote-title">
-              <h2>Cotação ${index + 1} - ${escapeHtml(row.supplierName || 'Fornecedor não informado')}</h2>
-              <strong>${escapeHtml(selected)}</strong>
-            </div>
-            <div class="grid">
-              <p><span>Nº cotação</span>${escapeHtml(row.quoteNumber || '-')}</p>
-              <p><span>Data</span>${escapeHtml(row.quotedAt || '-')}</p>
-              <p><span>Validade</span>${escapeHtml(row.validUntil || '-')}</p>
-              <p><span>Valor unitário</span>${formatCurrency(parsePositiveNumber(row.unitPrice))}</p>
-              <p><span>Frete/taxas</span>${formatCurrency(parsePositiveNumber(row.freightCost))}</p>
-              <p><span>Total comparado</span>${formatCurrency(getQuotationTotalFromRow(row))}</p>
-              <p><span>Prazo</span>${escapeHtml(row.deliveryDays || '-')} dias</p>
-              <p><span>Pagamento</span>${escapeHtml(row.paymentTerms || '-')}</p>
-              <p><span>Nota técnica</span>${escapeHtml(row.technicalScore || '-')}</p>
-            </div>
-            <p class="notes">${escapeHtml(row.notes || '')}</p>
-            ${
-              linkedItemsHtml
-                ? `<table><thead><tr><th>SKU</th><th>Item detectado</th><th>Tipo</th><th>Grupo</th><th>Reconhecimento</th></tr></thead><tbody>${linkedItemsHtml}</tbody></table>`
-                : ''
-            }
-          </section>
+          <tr>
+            <td class="sum-label" colspan="3">${escapeHtml(label)}</td>
+            ${cells}
+          </tr>
         `;
-      })
-      .join('');
+      };
+
+      const summaryHtml = `
+        <table class="summary">
+          <tbody>
+            ${summaryValueRow('Valor Total', supplier => (supplier.total ? formatCurrency(supplier.total) : '-'), true)}
+            ${summaryValueRow('Desconto', supplier => (supplier.name ? '0%' : '-'), false)}
+            ${summaryValueRow('Valor Líquido', supplier => (supplier.total ? formatCurrency(supplier.total) : '-'), true)}
+            <tr>
+              <td class="sum-label" colspan="3">Condição de Pagamento</td>
+              ${summaryCellsBySupplier(supplier => escapeHtml(supplier.paymentTerms || '-'))}
+            </tr>
+            <tr>
+              <td class="sum-label" colspan="3">Prazo de Entrega</td>
+              ${summaryCellsBySupplier(supplier => (supplier.deliveryDays ? `${escapeHtml(supplier.deliveryDays)} dias` : '-'))}
+            </tr>
+          </tbody>
+        </table>
+      `;
+
+      const supplierComparisonHtml = (() => {
+        const rows = display
+          .map(supplier => {
+            const diff = safeMinSupplierTotal > 0 ? Math.round(((supplier.total - safeMinSupplierTotal) / safeMinSupplierTotal) * 100) : 0;
+            const isMin = safeMinSupplierTotal > 0 && supplier.total === safeMinSupplierTotal;
+            return `
+              <tr>
+                <td class="sup-name">Fornecedor ${escapeHtml(supplier.index)}${supplier.name ? ` - ${escapeHtml(supplier.name)}` : ''}</td>
+                <td class="num ${isMin ? 'min' : ''}">${supplier.total ? formatCurrency(supplier.total) : '-'}</td>
+                <td class="num">${supplier.total && safeMinSupplierTotal > 0 ? `${diff}%` : '-'}</td>
+                <td class="sup-flag">${isMin ? 'Menor Valor' : ''}</td>
+              </tr>
+            `;
+          })
+          .join('');
+
+        return `
+          <table class="sup-table">
+            <thead>
+              <tr>
+                <th>Fornecedores</th>
+                <th class="num">Valor Total</th>
+                <th class="num">Diferença %</th>
+                <th>Menor Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        `;
+      })();
+
+      return `
+        <table class="map">
+          <thead>
+            <tr class="top">
+              <th rowspan="2" class="w-desc">Descrição do Produto</th>
+              <th rowspan="2" class="w-qty">Qtde</th>
+              <th rowspan="2" class="w-unit">Unid</th>
+              ${supplierHeadersHtml}
+              <th rowspan="2" class="w-min">Valor Mínimo</th>
+            </tr>
+            <tr class="sub">
+              ${display.map(() => '<th class="w-price">Preço Unit.</th><th class="w-total">Total</th>').join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${comparisonRowsHtml || `
+              <tr>
+                <td colspan="10" class="empty">Nenhuma cotação completa para comparar.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+        ${summaryHtml}
+        <div class="bottom-grid">
+          ${supplierComparisonHtml}
+          <div class="signatures">
+            <div class="sign-box">
+              <div class="sign-line"></div>
+              <div class="sign-label">Comprador</div>
+            </div>
+            <div class="sign-box">
+              <div class="sign-line"></div>
+              <div class="sign-label">Aprovado por</div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    const supplierChunks = chunkSuppliers(orderedSuppliers, maxSuppliersPerPage);
+    const pagesHtml = supplierChunks
+      .map(chunk => `<div class="page">${buildPageHtml(chunk)}</div>`)
+      .join('<div class="page-break"></div>');
 
     const printWindow = window.open('', '_blank', 'width=1120,height=800');
     if (!printWindow) {
-      showToast('O navegador bloqueou a janela de impressão.', 'info');
+      showToast('O navegador bloqueou a janela de impressao.', 'info');
       return;
     }
 
@@ -1121,48 +1836,75 @@ export default function AutomaticPurchases({
       <!doctype html>
       <html>
         <head>
-          <title>Mapa de cotação ${escapeHtml(quotePurchase.sku)}</title>
+          <meta charset="utf-8">
+          <title>Mapa de cotacao ${escapeHtml(quotePurchase.sku)}</title>
           <style>
-            body { font-family: Inter, Arial, sans-serif; color: #13233a; margin: 32px; }
-            header { border-bottom: 3px solid #1f4f8f; padding-bottom: 16px; margin-bottom: 20px; }
-            h1 { margin: 0; font-size: 26px; }
-            .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
-            .meta p, .grid p { border: 1px solid #d7e2f2; border-radius: 10px; padding: 10px; margin: 0; }
-            span { display: block; color: #5c6f8a; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
-            .quote { border: 1px solid #d7e2f2; border-radius: 16px; padding: 16px; margin: 16px 0; break-inside: avoid; }
-            .selected { border-color: #1f4f8f; box-shadow: inset 0 0 0 2px #1f4f8f; }
-            .quote-title { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
-            .quote h2 { margin: 0 0 12px; font-size: 18px; }
-            .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            .notes { color: #52627a; font-size: 13px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-            th, td { border: 1px solid #d7e2f2; padding: 8px; text-align: left; }
-            th { background: #e9f1ff; }
-            footer { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-            .sign { border-top: 1px solid #8090a8; padding-top: 8px; text-align: center; color: #5c6f8a; }
-            @media print { button { display: none; } body { margin: 18mm; } }
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: Arial, sans-serif; color: #13233a; margin: 0; }
+            .sheet { padding: 8mm 10mm; }
+            .page { break-inside: avoid; }
+            .page-break { break-after: page; }
+            .topbar { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1f4f8f; padding-bottom: 6px; margin-bottom: 10px; }
+            .title { font-size: 16px; font-weight: 700; text-align: center; flex: 1; }
+            .date { font-size: 11px; color: #2b3f5c; font-weight: 700; min-width: 180px; }
+            .context { font-size: 11px; color: #2b3f5c; margin-top: 6px; }
+            .context strong { color: #13233a; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #7f98b8; padding: 6px; vertical-align: top; }
+            thead th { background: #e9f1ff; }
+            .top th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #20324c; }
+            .sub th { font-size: 10px; color: #20324c; }
+            .w-desc { width: 34%; }
+            .w-qty { width: 4.5%; }
+            .w-unit { width: 4.5%; }
+            .w-price { width: 7.5%; }
+            .w-total { width: 7.5%; }
+            .w-min { width: 8%; }
+            .supplier-line { display: grid; gap: 2px; }
+            .supplier-label { font-size: 10px; font-weight: 800; color: #20324c; text-transform: uppercase; letter-spacing: .02em; }
+            .supplier-name { font-size: 12px; font-weight: 800; color: #13233a; }
+            .supplier-contact { font-size: 10px; color: #52627a; }
+            .tag { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 999px; }
+            .chosen { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+            td { font-size: 11px; }
+            .desc .sku { font-size: 10px; color: #52627a; font-weight: 800; }
+            .desc .name { font-size: 11px; color: #13233a; margin-top: 2px; }
+            .num { text-align: right; white-space: nowrap; }
+            .center { text-align: center; }
+            .min { background: #e7f6e7; font-weight: 800; }
+            .empty { text-align: center; color: #52627a; font-weight: 700; padding: 16px; }
+            .summary { margin-top: 8px; }
+            .summary td { background: #f7fbff; font-size: 11px; }
+            .sum-label { text-align: right; font-weight: 800; color: #20324c; background: #e9f1ff; }
+            .sum-cell { text-align: center; font-weight: 700; }
+            .sum-cell.min { background: #dff6df; }
+            .bottom-grid { margin-top: 10px; display: grid; grid-template-columns: 1.3fr 0.9fr; gap: 10px; align-items: start; }
+            .sup-table th { background: #e9f1ff; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #20324c; }
+            .sup-table td { font-size: 11px; }
+            .sup-name { font-weight: 700; }
+            .sup-flag { font-weight: 800; color: #1b5e20; }
+            .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 18mm; align-items: end; padding-left: 6mm; padding-right: 6mm; }
+            .sign-box { height: 26mm; display: flex; flex-direction: column; justify-content: flex-end; }
+            .sign-line { border-top: 1px solid #7f98b8; width: 100%; }
+            .sign-label { text-align: center; font-size: 11px; color: #52627a; font-weight: 700; margin-top: 3mm; }
+            @media print { button { display: none; } }
           </style>
         </head>
         <body>
-          <header>
-            <h1>Mapa de cotação</h1>
-            <p>${escapeHtml(quotePurchase.sku)} - ${escapeHtml(quotePurchase.itemName)}</p>
-            <div class="meta">
-              <p><span>Quantidade sugerida</span>${quotePurchase.suggestedQuantity}</p>
-              <p><span>Status</span>${escapeHtml(quotePurchase.status)}</p>
-              <p><span>Data</span>${new Date().toLocaleString('pt-BR')}</p>
-              <p><span>Critério</span>Preço 45% / técnica 35% / prazo 20%</p>
+          <div class="sheet">
+            <div class="topbar">
+              <div class="date">Data: ${escapeHtml(new Date().toLocaleDateString('pt-BR'))}</div>
+              <div class="title">Cotação de Preços</div>
+              <div class="date" style="text-align:right;">Mapa de Cotação</div>
             </div>
-          </header>
-          ${rowsHtml}
-          <section class="quote">
-            <h2>Justificativa da escolha</h2>
-            <p>${escapeHtml(quotationDecisionNote || quotePurchase.quotationDecisionNote || 'Sem justificativa informada.')}</p>
-          </section>
-          <footer>
-            <div class="sign">Compras</div>
-            <div class="sign">Aprovação</div>
-          </footer>
+            <div class="context">
+              <strong>SKU:</strong> ${escapeHtml(quotePurchase.sku)} · <strong>Item:</strong> ${escapeHtml(normalizeUserFacingText(quotePurchase.itemName))} · <strong>Qtd sugerida:</strong> ${escapeHtml(quotePurchase.suggestedQuantity)}
+            </div>
+            <div class="context" style="margin-bottom:10px;">
+              <strong>Justificativa:</strong> ${escapeHtml(quotationDecisionNote || quotePurchase.quotationDecisionNote || '-')}
+            </div>
+            ${pagesHtml}
+          </div>
           <script>window.print();</script>
         </body>
       </html>
@@ -1173,6 +1915,10 @@ export default function AutomaticPurchases({
   const handleStatusChange = (purchase: PurchaseRequest, newStatus: PurchaseRequestStatus) => {
     if (!canManagePurchases) {
       showToast('Sem permissão para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (blockPaymentProgressIfHasDivergences(newStatus)) {
       return;
     }
 
@@ -1199,6 +1945,10 @@ export default function AutomaticPurchases({
   const handlePackageStatusChange = (group: PurchasePackageGroup, newStatus: PurchaseRequestStatus) => {
     if (!canManagePurchases) {
       showToast('Sem permissão para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (blockPaymentProgressIfHasDivergences(newStatus)) {
       return;
     }
 
@@ -1229,42 +1979,196 @@ export default function AutomaticPurchases({
     showToast(`Pacote ${group.type} / ${group.label} atualizado para ${newStatus}.`, 'success');
   };
 
+  const getEditableManualBatch = (purchase: PurchaseRequest) => {
+    const batchId = getManualBatchId(purchase);
+    const batch = purchases
+      .filter(current => current.source === 'manual' && getManualBatchId(current) === batchId && canEditManualPurchase(current))
+      .sort(comparePurchases);
+
+    return batch.length > 0 ? batch : [purchase];
+  };
+
+  const openManualEditor = (purchase: PurchaseRequest) => {
+    if (!canManagePurchases) {
+      showToast('Sem permissao para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (!canEditManualPurchase(purchase)) {
+      showToast('Somente pedidos manuais em aberto podem ser editados.', 'info');
+      return;
+    }
+
+    const batch = getEditableManualBatch(purchase);
+    const mainPurchase = batch[0];
+
+    setEditingManualBatchId(getManualBatchId(purchase));
+    setManualPlate(normalizePlate(mainPurchase.vehiclePlate || ''));
+    setManualCostCenter(normalizeUserFacingText(mainPurchase.costCenter));
+    setManualVehicleDescription(normalizeUserFacingText(mainPurchase.vehicleDescription));
+    setManualReason(normalizeUserFacingText(mainPurchase.reason));
+    setManualSku('');
+    setManualQuantity('');
+    setManualDraftItems(
+      batch.map(current => ({
+        id: `manual-line-${current.id}`,
+        purchaseId: current.id,
+        sku: current.sku,
+        itemName: normalizeUserFacingText(current.itemName),
+        quantity: String(current.suggestedQuantity || 1)
+      }))
+    );
+    setIsManualPlateSuggestionOpen(false);
+    setIsManualModalOpen(true);
+  };
+
+  const removeManualPurchase = (purchase: PurchaseRequest) => {
+    if (!canManagePurchases) {
+      showToast('Sem permissao para gerenciar compras.', 'info');
+      return;
+    }
+
+    if (!canEditManualPurchase(purchase)) {
+      showToast('Somente pedidos manuais em aberto podem ser removidos.', 'info');
+      return;
+    }
+
+    const batchId = getManualBatchId(purchase);
+    const batch = getEditableManualBatch(purchase);
+    const message =
+      batch.length > 1
+        ? `Remover este pedido manual com ${batch.length} SKUs?`
+        : 'Remover este pedido manual?';
+
+    if (!window.confirm(message)) return;
+
+    setPurchases(previous =>
+      previous
+        .filter(current => {
+          if (current.source !== 'manual') return true;
+          if (getManualBatchId(current) !== batchId) return true;
+          return !canEditManualPurchase(current);
+        })
+        .sort(comparePurchases)
+    );
+    showToast('Pedido manual removido.', 'success');
+  };
+
   const handleCreateManual = (event: React.FormEvent) => {
     event.preventDefault();
     if (!canManagePurchases) return;
 
-    const sku = normalizeSku(manualSku);
-    const item = findItemBySku(items, sku);
-    if (!item) {
-      showToast('SKU não encontrado.', 'info');
+    const vehiclePlate = normalizePlate(manualPlate);
+    if (!vehiclePlate) {
+      showToast('Informe a placa para criar o pedido manual.', 'info');
       return;
     }
 
-    const qty = Number.parseInt(manualQuantity, 10);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      showToast('Quantidade inválida.', 'info');
+    const costCenter = normalizeUserFacingText(manualCostCenter);
+    if (!costCenter) {
+      showToast('Informe o centro de custo para criar o pedido manual.', 'info');
+      return;
+    }
+
+    if (manualDraftItems.length === 0) {
+      showToast(
+        manualSku.trim()
+          ? 'Clique em Adicionar SKU antes de salvar o pedido.'
+          : 'Adicione pelo menos um SKU ao pedido manual.',
+        'info'
+      );
+      return;
+    }
+
+    const preparedLines: Array<ManualPurchaseDraftItem & { item: InventoryItem; quantityNumber: number }> = [];
+    for (const line of manualDraftItems) {
+      const item = findItemBySku(items, line.sku);
+      if (!item) {
+        showToast(`SKU ${line.sku} nao encontrado.`, 'info');
+        return;
+      }
+
+      const quantityNumber = Number.parseInt(line.quantity, 10);
+      if (!Number.isFinite(quantityNumber) || quantityNumber <= 0) {
+        showToast(`Quantidade invalida no SKU ${item.sku}.`, 'info');
+        return;
+      }
+
+      preparedLines.push({ ...line, item, quantityNumber });
+    }
+
+    const duplicateLine = preparedLines.find(line =>
+      purchases.some(current => {
+        if (!ACTIVE_PURCHASE_STATUSES.has(current.status)) return false;
+        if (editingManualBatchId && current.source === 'manual' && getManualBatchId(current) === editingManualBatchId) {
+          return false;
+        }
+        return hasMatchingSku(current.sku, line.item.sku);
+      })
+    );
+    if (duplicateLine) {
+      showToast(`SKU ${duplicateLine.item.sku} ja existe em uma compra ativa.`, 'info');
       return;
     }
 
     const now = new Date().toISOString();
-    const newPurchase: PurchaseRequest = {
-      id: `man-${normalizeSku(item.sku)}-${Date.now()}`,
-      sku: item.sku,
-      itemName: normalizeUserFacingText(item.name),
-      status: 'Manual',
-      source: 'manual',
-      suggestedQuantity: qty,
-      reason: normalizeUserFacingText(manualReason) || 'Pedido manual',
-      createdAt: now,
-      updatedAt: now
-    };
+    const batchId = editingManualBatchId || `man-batch-${Date.now()}`;
+    const wasEditing = Boolean(editingManualBatchId);
+    const reason = normalizeUserFacingText(manualReason) || 'Pedido manual';
+    const vehicleDescription = normalizeUserFacingText(manualVehicleDescription) || manualMatchedVehicleModel || undefined;
+    const vehicleDetails = manualMatchedVehicle?.details || undefined;
 
-    setPurchases(previous => [...previous, newPurchase].sort(comparePurchases));
-    setIsManualModalOpen(false);
-    setManualSku('');
-    setManualQuantity('');
-    setManualReason('');
-    showToast('Pedido manual criado com sucesso.', 'success');
+    setPurchases(previous => {
+      const byId = new Map(previous.map(purchase => [purchase.id, purchase]));
+      const existingBatchStatus = editingManualBatchId
+        ? previous.find(
+            current =>
+              current.source === 'manual' &&
+              getManualBatchId(current) === editingManualBatchId &&
+              canEditManualPurchase(current)
+          )?.status
+        : undefined;
+      const usedIds = new Set<string>();
+
+      preparedLines.forEach((line, index) => {
+        const existing = line.purchaseId ? byId.get(line.purchaseId) : undefined;
+        const id = existing?.id || `man-${normalizeSku(line.item.sku)}-${Date.now()}-${index}`;
+        const purchase: PurchaseRequest = {
+          ...(existing || {}),
+          id,
+          sku: line.item.sku,
+          itemName: normalizeUserFacingText(line.item.name),
+          status: existing?.status || existingBatchStatus || 'Manual',
+          source: 'manual',
+          suggestedQuantity: line.quantityNumber,
+          reason,
+          manualBatchId: batchId,
+          vehiclePlate,
+          costCenter,
+          vehicleDescription,
+          vehicleDetails,
+          createdAt: existing?.createdAt || now,
+          updatedAt: now
+        };
+
+        byId.set(id, purchase);
+        usedIds.add(id);
+      });
+
+      if (editingManualBatchId) {
+        previous.forEach(current => {
+          if (current.source !== 'manual') return;
+          if (getManualBatchId(current) !== editingManualBatchId) return;
+          if (!canEditManualPurchase(current)) return;
+          if (!usedIds.has(current.id)) byId.delete(current.id);
+        });
+      }
+
+      return Array.from(byId.values()).sort(comparePurchases);
+    });
+
+    closeManualModal();
+    showToast(wasEditing ? 'Pedido manual atualizado com sucesso.' : 'Pedido manual criado com sucesso.', 'success');
   };
 
   const completeQuoteRows = quoteRows.filter(isCompleteQuotationRow);
@@ -1285,7 +2189,7 @@ export default function AutomaticPurchases({
         {canManagePurchases && (
           <button
             type="button"
-            onClick={() => setIsManualModalOpen(true)}
+            onClick={openManualCreator}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-5 h-5" />
@@ -1301,6 +2205,70 @@ export default function AutomaticPurchases({
           A quantidade sugerida usa a regra de máximo calculado menos saldo atual, sem dar entrada no estoque.
         </p>
       </div>
+
+      {purchaseProgressBlocked ? (
+        <div className="rounded-2xl border border-error/25 bg-error-container/15 p-4">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-error">
+                Divergências abertas
+              </p>
+              <h2 className="mt-1 text-lg font-headline font-extrabold text-on-surface">
+                Corrija antes de aprovar/comprar
+              </h2>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Encontradas {openDivergences.length} divergência(s) pendente(s). O sistema bloqueia avanço para evitar confirmar erro e acumular divergências.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => onSelectSku(openDivergences[0].sku)}
+                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-bold"
+              >
+                Corrigir agora
+              </button>
+              <button
+                type="button"
+                onClick={() => showToast(`Divergências abertas: ${purchaseBlockPreview.previewText || 'verifique os SKUs em vermelho.'}`, 'info')}
+                className="h-11 px-4 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold"
+              >
+                Ver resumo
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {purchaseBlockPreview.preview.map(entry => (
+              <button
+                key={entry.sku}
+                type="button"
+                onClick={() => onSelectSku(entry.sku)}
+                className="text-left rounded-xl border border-error/20 bg-surface-container-lowest px-4 py-3 hover:border-error/40 hover:bg-error-container/10 transition-colors"
+              >
+                <p className="text-sm font-bold text-on-surface">SKU {entry.sku}</p>
+                <p className="mt-1 text-xs text-on-surface-variant line-clamp-2">
+                  {normalizeUserFacingText(entry.itemName)}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-error">
+                  <span>{formatDivergenceDelta(entry.delta)}</span>
+                  <span className="text-on-surface-variant">
+                    Local {normalizeUserFacingText(entry.location) || '-'}
+                  </span>
+                  {entry.referenceCode ? (
+                    <span className="text-on-surface-variant">
+                      Ref {normalizeUserFacingText(entry.referenceCode)}
+                    </span>
+                  ) : null}
+                  <span className="text-on-surface-variant">
+                    {formatPurchaseDateTime(entry.date)}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-error-container text-on-error-container p-4 rounded-2xl">
@@ -1391,76 +2359,104 @@ export default function AutomaticPurchases({
         </div>
 
         <div className="p-4 space-y-6">
-          {groupedPurchases.length === 0 ? (
+          {purchasePackagesByType.length === 0 ? (
             <div className="text-center py-12 text-on-surface-variant">
               <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>Nenhuma compra encontrada nesta categoria.</p>
             </div>
           ) : (
-            groupedPurchases.map(group => {
-              const canBulkReview = group.items.some(purchase => REVIEWABLE_PURCHASE_STATUSES.has(purchase.status));
-              const isExpanded = expandedGroups[group.key] !== false;
-
+            purchasePackagesByType.map(typeGroup => {
               return (
-                <section key={group.key} className="rounded-2xl border border-outline-variant bg-surface overflow-hidden">
-                  <div className="p-4 bg-surface-container-low flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
-                          <Package className="w-5 h-5 text-primary" />
-                          Pacote {group.type}
-                        </h2>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${group.badgeClassName}`}>
-                          {group.label}
-                        </span>
-                      </div>
-                      <p className="text-sm text-on-surface-variant mt-2">{group.description}</p>
-                      <div className="flex flex-wrap gap-2 mt-3 text-xs font-semibold text-on-surface-variant">
-                        <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
-                          {group.items.length} SKUs
-                        </span>
-                        <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
-                          {group.totalSuggested} unidades sugeridas
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedGroups(previous => ({ ...previous, [group.key]: !isExpanded }))
-                        }
-                        className="px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant text-sm font-bold hover:bg-surface-container-highest flex items-center justify-center gap-2"
-                      >
-                        <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        {isExpanded ? 'Recolher' : 'Abrir'} {group.label}
-                      </button>
-                      {canManagePurchases && canBulkReview && (
-                        <>
-                        <button
-                          type="button"
-                          onClick={() => handlePackageStatusChange(group, 'Em analise')}
-                          className="px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant text-sm font-bold hover:bg-surface-container-highest"
-                        >
-                          Enviar pacote para análise
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePackageStatusChange(group, 'Aprovada')}
-                          className="px-3 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90"
-                        >
-                          Aprovar pacote
-                        </button>
-                        </>
-                      )}
+                <section key={typeGroup.type} className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-bold uppercase tracking-widest text-primary flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      {typeGroup.type}
+                    </h2>
+                    <div className="flex flex-wrap gap-2 text-xs font-semibold text-on-surface-variant">
+                      <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
+                        {typeGroup.totalSkus} SKUs
+                      </span>
+                      <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
+                        {typeGroup.totalSuggested} unidades sugeridas
+                      </span>
                     </div>
                   </div>
 
-                  {isExpanded && (
-                  <div className="p-4 space-y-3">
-                    {group.items.map(purchase => {
-                      const item = findItemBySku(items, purchase.sku);
+                  {typeGroup.packages.map(group => {
+                    const canBulkReview = group.items.some(purchase => REVIEWABLE_PURCHASE_STATUSES.has(purchase.status));
+                    const isExpanded = expandedGroups[group.key] !== false;
+
+                    return (
+                      <div key={group.key} className="rounded-2xl border border-outline-variant bg-surface overflow-hidden">
+                        <div className="p-4 bg-surface-container-low flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-base font-bold text-on-surface flex items-center gap-2">
+                                <Package className="w-5 h-5 text-primary" />
+                                Pacote
+                              </h3>
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${group.badgeClassName}`}
+                              >
+                                {group.label}
+                              </span>
+                            </div>
+                            <p className="text-sm text-on-surface-variant mt-2">{group.description}</p>
+                            <div className="flex flex-wrap gap-2 mt-3 text-xs font-semibold text-on-surface-variant">
+                              <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
+                                {group.items.length} SKUs
+                              </span>
+                              <span className="px-2 py-1 rounded-lg bg-surface-container-highest">
+                                {group.totalSuggested} unidades sugeridas
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedGroups(previous => ({ ...previous, [group.key]: !isExpanded }))
+                              }
+                              className="px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant text-sm font-bold hover:bg-surface-container-highest flex items-center justify-center gap-2"
+                            >
+                              <ChevronDown
+                                className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              />
+                              {isExpanded ? 'Recolher' : 'Abrir'} {group.label}
+                            </button>
+                            {canManagePurchases && canBulkReview && (
+                              <>
+                              <button
+                                type="button"
+                                onClick={() => handlePackageStatusChange(group, 'Em analise')}
+                                className="px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant text-sm font-bold hover:bg-surface-container-highest"
+                              >
+                                Enviar pacote para análise
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePackageStatusChange(group, 'Aprovada')}
+                                disabled={purchaseProgressBlocked}
+                                className={`px-3 py-2 rounded-xl text-sm font-bold ${
+                                  purchaseProgressBlocked
+                                    ? 'bg-surface-container-highest text-on-surface-variant opacity-70 cursor-not-allowed'
+                                    : 'bg-primary text-on-primary hover:bg-primary/90'
+                                }`}
+                                title={purchaseProgressBlocked ? 'Existem divergências abertas. Corrija antes de aprovar.' : undefined}
+                              >
+                                Aprovar pacote
+                              </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                        <div className="p-4 space-y-3">
+                          {group.items.map(purchase => {
+                            const item = findItemBySkuIndex(itemIndex, purchase.sku);
                       const currentQty = item?.quantity ?? 0;
                       const itemSettings = item ? getItemAlertSettings(item, settings, logs) : null;
                       const abc = getAbcAnalysisForSku(purchase.sku);
@@ -1513,6 +2509,14 @@ export default function AutomaticPurchases({
                             <p className="text-xs text-on-surface-variant mt-2">
                               Motivo: {normalizeUserFacingText(purchase.reason)}
                             </p>
+                            {(purchase.vehiclePlate || purchase.costCenter) && (
+                              <p className="text-xs text-on-surface-variant mt-1">
+                                Placa: <strong className="text-on-surface">{purchase.vehiclePlate || '-'}</strong>
+                                {' '}· Centro de custo:{' '}
+                                <strong className="text-on-surface">{purchase.costCenter || '-'}</strong>
+                                {purchase.vehicleDescription ? ` · ${normalizeUserFacingText(purchase.vehicleDescription)}` : ''}
+                              </p>
+                            )}
                             <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                               <span className={`px-2 py-1 rounded-lg ${
                                 quoteCount >= 3
@@ -1532,6 +2536,26 @@ export default function AutomaticPurchases({
                           <div className="flex flex-wrap gap-2 w-full xl:w-auto">
                             {canManagePurchases && (
                               <>
+                                {canEditManualPurchase(purchase) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => openManualEditor(purchase)}
+                                      className="flex-1 xl:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 bg-surface text-on-surface rounded-lg border border-outline-variant text-sm font-bold hover:bg-surface-container-highest"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                      Editar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeManualPurchase(purchase)}
+                                      className="flex-1 xl:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 bg-error-container text-on-error-container rounded-lg text-sm font-bold hover:bg-error-container/80"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Remover
+                                    </button>
+                                  </>
+                                )}
                                 {['Sugestao', 'Manual', 'Em analise', 'Aprovada', 'Comprada', 'Recebida parcial'].includes(purchase.status) && (
                                   <button
                                     type="button"
@@ -1545,7 +2569,13 @@ export default function AutomaticPurchases({
                                   <button
                                     type="button"
                                     onClick={() => handleStatusChange(purchase, 'Aprovada')}
-                                    className="flex-1 xl:flex-none px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90"
+                                    disabled={purchaseProgressBlocked}
+                                    className={`flex-1 xl:flex-none px-3 py-2 rounded-lg text-sm font-bold ${
+                                      purchaseProgressBlocked
+                                        ? 'bg-surface-container-highest text-on-surface-variant opacity-70 cursor-not-allowed'
+                                        : 'bg-primary text-on-primary hover:bg-primary/90'
+                                    }`}
+                                    title={purchaseProgressBlocked ? 'Existem divergências abertas. Corrija antes de aprovar.' : undefined}
                                   >
                                     Aprovar
                                   </button>
@@ -1554,12 +2584,18 @@ export default function AutomaticPurchases({
                                   <button
                                     type="button"
                                     onClick={() => handleStatusChange(purchase, 'Comprada')}
-                                    className="flex-1 xl:flex-none px-3 py-2 bg-tertiary text-on-tertiary rounded-lg text-sm font-bold hover:bg-tertiary/90"
+                                    disabled={purchaseProgressBlocked}
+                                    className={`flex-1 xl:flex-none px-3 py-2 rounded-lg text-sm font-bold ${
+                                      purchaseProgressBlocked
+                                        ? 'bg-surface-container-highest text-on-surface-variant opacity-70 cursor-not-allowed'
+                                        : 'bg-tertiary text-on-tertiary hover:bg-tertiary/90'
+                                    }`}
+                                    title={purchaseProgressBlocked ? 'Existem divergências abertas. Corrija antes de marcar como comprada.' : undefined}
                                   >
                                     Marcar comprada
                                   </button>
                                 )}
-                                {['Sugestao', 'Manual', 'Em analise', 'Aprovada'].includes(purchase.status) && (
+                                {['Sugestao', 'Manual', 'Em analise', 'Aprovada'].includes(purchase.status) && !canEditManualPurchase(purchase) && (
                                   <button
                                     type="button"
                                     onClick={() => handleStatusChange(purchase, 'Cancelada')}
@@ -1583,6 +2619,9 @@ export default function AutomaticPurchases({
                     })}
                   </div>
                   )}
+                </div>
+                );
+              })}
                 </section>
               );
             })
@@ -1592,40 +2631,213 @@ export default function AutomaticPurchases({
 
       {isManualModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-container w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-surface-container w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-outline-variant">
-              <h2 className="text-lg font-bold text-on-surface">Novo Pedido Manual</h2>
+              <h2 className="text-lg font-bold text-on-surface">
+                {editingManualBatchId ? 'Editar Pedido Manual' : 'Novo Pedido Manual'}
+              </h2>
               <button
                 type="button"
-                onClick={() => setIsManualModalOpen(false)}
+                onClick={closeManualModal}
                 className="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleCreateManual} className="p-4 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium text-on-surface mb-1">SKU</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                  Placa
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={manualPlate}
+                      onFocus={() => setIsManualPlateSuggestionOpen(true)}
+                      onBlur={() => window.setTimeout(() => setIsManualPlateSuggestionOpen(false), 120)}
+                      onChange={event => setManualPlate(normalizePlate(event.target.value))}
+                      className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none uppercase"
+                      placeholder="Ex: AAA0A00"
+                      autoComplete="off"
+                      inputMode="text"
+                    />
+
+                    {isManualPlateSuggestionOpen && normalizePlate(manualPlate).length >= 1 && (
+                      <div
+                        className="absolute z-40 mt-2 w-full rounded-xl border border-outline-variant bg-surface-container-lowest shadow-xl overflow-hidden"
+                        onMouseDown={event => event.preventDefault()}
+                      >
+                        {vehicles.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-on-surface-variant">
+                            Base de veículos vazia.
+                          </div>
+                        ) : manualPlateSuggestions.length > 0 ? (
+                          manualPlateSuggestions.map(vehicle => {
+                            const model = getVehicleModelFromRecord(vehicle);
+                            return (
+                              <button
+                                key={vehicle.id}
+                                type="button"
+                                onClick={() => {
+                                  setManualPlate(normalizePlate(vehicle.plate));
+                                  setManualCostCenter(vehicle.costCenter);
+                                  setManualVehicleDescription(model);
+                                  setIsManualPlateSuggestionOpen(false);
+                                }}
+                                className="w-full px-4 py-3 text-left hover:bg-surface-container-low transition-colors"
+                              >
+                                <p className="font-semibold text-on-surface text-sm">{normalizePlate(vehicle.plate)}</p>
+                                <p className="text-xs text-on-surface-variant mt-1 truncate">
+                                  {normalizeUserFacingText(vehicle.costCenter)}
+                                  {model ? ` · ${model}` : ''}
+                                </p>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="px-4 py-3 text-sm text-on-surface-variant">
+                            Nenhuma placa encontrada para {normalizePlate(manualPlate)}.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                  Centro de custo
+                  <input
+                    type="text"
+                    required
+                    value={manualCostCenter}
+                    onChange={event => setManualCostCenter(event.target.value)}
+                    className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Centro de custo"
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+                Modelo / descrição do veículo
                 <input
                   type="text"
-                  required
-                  value={manualSku}
-                  onChange={event => setManualSku(event.target.value)}
+                  value={manualVehicleDescription}
+                  onChange={event => setManualVehicleDescription(event.target.value)}
                   className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                  placeholder="Ex: 12345"
+                  placeholder="Modelo do veículo"
                 />
-              </div>
+              </label>
+
               <div>
-                <label className="block text-sm font-medium text-on-surface mb-1">Quantidade</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={manualQuantity}
-                  onChange={event => setManualQuantity(event.target.value)}
-                  className="w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                  placeholder="Ex: 10"
-                />
+                <label className="block text-sm font-medium text-on-surface mb-1">SKU</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                  <input
+                    type="text"
+                    value={manualSku}
+                    onChange={event => setManualSku(event.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Digite SKU, nome, tipo ou localização"
+                    autoComplete="off"
+                  />
+                </div>
+
+                {manualSku.trim().length > 0 && (
+                  <div className="mt-2 grid gap-2">
+                    {manualSkuSuggestions.length > 0 ? (
+                      manualSkuSuggestions.map(item => (
+                        <button
+                          key={item.sku}
+                          type="button"
+                          onClick={() => handleSelectManualSku(item)}
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+                            manualSelectedItem?.sku === item.sku
+                              ? 'border-primary bg-primary-container/40'
+                              : 'border-outline-variant bg-surface-container-lowest hover:border-primary/40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-on-surface truncate">
+                                {normalizeUserFacingText(item.name)}
+                              </p>
+                              <p className="text-xs text-on-surface-variant truncate">
+                                SKU {item.sku} · saldo {item.quantity} · {getEffectivePurchaseType(item)}
+                              </p>
+                            </div>
+                            <span className="text-xs font-bold text-primary shrink-0">Selecionar</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface-variant">
+                        Nenhum SKU encontrado.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+                <label className="block text-sm font-medium text-on-surface">
+                  Quantidade para adicionar
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualQuantity}
+                    onChange={event => setManualQuantity(event.target.value)}
+                    className="mt-1 w-full px-3 py-2 bg-surface text-on-surface rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                    placeholder="Ex: 10"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddManualDraftItem}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-on-secondary rounded-xl font-bold hover:bg-secondary/90 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Adicionar SKU
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+                <div className="px-3 py-2 border-b border-outline-variant flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-on-surface">Itens do pedido</p>
+                  <span className="text-xs font-semibold text-on-surface-variant">{manualDraftItems.length} SKU(s)</span>
+                </div>
+                {manualDraftItems.length > 0 ? (
+                  <div className="divide-y divide-outline-variant">
+                    {manualDraftItems.map(line => (
+                      <div key={line.id} className="grid grid-cols-[1fr_96px_40px] gap-2 items-center p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-on-surface truncate">
+                            SKU {line.sku} - {normalizeUserFacingText(line.itemName)}
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={event => updateManualDraftQuantity(line.id, event.target.value)}
+                          className="w-full px-2 py-2 bg-surface text-on-surface rounded-lg border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                          aria-label={`Quantidade do SKU ${line.sku}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeManualDraftItem(line.id)}
+                          className="w-10 h-10 inline-flex items-center justify-center rounded-lg text-error hover:bg-error-container hover:text-on-error-container transition-colors"
+                          aria-label={`Remover SKU ${line.sku}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-4 text-sm text-on-surface-variant">
+                    Nenhum SKU adicionado.
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-on-surface mb-1">Motivo / Observação</label>
@@ -1640,7 +2852,7 @@ export default function AutomaticPurchases({
               <div className="pt-4 flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsManualModalOpen(false)}
+                  onClick={closeManualModal}
                   className="px-4 py-2 text-on-surface-variant hover:bg-surface-variant rounded-xl font-medium transition-colors"
                 >
                   Cancelar
@@ -1649,7 +2861,7 @@ export default function AutomaticPurchases({
                   type="submit"
                   className="px-4 py-2 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary/90 transition-colors"
                 >
-                  Criar Pedido
+                  {editingManualBatchId ? 'Salvar Pedido' : 'Criar Pedido'}
                 </button>
               </div>
             </form>
@@ -2133,3 +3345,5 @@ export default function AutomaticPurchases({
     </div>
   );
 }
+
+
