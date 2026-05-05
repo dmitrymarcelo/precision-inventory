@@ -2,6 +2,25 @@
 
 Ultima atualizacao: 2026-05-05
 
+## Kit Preventivas: editar/remover itens (admin) em 2026-05-05
+
+- Pedido do usuario:
+  - em `Kit Preventivas`, adicionar botoes para `Editar` e `Remover` itens do kit
+  - somente `Admin`
+- Implementado:
+  - a tela `Kit Preventivas` permite editar SKU/descricao/quantidade por kit e remover itens (apenas admin)
+  - a edicao cria um catalogo customizado em `settings.preventiveKits` e passa a usar esse catalogo como fonte de verdade
+  - `Solicitacao de pecas` (adicionar kit no pedido) passou a respeitar o catalogo customizado do `settings`
+- Arquivos:
+  - `src/components/PreventiveKits.tsx`
+  - `src/components/RequestManager.tsx`
+  - `src/preventiveKitCatalog.ts`
+  - `src/types.ts`
+  - `src/App.tsx`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BLj0w3P0.js`
+
 ## Sync: botao Atualizar e merge robusto de solicitacoes em 2026-05-05
 
 - Problema reportado:

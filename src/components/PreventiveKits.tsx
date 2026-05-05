@@ -1,12 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Gauge, PackageCheck, Search } from 'lucide-react';
-import { InventoryItem } from '../types';
-import { preventiveKitCatalog } from '../preventiveKitCatalog';
+import { AlertTriangle, Gauge, PackageCheck, Pencil, Search, Trash2, X } from 'lucide-react';
+import { InventoryItem, InventorySettings, PreventiveKitDefinition, PreventiveKitItem } from '../types';
+import { resolvePreventiveKitCatalog } from '../preventiveKitCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 
 interface PreventiveKitsProps {
   items: InventoryItem[];
   onSelectSku: (sku: string) => void;
+  settings: InventorySettings;
+  setSettings: React.Dispatch<React.SetStateAction<InventorySettings>>;
+  canManagePreventiveKits: boolean;
+  showToast: (message: string, type?: 'success' | 'info') => void;
 }
 
 function normalizeSku(value: string) {
@@ -17,17 +21,131 @@ function normalizeSku(value: string) {
   return text;
 }
 
-export default function PreventiveKits({ items, onSelectSku }: PreventiveKitsProps) {
+export default function PreventiveKits({
+  items,
+  onSelectSku,
+  settings,
+  setSettings,
+  canManagePreventiveKits,
+  showToast
+}: PreventiveKitsProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingItem, setEditingItem] = useState<{ kitId: string; sku: string } | null>(null);
+  const [editingSku, setEditingSku] = useState('');
+  const [editingDescription, setEditingDescription] = useState('');
+  const [editingQuantity, setEditingQuantity] = useState('1');
+
+  const kitCatalog = useMemo(() => resolvePreventiveKitCatalog(settings), [settings]);
 
   const stockBySku = useMemo(
     () => new Map(items.map(item => [normalizeSku(item.sku), item])),
     [items]
   );
 
+  const ensureEditableCatalog = (currentSettings: InventorySettings) => {
+    const existingCustom = currentSettings.preventiveKits;
+    const base = Array.isArray(existingCustom) && existingCustom.length > 0 ? existingCustom : kitCatalog;
+    const cloned: PreventiveKitDefinition[] = base.map(kit => ({
+      id: String(kit.id),
+      name: String(kit.name),
+      items: (kit.items || []).map(component => ({
+        sku: String(component.sku),
+        description: String(component.description),
+        requiredQuantity: Number(component.requiredQuantity) || 1
+      }))
+    }));
+    return cloned;
+  };
+
+  const startEdit = (kitId: string, item: PreventiveKitItem) => {
+    setEditingItem({ kitId, sku: item.sku });
+    setEditingSku(item.sku);
+    setEditingDescription(item.description);
+    setEditingQuantity(String(item.requiredQuantity));
+  };
+
+  const commitEdit = () => {
+    if (!editingItem) return;
+    const kitId = editingItem.kitId;
+    const originalSku = editingItem.sku;
+    const nextSku = normalizeSku(editingSku);
+    const nextDescription = normalizeUserFacingText(editingDescription);
+    const parsedQuantity = Number.parseInt(String(editingQuantity || '').trim(), 10);
+    const nextQuantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 0;
+
+    if (!nextSku) {
+      showToast('Informe o SKU.', 'info');
+      return;
+    }
+    if (!nextQuantity) {
+      showToast('Informe a quantidade por kit.', 'info');
+      return;
+    }
+
+    const validationCatalog = ensureEditableCatalog(settings);
+    const validationKit = validationCatalog.find(kit => kit.id === kitId) || null;
+    if (!validationKit) {
+      showToast('Kit não encontrado.', 'info');
+      return;
+    }
+    const validationItem = validationKit.items.find(entry => normalizeSku(entry.sku) === normalizeSku(originalSku)) || null;
+    if (!validationItem) {
+      showToast('Item não encontrado no kit.', 'info');
+      return;
+    }
+    const hasCollision =
+      normalizeSku(originalSku) !== nextSku && validationKit.items.some(entry => normalizeSku(entry.sku) === nextSku);
+    if (hasCollision) {
+      showToast('Este SKU já existe neste kit.', 'info');
+      return;
+    }
+
+    setSettings(previous => {
+      const catalog = ensureEditableCatalog(previous);
+      const kitIndex = catalog.findIndex(kit => kit.id === kitId);
+      if (kitIndex < 0) return previous;
+
+      const kit = catalog[kitIndex];
+      const itemIndex = kit.items.findIndex(entry => normalizeSku(entry.sku) === normalizeSku(originalSku));
+      if (itemIndex < 0) return previous;
+
+      const nextItem: PreventiveKitItem = {
+        sku: nextSku,
+        description: nextDescription || kit.items[itemIndex].description,
+        requiredQuantity: nextQuantity
+      };
+      kit.items[itemIndex] = nextItem;
+      kit.items = [...kit.items];
+      catalog[kitIndex] = { ...kit, items: kit.items };
+
+      return { ...previous, preventiveKits: catalog };
+    });
+
+    showToast('Item do kit atualizado.', 'success');
+    setEditingItem(null);
+  };
+
+  const removeItem = (kitId: string, sku: string) => {
+    const confirmRemove = window.confirm(`Remover o SKU ${sku} deste kit?`);
+    if (!confirmRemove) return;
+
+    setSettings(previous => {
+      const catalog = ensureEditableCatalog(previous);
+      const kitIndex = catalog.findIndex(kit => kit.id === kitId);
+      if (kitIndex < 0) return previous;
+
+      const kit = catalog[kitIndex];
+      const nextItems = kit.items.filter(entry => normalizeSku(entry.sku) !== normalizeSku(sku));
+      catalog[kitIndex] = { ...kit, items: nextItems };
+      return { ...previous, preventiveKits: catalog };
+    });
+
+    showToast('Item removido do kit.', 'success');
+  };
+
   const kitSummaries = useMemo(
     () =>
-      preventiveKitCatalog.map(kit => {
+      kitCatalog.map(kit => {
         const components = kit.items.map(component => {
           const item = stockBySku.get(normalizeSku(component.sku)) || null;
           const availableQuantity = item?.quantity ?? 0;
@@ -54,7 +172,7 @@ export default function PreventiveKits({ items, onSelectSku }: PreventiveKitsPro
           criticalComponents
         };
       }),
-    [stockBySku]
+    [kitCatalog, stockBySku]
   );
 
   const filteredKits = useMemo(() => {
@@ -169,19 +287,52 @@ export default function PreventiveKits({ items, onSelectSku }: PreventiveKitsPro
 
             <div className="mt-5 grid grid-cols-1 gap-3">
               {kit.components.map(component => (
-                <button
+                <div
                   key={`${kit.id}-${component.sku}`}
-                  type="button"
                   onClick={() => onSelectSku(component.sku)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectSku(component.sku);
+                    }
+                  }}
                   className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4 text-left hover:bg-surface-container-high transition-colors"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-outline">{component.sku}</span>
                         <span className="text-[11px] font-bold uppercase tracking-wider text-outline">
                           exige {component.requiredQuantity}
                         </span>
+                        {canManagePreventiveKits && (
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                startEdit(kit.id, component);
+                              }}
+                              className="h-9 px-3 rounded-lg bg-surface-container-highest text-on-surface-variant font-bold text-sm inline-flex items-center gap-2 hover:bg-surface-container-low transition-colors"
+                            >
+                              <Pencil size={16} />
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                removeItem(kit.id, component.sku);
+                              }}
+                              className="h-9 px-3 rounded-lg bg-error-container text-on-error-container font-bold text-sm inline-flex items-center gap-2 hover:bg-error-container/80 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                              Remover
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <h3 className="mt-2 text-base font-bold text-on-surface">
                         {normalizeUserFacingText(component.item?.name || component.description)}
@@ -210,7 +361,7 @@ export default function PreventiveKits({ items, onSelectSku }: PreventiveKitsPro
                       </div>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
 
@@ -233,6 +384,76 @@ export default function PreventiveKits({ items, onSelectSku }: PreventiveKitsPro
           </div>
         )}
       </section>
+
+      {editingItem && (
+        <div className="fixed inset-0 z-[120] bg-black/40 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_18px_48px_rgba(36,52,69,0.22)] overflow-hidden">
+            <div className="p-5 border-b border-outline-variant/15 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Editar item do kit</p>
+                <p className="mt-1 text-sm font-semibold text-on-surface">Kit: {editingItem.kitId}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="h-10 w-10 rounded-xl bg-surface-container-highest text-on-surface-variant flex items-center justify-center"
+                aria-label="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-outline">SKU</p>
+                  <input
+                    value={editingSku}
+                    onChange={event => setEditingSku(event.target.value)}
+                    className="mt-2 w-full h-12 rounded-xl px-4 bg-surface-container-lowest border border-outline-variant/20 focus:ring-2 focus:ring-primary/40 font-bold"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-outline">Descrição</p>
+                  <input
+                    value={editingDescription}
+                    onChange={event => setEditingDescription(event.target.value)}
+                    className="mt-2 w-full h-12 rounded-xl px-4 bg-surface-container-lowest border border-outline-variant/20 focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-outline">Quantidade por kit</p>
+                <input
+                  value={editingQuantity}
+                  onChange={event => setEditingQuantity(event.target.value)}
+                  className="mt-2 w-full h-12 rounded-xl px-4 bg-surface-container-lowest border border-outline-variant/20 focus:ring-2 focus:ring-primary/40 font-bold"
+                  inputMode="numeric"
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="flex-1 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={commitEdit}
+                  className="flex-1 h-12 rounded-xl bg-primary text-on-primary font-bold"
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

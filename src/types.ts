@@ -39,9 +39,22 @@ export interface InventoryLog {
   note?: string;
 }
 
+export type PreventiveKitItem = {
+  sku: string;
+  description: string;
+  requiredQuantity: number;
+};
+
+export type PreventiveKitDefinition = {
+  id: string;
+  name: string;
+  items: PreventiveKitItem[];
+};
+
 export interface InventorySettings {
   criticalLimit: number;
   reorderLimit: number;
+  preventiveKits?: PreventiveKitDefinition[];
 }
 
 export interface VehicleRecord {

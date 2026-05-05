@@ -35,7 +35,15 @@ import {
   startPreparedScanner,
   type DetectedScan
 } from '../barcodeUtils';
-import { InventoryItem, InventoryLog, MaterialRequest, MaterialRequestAuditActor, MaterialRequestAuditEntry, VehicleRecord } from '../types';
+import {
+  InventoryItem,
+  InventoryLog,
+  InventorySettings,
+  MaterialRequest,
+  MaterialRequestAuditActor,
+  MaterialRequestAuditEntry,
+  VehicleRecord
+} from '../types';
 import {
   createEmptyRequest,
   createRequestItem,
@@ -48,7 +56,7 @@ import {
 import { ProductImage } from '../productVisuals';
 import { getVehicleTypeFromModel, listVehicleCatalogByType, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
-import { preventiveKitCatalog } from '../preventiveKitCatalog';
+import { resolvePreventiveKitCatalog } from '../preventiveKitCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 import { getOpenDivergenceMap } from '../divergenceRules';
 import {
@@ -63,6 +71,7 @@ interface RequestManagerProps {
   logs: InventoryLog[];
   requests: MaterialRequest[];
   vehicles: VehicleRecord[];
+  settings: InventorySettings;
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
   externalRequestId?: string | null;
   onClearExternalRequest?: () => void;
@@ -83,6 +92,7 @@ export default function RequestManager({
   logs,
   requests,
   vehicles,
+  settings,
   setRequests,
   externalRequestId = null,
   onClearExternalRequest,
@@ -668,6 +678,8 @@ export default function RequestManager({
     [items]
   );
 
+  const preventiveKitCatalog = useMemo(() => resolvePreventiveKitCatalog(settings), [settings]);
+
   const pickerKitCards = useMemo(() => {
     return preventiveKitCatalog.map(kit => {
       const supported = kit.items.map(component => {
@@ -682,7 +694,7 @@ export default function RequestManager({
         availableKits
       };
     });
-  }, [openDivergenceBySku, stockItemByNormalizedSku]);
+  }, [openDivergenceBySku, preventiveKitCatalog, stockItemByNormalizedSku]);
 
   type PickerKitEntry = {
     sku: string;
@@ -727,7 +739,7 @@ export default function RequestManager({
       : entries;
 
     return filtered.slice(0, 80);
-  }, [pickerItemQuery, pickerKitId, stockItemByNormalizedSku]);
+  }, [pickerItemQuery, pickerKitId, preventiveKitCatalog, stockItemByNormalizedSku]);
 
   const openTypeModelPicker = (presetType?: string) => {
     if (!canMutateDraft) {

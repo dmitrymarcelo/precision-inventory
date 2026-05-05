@@ -1518,6 +1518,10 @@ export default function App() {
           <PreventiveKits
             items={items}
             onSelectSku={handleSelectSku}
+            settings={settings}
+            setSettings={setSettingsGuarded}
+            canManagePreventiveKits={role === 'admin'}
+            showToast={showToast}
           />
         )}
 
@@ -1551,6 +1555,7 @@ export default function App() {
             logs={logs}
             requests={requests}
             vehicles={vehicles}
+            settings={settings}
             setRequests={setRequestsGuarded}
             externalRequestId={requestEditorRequestId}
             onClearExternalRequest={handleClearRequestEditor}
