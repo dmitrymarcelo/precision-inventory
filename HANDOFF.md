@@ -1,6 +1,23 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-04
+Ultima atualizacao: 2026-05-05
+
+## Sync: botao Atualizar e merge robusto de solicitacoes em 2026-05-05
+
+- Problema reportado:
+  - botao do modo manual nao aparecia (porque producao estava em bundle antigo)
+  - separacao concluida no celular nao refletia no computador mesmo apos atualizar
+- Ajustes feitos:
+  - UI: botao `Atualizar` (sync do online) agora fica sempre disponivel no topo para `admin`/`operacao`
+  - UI: ao clicar em `Atualizar`, se existir alteracao local pendente, o sistema pede confirmacao antes de sobrescrever
+  - API: merge de `requests` agora preserva avancos de status e quantidades (evita perder `Atendida/Estornada` por conflito de `updatedAt` entre aparelhos)
+- Arquivos:
+  - `src/components/Layout.tsx`
+  - `src/App.tsx`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-vgOrvBzS.js`
 
 ## Separacao: modo manual admin (Itens para separar) em 2026-05-04
 
