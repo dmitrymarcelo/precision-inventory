@@ -34,6 +34,11 @@ export default function PreventiveKits({
   const [editingSku, setEditingSku] = useState('');
   const [editingDescription, setEditingDescription] = useState('');
   const [editingQuantity, setEditingQuantity] = useState('1');
+  const [confirmAction, setConfirmAction] = useState<
+    | null
+    | { type: 'edit'; kitId: string; originalSku: string; nextSku: string; nextQuantity: string }
+    | { type: 'remove'; kitId: string; sku: string }
+  >(null);
 
   const kitCatalog = useMemo(() => resolvePreventiveKitCatalog(settings), [settings]);
 
@@ -126,9 +131,6 @@ export default function PreventiveKits({
   };
 
   const removeItem = (kitId: string, sku: string) => {
-    const confirmRemove = window.confirm(`Remover o SKU ${sku} deste kit?`);
-    if (!confirmRemove) return;
-
     setSettings(previous => {
       const catalog = ensureEditableCatalog(previous);
       const kitIndex = catalog.findIndex(kit => kit.id === kitId);
@@ -324,7 +326,7 @@ export default function PreventiveKits({
                               type="button"
                               onClick={event => {
                                 event.stopPropagation();
-                                removeItem(kit.id, component.sku);
+                                setConfirmAction({ type: 'remove', kitId: kit.id, sku: component.sku });
                               }}
                               className="h-9 px-3 rounded-lg bg-error-container text-on-error-container font-bold text-sm inline-flex items-center gap-2 hover:bg-error-container/80 transition-colors"
                             >
@@ -444,10 +446,91 @@ export default function PreventiveKits({
                 </button>
                 <button
                   type="button"
-                  onClick={commitEdit}
+                  onClick={() => {
+                    if (!editingItem) return;
+                    const nextSku = normalizeSku(editingSku);
+                    const parsedQuantity = Number.parseInt(String(editingQuantity || '').trim(), 10);
+                    const nextQuantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 0;
+                    if (!nextSku) {
+                      showToast('Informe o SKU.', 'info');
+                      return;
+                    }
+                    if (!nextQuantity) {
+                      showToast('Informe a quantidade por kit.', 'info');
+                      return;
+                    }
+                    setConfirmAction({
+                      type: 'edit',
+                      kitId: editingItem.kitId,
+                      originalSku: editingItem.sku,
+                      nextSku,
+                      nextQuantity: String(nextQuantity)
+                    });
+                  }}
                   className="flex-1 h-12 rounded-xl bg-primary text-on-primary font-bold"
                 >
                   Salvar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-[130] bg-black/40 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_18px_48px_rgba(36,52,69,0.22)] overflow-hidden">
+            <div className="p-5 border-b border-outline-variant/15">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Confirmação</p>
+              <p className="mt-1 font-extrabold text-on-surface">
+                {confirmAction.type === 'remove'
+                  ? 'Deseja realmente remover este item do kit?'
+                  : 'Deseja realmente modificar este item do kit?'}
+              </p>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="rounded-xl bg-surface-container-low px-4 py-4 text-sm text-on-surface-variant">
+                <p>
+                  <span className="font-semibold text-on-surface">Kit:</span> {confirmAction.kitId}
+                </p>
+                {confirmAction.type === 'remove' ? (
+                  <p className="mt-2">
+                    <span className="font-semibold text-on-surface">SKU:</span> {confirmAction.sku}
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-2">
+                      <span className="font-semibold text-on-surface">SKU:</span> {confirmAction.originalSku} →{' '}
+                      {confirmAction.nextSku}
+                    </p>
+                    <p className="mt-2">
+                      <span className="font-semibold text-on-surface">Quantidade por kit:</span> {confirmAction.nextQuantity}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setConfirmAction(null)}
+                  className="flex-1 h-12 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmAction.type === 'remove') {
+                      removeItem(confirmAction.kitId, confirmAction.sku);
+                      setConfirmAction(null);
+                      return;
+                    }
+                    commitEdit();
+                    setConfirmAction(null);
+                  }}
+                  className="flex-1 h-12 rounded-xl bg-primary text-on-primary font-bold"
+                >
+                  Sim
                 </button>
               </div>
             </div>

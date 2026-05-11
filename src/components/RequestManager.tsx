@@ -73,6 +73,7 @@ interface RequestManagerProps {
   vehicles: VehicleRecord[];
   settings: InventorySettings;
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
+  authToken?: string;
   externalRequestId?: string | null;
   onClearExternalRequest?: () => void;
   canCreateRequests: boolean;
@@ -87,6 +88,14 @@ interface RequestManagerProps {
   onOpenVehicleParts: (type?: string) => void;
 }
 
+type RequestLockPayload = {
+  requestId: string;
+  holder: { userId: string; matricula: string; name: string; role: string };
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+};
+
 export default function RequestManager({
   items,
   logs,
@@ -94,6 +103,7 @@ export default function RequestManager({
   vehicles,
   settings,
   setRequests,
+  authToken,
   externalRequestId = null,
   onClearExternalRequest,
   canCreateRequests,
@@ -123,6 +133,11 @@ export default function RequestManager({
   const [pickerKitId, setPickerKitId] = useState('');
   const [openRequestMenuId, setOpenRequestMenuId] = useState<string | null>(null);
   const [isPlateSuggestionOpen, setIsPlateSuggestionOpen] = useState(false);
+  const [editingLock, setEditingLock] = useState<RequestLockPayload | null>(null);
+  const [editingLockStatus, setEditingLockStatus] = useState<'idle' | 'loading' | 'holding' | 'blocked' | 'error'>(
+    'idle'
+  );
+  const editingLockHeldRef = useRef(false);
   const ignoredExternalIdRef = useRef<string | null>(null);
   const [isSkuScannerOpen, setIsSkuScannerOpen] = useState(false);
   const [isSkuScannerBusy, setIsSkuScannerBusy] = useState(false);
@@ -570,11 +585,25 @@ export default function RequestManager({
   const persistedEditingRequest = editingRequestId
     ? requests.find(request => request.id === editingRequestId) || null
     : null;
+  const currentUserId = auditActor.id || '';
+  const isEditingLockHeldByOther = Boolean(
+    persistedEditingRequest &&
+      editingLock &&
+      editingLock.holder?.userId &&
+      editingLock.holder.userId !== currentUserId
+  );
+  const isEditingLockHeldByMe = Boolean(
+    persistedEditingRequest &&
+      editingLock &&
+      editingLock.holder?.userId &&
+      editingLock.holder.userId === currentUserId
+  );
+  const isPersistedStatusLocked = persistedEditingRequest ? isRequestLocked(persistedEditingRequest.status) : false;
   const isDraftReadOnly = persistedEditingRequest
-    ? isRequestLocked(persistedEditingRequest.status) || !canEditExistingRequests
+    ? isPersistedStatusLocked || isEditingLockHeldByOther || !canEditExistingRequests
     : false;
   const canMutateDraft = persistedEditingRequest
-    ? canEditExistingRequests && canEditRequest(persistedEditingRequest.status)
+    ? canEditExistingRequests && canEditRequest(persistedEditingRequest.status) && !isEditingLockHeldByOther
     : canCreateRequests;
   const draftSkuSet = useMemo(() => new Set(draft.items.map(item => item.sku)), [draft.items]);
   const pickerSelectedSet = useMemo(() => new Set(pickerSelectedSkus), [pickerSelectedSkus]);
@@ -582,6 +611,198 @@ export default function RequestManager({
     if (!draft.items.some(isBatteryRequestItem)) return null;
     return findActiveBatteryWarrantyAlert(requests, draft.vehiclePlate, draft.id || editingRequestId || undefined);
   }, [draft.id, draft.items, draft.vehiclePlate, editingRequestId, requests]);
+
+  const describeEditingLockHolder = () => {
+    const holderName = normalizeUserFacingText(editingLock?.holder?.name || '');
+    const holderMatricula = normalizeUserFacingText(editingLock?.holder?.matricula || '');
+    if (holderName && holderMatricula) return `${holderName} (${holderMatricula})`;
+    if (holderName) return holderName;
+    if (holderMatricula) return holderMatricula;
+    return 'outro usuário';
+  };
+
+  useEffect(() => {
+    editingLockHeldRef.current = false;
+    setEditingLock(null);
+    setEditingLockStatus('idle');
+    const requestId = editingRequestId || '';
+    if (!requestId) return;
+
+    let cancelled = false;
+    let heartbeatTimer: number | null = null;
+    let pollTimer: number | null = null;
+
+    const makeAuthHeaders = () => {
+      const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' };
+      if (authToken) headers.authorization = `Bearer ${authToken}`;
+      return headers;
+    };
+
+    const readLock = async () => {
+      const response = await fetch(`/api/request-lock?requestId=${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return data.lock;
+    };
+
+    const postLock = async (action: 'acquire' | 'heartbeat' | 'release', keepalive = false) => {
+      const response = await fetch(`/api/request-lock?action=${action}`, {
+        method: 'POST',
+        headers: makeAuthHeaders(),
+        body: JSON.stringify({ requestId }),
+        keepalive
+      });
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('AUTH');
+      }
+      if (response.status === 409) {
+        const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+        return { ok: false as const, lock: data.lock };
+      }
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return { ok: true as const, lock: data.lock };
+    };
+
+    const heartbeat = async () => {
+      if (!canEditExistingRequests || !authToken) return;
+      try {
+        const result = await postLock('heartbeat');
+        if (cancelled) return;
+        if (result.ok) {
+          setEditingLock(result.lock);
+          setEditingLockStatus('holding');
+          editingLockHeldRef.current =
+            Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+        } else {
+          setEditingLock(result.lock);
+          setEditingLockStatus('blocked');
+          editingLockHeldRef.current = false;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          setEditingLockStatus('error');
+          setEditingLock(null);
+          editingLockHeldRef.current = false;
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+      }
+    };
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      pollTimer = window.setInterval(async () => {
+        try {
+          const latest = await readLock();
+          if (cancelled) return;
+          if (!latest) {
+            setEditingLock(null);
+            if (canEditExistingRequests && authToken) {
+              const acquired = await postLock('acquire');
+              if (cancelled) return;
+              if (acquired.ok) {
+                setEditingLock(acquired.lock);
+                setEditingLockStatus('holding');
+                editingLockHeldRef.current =
+                  Boolean(acquired.lock?.holder?.userId) && acquired.lock?.holder.userId === (auditActor.id || '');
+                if (pollTimer) {
+                  window.clearInterval(pollTimer);
+                  pollTimer = null;
+                }
+                if (!heartbeatTimer) {
+                  heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+                }
+              } else {
+                setEditingLock(acquired.lock);
+                setEditingLockStatus('blocked');
+              }
+            }
+          } else {
+            setEditingLock(latest);
+          }
+        } catch {
+          return;
+        }
+      }, 4000);
+    };
+
+    const acquireOrLoad = async () => {
+      try {
+        if (canEditExistingRequests && authToken) {
+          setEditingLockStatus('loading');
+          const result = await postLock('acquire');
+          if (cancelled) return;
+          if (result.ok) {
+            setEditingLock(result.lock);
+            setEditingLockStatus('holding');
+            editingLockHeldRef.current =
+              Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+            if (!heartbeatTimer) {
+              heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+            }
+            return;
+          }
+          setEditingLock(result.lock);
+          setEditingLockStatus('blocked');
+          startPolling();
+          return;
+        }
+
+        const lock = await readLock();
+        if (cancelled) return;
+        setEditingLock(lock);
+        setEditingLockStatus(lock ? 'blocked' : 'idle');
+        if (lock) startPolling();
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+        setEditingLockStatus('error');
+        setEditingLock(null);
+        editingLockHeldRef.current = false;
+      }
+    };
+
+    void acquireOrLoad();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void acquireOrLoad();
+        if (editingLockHeldRef.current) {
+          void heartbeat();
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (!editingLockHeldRef.current) return;
+      if (!canEditExistingRequests || !authToken) return;
+      void postLock('release', true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (pollTimer) window.clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (editingLockHeldRef.current && canEditExistingRequests && authToken) {
+        void postLock('release', true);
+      }
+      editingLockHeldRef.current = false;
+    };
+  }, [auditActor.id, authToken, canEditExistingRequests, editingRequestId, showToast]);
 
   const confirmBatteryWarrantyBeforeAdd = (candidateItems: InventoryItem[]) => {
     if (!candidateItems.some(isBatteryInventoryItem)) return true;
@@ -1225,7 +1446,7 @@ export default function RequestManager({
           </div>
         </div>
 
-        {persistedEditingRequest && isDraftReadOnly && (
+        {persistedEditingRequest && isPersistedStatusLocked && (
           <div className="mb-5 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
             <Lock size={18} className="text-primary shrink-0 mt-0.5" />
             <div>
@@ -1236,6 +1457,35 @@ export default function RequestManager({
             </div>
           </div>
         )}
+
+        {persistedEditingRequest && !isPersistedStatusLocked && isEditingLockHeldByOther && (
+          <div className="mb-5 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
+            <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-on-surface">Solicitação em modificação</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Em processo de modificação por {describeEditingLockHolder()}. Esta tela fica somente para consulta até liberar.
+              </p>
+              {canEditExistingRequests ? (
+                <p className="text-sm text-on-surface-variant mt-2">
+                  Assim que a pessoa sair, o sistema libera automaticamente e você poderá editar.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {persistedEditingRequest && !isPersistedStatusLocked && isEditingLockHeldByMe && editingLockStatus === 'holding' ? (
+          <div className="mb-5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-on-surface">Você está com prioridade nesta solicitação</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Enquanto esta tela estiver aberta, outros usuários verão um aviso de “em modificação” e não conseguirão editar.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-xl bg-surface-container-low border border-outline-variant/15 p-4">
           <div className="flex items-center gap-2 mb-3">

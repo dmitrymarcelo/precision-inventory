@@ -2,6 +2,25 @@
 
 Ultima atualizacao: 2026-05-05
 
+## Solicitacao: prioridade por lock (evitar conflitos) em 2026-05-05
+
+- Pedido do usuario:
+  - quem abrir primeiro a solicitacao tem prioridade enquanto estiver nela
+  - outras pessoas podem abrir para ver, mas devem receber aviso "em processo de modificacao" e ficar em modo consulta
+  - ao sair, liberar automaticamente para o proximo editar (sem precisar combinar manualmente)
+- Implementado:
+  - lock/lease por solicitacao via `functions/api/request-lock.js` (TTL 45s, acquire/heartbeat/release)
+  - `Separacao`:
+    - ao abrir uma solicitacao, tenta adquirir lock; se outra pessoa estiver editando, mostra aviso e bloqueia leitura/separacao/concluir
+    - heartbeat enquanto a solicitacao estiver aberta; ao sair/fechar, libera
+  - `Solicitacao de pecas` (editar solicitacao existente):
+    - ao entrar em edicao, tenta adquirir lock; se bloqueado, mostra aviso e desabilita edicao/salvar
+- Arquivos:
+  - `functions/api/request-lock.js`
+  - `src/components/MaterialSeparation.tsx`
+  - `src/components/RequestManager.tsx`
+  - `src/App.tsx`
+
 ## Kit Preventivas: editar/remover itens (admin) em 2026-05-05
 
 - Pedido do usuario:
@@ -9,6 +28,7 @@ Ultima atualizacao: 2026-05-05
   - somente `Admin`
 - Implementado:
   - a tela `Kit Preventivas` permite editar SKU/descricao/quantidade por kit e remover itens (apenas admin)
+  - ao salvar edicao ou remover item, agora pede confirmacao com botoes `Sim` / `Cancelar` (evita clique acidental)
   - a edicao cria um catalogo customizado em `settings.preventiveKits` e passa a usar esse catalogo como fonte de verdade
   - `Solicitacao de pecas` (adicionar kit no pedido) passou a respeitar o catalogo customizado do `settings`
 - Arquivos:

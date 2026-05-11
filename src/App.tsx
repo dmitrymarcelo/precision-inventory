@@ -1557,6 +1557,7 @@ export default function App() {
             vehicles={vehicles}
             settings={settings}
             setRequests={setRequestsGuarded}
+            authToken={authSession?.token}
             externalRequestId={requestEditorRequestId}
             onClearExternalRequest={handleClearRequestEditor}
             canCreateRequests={canCreateRequests}
@@ -1597,6 +1598,7 @@ export default function App() {
             requests={requests}
             setRequests={setRequestsGuarded}
             canEdit={canOperateSeparation}
+            authToken={authSession?.token}
             canDeleteRequests={canEditExistingRequests}
             canReverseRequests={canReverseRequests}
             auditActor={auditActor}

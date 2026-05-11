@@ -395,6 +395,10 @@ Repositorio clonado para referencia local:
 
 - `.codex-tools/andrej-karpathy-skills`
 
+Instalacao como skill do workspace (Trae):
+
+- `.trae/skills/karpathy-guidelines/SKILL.md`
+
 Regra:
 
 - antes de mexer em codigo, consultar `CODEX.md`
@@ -455,6 +459,22 @@ Skills instaladas:
 - `verification-before-completion`
 - `writing-plans`
 - `writing-skills`
+
+## Skill 20 - Impeccable (UI/UX)
+
+Objetivo:
+
+- melhorar UX/UI com alto rigor (hierarquia visual, tipografia, layout, cores, acessibilidade, responsivo, performance e polish)
+- usar quando a tarefa envolver design, refinamento visual, auditoria de interface, ou iteracao guiada por qualidade
+
+Fonte (repositorio):
+
+- `.codex-tools/impeccable` (clone de referencia do projeto)
+- fonte: `https://github.com/pbakaus/impeccable.git`
+
+Instalacao como skill do workspace (Trae):
+
+- `.trae/skills/impeccable/SKILL.md`
 
 Regra:
 

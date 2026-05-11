@@ -47,6 +47,7 @@ interface MaterialSeparationProps {
   requests: MaterialRequest[];
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
   canEdit: boolean;
+  authToken?: string;
   canDeleteRequests: boolean;
   canReverseRequests: boolean;
   auditActor: MaterialRequestAuditActor;
@@ -60,6 +61,14 @@ interface MaterialSeparationProps {
   onSelectSku: (sku: string) => void;
 }
 
+type RequestLockPayload = {
+  requestId: string;
+  holder: { userId: string; matricula: string; name: string; role: string };
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+};
+
 export default function MaterialSeparation({
   items,
   setItems,
@@ -68,6 +77,7 @@ export default function MaterialSeparation({
   requests,
   setRequests,
   canEdit,
+  authToken,
   canDeleteRequests,
   canReverseRequests,
   auditActor,
@@ -98,12 +108,17 @@ export default function MaterialSeparation({
   const [quantityConfirmationNote, setQuantityConfirmationNote] = useState('');
   const [reportedRemainingBySku, setReportedRemainingBySku] = useState<Record<string, number>>({});
   const [manualSeparationEnabled, setManualSeparationEnabled] = useState(false);
+  const [requestLock, setRequestLock] = useState<RequestLockPayload | null>(null);
+  const [requestLockStatus, setRequestLockStatus] = useState<
+    'idle' | 'loading' | 'holding' | 'blocked' | 'readonly' | 'error'
+  >('idle');
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const scanLockedRef = useRef(false);
   const releaseTimerRef = useRef<number | null>(null);
+  const lockHeldRef = useRef(false);
   const canMutate = canEdit;
   const audioContextRef = useRef<AudioContext | null>(null);
   const itemsRef = useRef(items);
@@ -175,10 +190,207 @@ export default function MaterialSeparation({
     setManualSeparationEnabled(false);
   }, [currentRequest?.id]);
 
+  useEffect(() => {
+    lockHeldRef.current = false;
+    setRequestLock(null);
+    setRequestLockStatus('idle');
+    const requestId = currentRequest?.id || '';
+    if (!requestId) return;
+
+    let cancelled = false;
+    let heartbeatTimer: number | null = null;
+    let pollTimer: number | null = null;
+
+    const makeAuthHeaders = () => {
+      const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' };
+      if (authToken) headers.authorization = `Bearer ${authToken}`;
+      return headers;
+    };
+
+    const readLock = async () => {
+      const response = await fetch(`/api/request-lock?requestId=${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return data.lock;
+    };
+
+    const postLock = async (action: 'acquire' | 'heartbeat' | 'release', keepalive = false) => {
+      const response = await fetch(`/api/request-lock?action=${action}`, {
+        method: 'POST',
+        headers: makeAuthHeaders(),
+        body: JSON.stringify({ requestId }),
+        keepalive
+      });
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('AUTH');
+      }
+      if (response.status === 409) {
+        const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+        return { ok: false as const, lock: data.lock };
+      }
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return { ok: true as const, lock: data.lock };
+    };
+
+    const setBlocked = (lock: RequestLockPayload | null) => {
+      setRequestLock(lock);
+      setRequestLockStatus('blocked');
+      lockHeldRef.current = false;
+      if (heartbeatTimer) {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      if (!pollTimer) {
+        pollTimer = window.setInterval(async () => {
+          try {
+            const latest = await readLock();
+            if (cancelled) return;
+            if (!latest) {
+              setRequestLock(null);
+              if (canEdit && authToken) {
+                const acquired = await postLock('acquire');
+                if (cancelled) return;
+                if (acquired.ok) {
+                  setRequestLock(acquired.lock);
+                  setRequestLockStatus('holding');
+                  lockHeldRef.current =
+                    Boolean(acquired.lock?.holder?.userId) && acquired.lock?.holder.userId === (auditActor.id || '');
+                  if (pollTimer) {
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                  }
+                  if (!heartbeatTimer) {
+                    heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+                  }
+                } else {
+                  setRequestLock(acquired.lock);
+                  setRequestLockStatus('blocked');
+                }
+              }
+            } else {
+              setRequestLock(latest);
+            }
+          } catch {
+            return;
+          }
+        }, 4000);
+      }
+    };
+
+    const heartbeat = async () => {
+      if (!canEdit || !authToken) return;
+      try {
+        const result = await postLock('heartbeat');
+        if (cancelled) return;
+        if (result.ok) {
+          setRequestLock(result.lock);
+          setRequestLockStatus('holding');
+          lockHeldRef.current =
+            Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+        } else {
+          setBlocked(result.lock);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          setRequestLockStatus('error');
+          setRequestLock(null);
+          lockHeldRef.current = false;
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+      }
+    };
+
+    const acquireOrLoad = async () => {
+      try {
+        if (canEdit && authToken) {
+          setRequestLockStatus('loading');
+          const result = await postLock('acquire');
+          if (cancelled) return;
+          if (result.ok) {
+            setRequestLock(result.lock);
+            setRequestLockStatus('holding');
+            lockHeldRef.current =
+              Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+            if (!heartbeatTimer) {
+              heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+            }
+            return;
+          }
+          setBlocked(result.lock);
+          return;
+        }
+
+        setRequestLockStatus('readonly');
+        const lock = await readLock();
+        if (cancelled) return;
+        setRequestLock(lock);
+        if (lock) {
+          setRequestLockStatus('blocked');
+        } else {
+          setRequestLockStatus('idle');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+        setRequestLockStatus('error');
+        setRequestLock(null);
+        lockHeldRef.current = false;
+      }
+    };
+
+    void acquireOrLoad();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void acquireOrLoad();
+        if (lockHeldRef.current) {
+          void heartbeat();
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (!lockHeldRef.current) return;
+      if (!canEdit || !authToken) return;
+      void postLock('release', true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (pollTimer) window.clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (lockHeldRef.current && canEdit && authToken) {
+        void postLock('release', true);
+      }
+      lockHeldRef.current = false;
+    };
+  }, [auditActor.id, authToken, canEdit, currentRequest?.id, showToast]);
+
   const requestProgress = currentRequest ? getRequestProgress(currentRequest) : null;
   const currentStatus = normalizeUserFacingText(currentRequest?.status);
   const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
-  const canManualSeparate = canMutate && auditActor.role === 'admin' && !isCurrentRequestLocked;
+  const currentUserId = auditActor.id || '';
+  const isLockHeldByMe = Boolean(requestLock && requestLock.holder?.userId && requestLock.holder.userId === currentUserId);
+  const isLockHeldByOther = Boolean(
+    requestLock && requestLock.holder?.userId && requestLock.holder.userId !== currentUserId
+  );
+  const isRequestEditBlockedByLock = Boolean(currentRequest && !isCurrentRequestLocked && isLockHeldByOther);
+  const canManualSeparate = canMutate && auditActor.role === 'admin' && !isCurrentRequestLocked && !isRequestEditBlockedByLock;
   const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
   const requestDivergenceLogs = useMemo(
     () => getRequestDivergenceLogs(currentRequest, logs),
@@ -199,6 +411,13 @@ export default function MaterialSeparation({
     Boolean(requestProgress) &&
     requestProgress?.pending === 0;
   const canFinalizeCurrentRequest = isRequestReadyForFinalization && canFinalizeDivergentRequest;
+
+  useEffect(() => {
+    if (!isRequestEditBlockedByLock) return;
+    if (isScannerOpen) closeScanner();
+    setManualSeparationEnabled(false);
+    setQuantityConfirmation(null);
+  }, [isRequestEditBlockedByLock]);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -364,9 +583,23 @@ export default function MaterialSeparation({
     setScannerFeedback('neutral');
   };
 
+  const describeCurrentLockHolder = () => {
+    const holderName = normalizeUserFacingText(requestLock?.holder?.name || '');
+    const holderMatricula = normalizeUserFacingText(requestLock?.holder?.matricula || '');
+    if (holderName && holderMatricula) return `${holderName} (${holderMatricula})`;
+    if (holderName) return holderName;
+    if (holderMatricula) return holderMatricula;
+    return 'outro usuário';
+  };
+
   const applyManualSeparatedChange = (sku: string, amount: number) => {
     if (!currentRequest) {
       showToast('Abra uma solicitação para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
       return;
     }
 
@@ -405,6 +638,11 @@ export default function MaterialSeparation({
   const startScanner = () => {
     if (!requestRef.current) {
       showToast('Abra uma solicitação antes de iniciar a separação.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
       return;
     }
 
@@ -457,6 +695,13 @@ export default function MaterialSeparation({
     if (!activeRequest) {
       setScannerFeedback('error');
       showToast('Nenhuma solicitação aberta para separação.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      setScannerFeedback('error');
+      setScannerStatus(`Solicitação em modificação por ${describeCurrentLockHolder()}.`);
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
       return;
     }
 
@@ -581,6 +826,11 @@ export default function MaterialSeparation({
 
     if (isCurrentRequestLocked) {
       showToast('Esta solicitação está fechada e está bloqueada para consulta.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
       return;
     }
 
@@ -889,6 +1139,13 @@ export default function MaterialSeparation({
                           <button
                             type="button"
                             onClick={() => {
+                              if (currentRequest?.id === request.id && isRequestEditBlockedByLock) {
+                                showToast(
+                                  `Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`,
+                                  'info'
+                                );
+                                return;
+                              }
                               const confirmed = window.confirm(`Remover a solicitação ${request.code}?`);
                               if (!confirmed) return;
                               const now = new Date().toISOString();
@@ -960,11 +1217,44 @@ export default function MaterialSeparation({
                 </div>
               </div>
 
+              {!isCurrentRequestLocked && isRequestEditBlockedByLock && (
+                <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
+                  <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Solicitação em modificação</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      Em processo de modificação por {describeCurrentLockHolder()}. Esta tela fica somente para consulta até liberar.
+                    </p>
+                    {canEdit ? (
+                      <p className="text-sm text-on-surface-variant mt-2">
+                        Assim que a pessoa sair, o sistema libera automaticamente e você poderá editar.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+              {!isCurrentRequestLocked && !isRequestEditBlockedByLock && isLockHeldByMe && requestLockStatus === 'holding' ? (
+                <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 flex items-start gap-3">
+                  <PackageCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Você está com prioridade nesta solicitação</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      Enquanto esta tela estiver aberta, outros usuários verão um aviso de “em modificação” e não conseguirão editar.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               {auditActor.role === 'admin' && !isCurrentRequestLocked ? (
                 <div className="mt-4">
                   <button
                     type="button"
                     onClick={() => {
+                      if (isRequestEditBlockedByLock) {
+                        showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
+                        return;
+                      }
                       if (!canMutate) {
                         showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
                         return;
@@ -981,6 +1271,7 @@ export default function MaterialSeparation({
                         ? 'bg-primary-container text-on-primary-container'
                         : 'bg-surface-container-highest text-primary'
                     }`}
+                    disabled={isRequestEditBlockedByLock}
                   >
                     Itens para separar
                   </button>
@@ -1040,7 +1331,7 @@ export default function MaterialSeparation({
                     <button
                       type="button"
                       onClick={finalizeRequest}
-                      disabled={!canFinalizeCurrentRequest}
+                      disabled={!canFinalizeCurrentRequest || isRequestEditBlockedByLock}
                       className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       <PackageCheck size={18} />
@@ -1050,7 +1341,7 @@ export default function MaterialSeparation({
                     <button
                       type="button"
                       onClick={startScanner}
-                      disabled={isCurrentRequestLocked}
+                      disabled={isCurrentRequestLocked || isRequestEditBlockedByLock}
                       className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       {isScannerBusy ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
