@@ -12,6 +12,8 @@ eng.traineddata
 *.log
 .env*
 !.env.example
+docs/.claude/setting.json
+docs/.claude/*.json
 graphify-out/cache/
 graphify-out/manifest.json
 graphify-out/cost.json
