@@ -77,6 +77,7 @@ Regras de negocio que nao podem quebrar:
 - Inventario ciclico obrigatorio: configurado em Usuarios para Operacao/Admin; Consulta nao pode ser marcada; usuario marcado fica limitado a Painel, Estoque e Inventario Operacional ate finalizar a contagem diaria; regra central em src/cyclicInventory.ts.
 - Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no D1 sem aprovacao e politica de retencao.
 - Ponte segura de operacoes: `/api/operation-journal`, tabela D1 `operation_journal`, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
+- Hotfix de sync pendente em 2026-05-20: quando houver pendencia local, o botao superior deve virar/agir como `Sincronizar`; nao chamar `Atualizar do online` antes de tentar enviar. Clique manual deve reconstruir outbox se existir `dirty` antigo sem outbox. Se o usuario confirmar descarte pelo online, limpar dirty, outbox e fila local da ponte.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
 - Pedido entregue/atendido vira consulta: nao editar nem excluir.
 - Mobile e prioridade operacional.

@@ -87,6 +87,9 @@ export default function Layout({
       : cloudStatus === 'saving' || cloudStatus === 'loading'
         ? 'bg-surface-container-highest text-on-surface-variant'
         : 'bg-error-container text-on-error-container';
+  const syncButtonHandler = localPendingSync && onForcePendingSync ? onForcePendingSync : onApplyCloudUpdate;
+  const syncButtonLabel = localPendingSync ? 'Sincronizar' : 'Atualizar';
+  const syncButtonAriaLabel = localPendingSync ? 'Sincronizar pendencias deste aparelho' : 'Atualizar do online';
 
   const openRequestCount = requests.filter(request => {
     if (request.deletedAt) return false;
@@ -216,15 +219,19 @@ export default function Layout({
                   {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </button>
               )}
-              {authMode !== 'stock-consulta' && authRole !== 'consulta' && onApplyCloudUpdate ? (
+              {authMode !== 'stock-consulta' && authRole !== 'consulta' && syncButtonHandler ? (
                 <button
                   type="button"
-                  onClick={onApplyCloudUpdate}
-                  className="relative h-9 px-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold text-sm flex items-center gap-2 hover:bg-surface-container-low transition-colors active:scale-95 duration-150"
-                  aria-label="Atualizar do online"
+                  onClick={syncButtonHandler}
+                  className={`relative h-9 px-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors active:scale-95 duration-150 ${
+                    localPendingSync
+                      ? 'bg-primary text-on-primary hover:bg-primary/90'
+                      : 'bg-surface-container-highest text-on-surface-variant hover:bg-surface-container-low'
+                  }`}
+                  aria-label={syncButtonAriaLabel}
                 >
                   <RefreshCw size={18} />
-                  <span className="hidden sm:inline">Atualizar</span>
+                  <span className="hidden sm:inline">{syncButtonLabel}</span>
                 </button>
               ) : null}
             </div>

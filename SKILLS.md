@@ -169,6 +169,9 @@ Permissoes de gravacao:
 - a ponte segura de operacoes usa `/api/operation-journal` e tabela D1 `operation_journal`
 - a retencao da ponte e 7 dias; ela e transicao/confirmacao, nao historico permanente
 - o front deve enviar patch compacto por SKU/id, nunca snapshot gigante do estado inteiro
+- quando existir pendencia local, o botao superior deve agir como `Sincronizar`, nao como `Atualizar do online`
+- se houver `dirty` local antigo sem outbox, o clique em `Sincronizar agora` deve reconstruir a outbox a partir do estado atual antes de enviar
+- se o usuario escolher aplicar o estado online e descartar o local, limpar dirty, outbox e fila local da ponte para nao manter banner vermelho falso
 - se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
 - com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 

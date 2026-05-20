@@ -757,6 +757,25 @@ export default function App() {
     }
   };
 
+  const queueCurrentStateForSync = (reason: string) => {
+    const queuedAt = new Date().toISOString();
+    const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
+    const journalEntry = createOperationJournalEntry({
+      previousState: latestCloudResultRef.current?.state,
+      nextState: state,
+      createdAt: queuedAt
+    });
+
+    if (journalEntry) {
+      enqueueOperationJournalEntry(journalEntry);
+      refreshPendingJournalCount();
+      appendSyncEvent('journal_queued', 'Operacao entrou na ponte segura de 7 dias');
+    }
+
+    setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntry ? [journalEntry.id] : []);
+    appendSyncEvent('outbox_write', reason);
+  };
+
   const applyCloudStateIfNewer = (
     result: { state: CloudInventoryState | null; updatedAt: string | null },
     reason: string
@@ -801,6 +820,12 @@ export default function App() {
     clearOutbox();
     localDirtyRef.current = false;
     localStorage.removeItem(localDirtyStorageKey);
+    const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+    if (pendingJournalIds.length > 0) {
+      removeOperationJournalEntries(pendingJournalIds);
+      setPendingJournalCount(0);
+      appendSyncEvent('journal_discarded', 'Ponte local descartada ao aplicar estado online');
+    }
     setLocalPendingSync(false);
 
     suppressOutboxWriteRef.current = true;
@@ -827,12 +852,12 @@ export default function App() {
     return true;
   };
 
-  async function flushOutbox(reason: string) {
-    if (isStockConsulta) return;
+  async function flushOutbox(reason: string, options: { force?: boolean } = {}) {
+    if (isStockConsulta) return false;
     const outbox = outboxRef.current;
-    if (!outbox) return;
-    if (!cloudLoaded) return;
-    if (flushInFlightRef.current) return;
+    if (!outbox) return false;
+    if (!cloudLoaded && !options.force) return false;
+    if (flushInFlightRef.current) return false;
 
     flushInFlightRef.current = true;
     setCloudStatus('saving');
@@ -851,7 +876,7 @@ export default function App() {
         setLocalPendingSync(true);
         appendSyncEvent('flush_deferred_newer_outbox', reason);
         shouldFlushAgain = true;
-        return;
+        return false;
       }
 
       localDirtyRef.current = false;
@@ -881,6 +906,7 @@ export default function App() {
         wasOfflineRef.current = false;
         showToast('Internet voltou. Alterações sincronizadas.', 'success');
       }
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message === 'AUTH') {
@@ -890,6 +916,7 @@ export default function App() {
       setCloudStatus('offline');
       wasOfflineRef.current = true;
       appendSyncEvent('flush_fail', reason);
+      return false;
     } finally {
       flushInFlightRef.current = false;
       if (shouldFlushAgain && navigator.onLine) {
@@ -1074,20 +1101,7 @@ export default function App() {
     }
 
     outboxWriteTimerRef.current = window.setTimeout(() => {
-      const queuedAt = new Date().toISOString();
-      const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
-      const journalEntry = createOperationJournalEntry({
-        previousState: latestCloudResultRef.current?.state,
-        nextState: state,
-        createdAt: queuedAt
-      });
-      if (journalEntry) {
-        enqueueOperationJournalEntry(journalEntry);
-        refreshPendingJournalCount();
-        appendSyncEvent('journal_queued', 'Operacao entrou na ponte segura de 7 dias');
-      }
-      setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntry ? [journalEntry.id] : []);
-      appendSyncEvent('outbox_write');
+      queueCurrentStateForSync('outbox_write');
       if (navigator.onLine) {
         void flushOutbox('outbox_write');
       }
@@ -1252,7 +1266,7 @@ export default function App() {
   }, [activeTab, authSession, cloudLoaded, cloudStatus, mustChangePassword]);
 
   const applyCloudUpdateNow = async () => {
-    if (!isStockConsulta && (localDirtyRef.current || outboxRef.current)) {
+    if (!isStockConsulta && (localDirtyRef.current || outboxRef.current || pendingJournalCount > 0)) {
       const confirmApply = window.confirm(
         'Existe alteração local pendente neste aparelho. Atualizar agora vai substituir sua tela pelo estado online e descartar o que ainda não sincronizou. Continuar?'
       );
@@ -1690,13 +1704,29 @@ export default function App() {
 
   const handleForcePendingSync = () => {
     void (async () => {
-      const journalOk = await flushJournalBridge('manual_force_sync');
+      if (!outboxRef.current && localDirtyRef.current) {
+        queueCurrentStateForSync('manual_force_sync_rebuild');
+      }
+
       if (outboxRef.current) {
-        await flushOutbox('manual_force_sync');
+        const saved = await flushOutbox('manual_force_sync', { force: true });
+        if (saved) {
+          showToast('Alteracoes sincronizadas com o servidor.', 'success');
+        } else {
+          showToast('Nao foi possivel sincronizar agora. Verifique a internet e tente novamente.', 'info');
+        }
         return;
       }
+
+      const journalOk = await flushJournalBridge('manual_force_sync');
       if (journalOk) {
+        if (!localDirtyRef.current && !outboxRef.current && getPendingOperationJournalQueue().length === 0) {
+          setLocalPendingSync(false);
+          setPendingJournalCount(0);
+        }
         showToast('Ponte de seguranca sincronizada.', 'success');
+      } else {
+        showToast('Nao foi possivel sincronizar a ponte agora.', 'info');
       }
     })();
   };

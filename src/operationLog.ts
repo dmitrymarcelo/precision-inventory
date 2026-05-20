@@ -101,6 +101,8 @@ function formatSyncEvent(event: string) {
       return 'Operacao confirmada no estado online';
     case 'journal_apply_mark_fail':
       return 'Falha ao marcar ponte como aplicada';
+    case 'journal_discarded':
+      return 'Ponte local descartada';
     case 'backup_exported':
       return 'Backup de emergencia exportado';
     case 'cloud_refresh_applied':

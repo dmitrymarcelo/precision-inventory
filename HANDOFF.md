@@ -2,6 +2,46 @@
 
 Ultima atualizacao: 2026-05-20
 
+## Hotfix: salvamento pendente travado em aparelhos em 2026-05-20
+
+- Pedido do usuario:
+  - colegas que trabalharam no dia anterior ficaram presos no aviso vermelho `SALVAMENTO PENDENTE NESTE APARELHO`
+  - ao tocar em `Sincronizar agora` ou confirmar prompts, a tela parecia nao sair do lugar
+  - screenshots mostravam tambem o prompt do navegador ao recarregar e o prompt antigo de `Atualizar` que poderia descartar alteracao local
+- Causa encontrada:
+  - o botao superior de refresh continuava sendo `Atualizar do online`, mesmo quando existia pendencia local; em celular isso confundia sincronizacao com sobrescrever pelo estado online
+  - aparelhos com flag local antiga de alteracao (`dirty`) mas sem `outbox` nao tinham estado reconstruido para enviar no clique manual
+  - ao aplicar o estado online por escolha do usuario, a fila local da ponte podia continuar existindo e manter o banner vermelho
+- Implementado:
+  - `src/App.tsx` ganhou `queueCurrentStateForSync` para reconstruir a outbox a partir do estado atual quando houver `dirty` antigo sem outbox
+  - `handleForcePendingSync` agora tenta salvar a outbox reconstruida com `force: true` e mostra toast claro se salvou ou se falhou por internet/sessao
+  - `flushOutbox` agora retorna booleano de sucesso/falha e aceita `force` para clique manual mesmo antes do carregamento completo do cloud
+  - `forceApplyCloudState` agora limpa tambem a fila local da ponte quando o usuario escolhe descartar local e aplicar online
+  - `src/components/Layout.tsx` transforma o botao superior em `Sincronizar` quando existe pendencia local, chamando `onForcePendingSync` em vez de `Atualizar do online`
+  - `src/operationLog.ts` registra `Ponte local descartada`
+- Validado:
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://b82de478.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-DcQR5AXj.js`
+- Instrucao operacional imediata:
+  - pedir para os usuarios atualizarem a pagina uma vez para carregar o asset novo
+  - se aparecer aviso vermelho, tocar em `Sincronizar agora`
+  - se o navegador perguntar se deseja recarregar antes de sincronizar, escolher `Cancelar`
+  - se ainda nao sincronizar, tocar em `Exportar backup` e guardar o JSON antes de limpar dados do navegador
+
 ## Ponte segura de operacoes com retencao de 7 dias em 2026-05-20
 
 - Pedido do usuario:
