@@ -16,6 +16,7 @@ Ultima atualizacao: 2026-05-20
   - `src/App.tsx` guarda `cloudStatusDetail` e limpa o detalhe quando a conexao volta
   - `src/components/Layout.tsx` mostra `Falha online` e o detalhe curto no menu da conta quando o sistema nao consegue falar com o servidor
   - mantido o hotfix atual de State V2/ponte por patch para reduzir risco de estouro com estado grande
+  - ajuste final em `functions/api/state.js`: quando existe State V2, `GET /api/state` responde em streaming, sem montar uma string gigante de ~2,2 MB antes de enviar
 - Validado local:
   - `scripts/test-state-get-large-response.mjs` passou
   - `scripts/test-state-consulta-save.mjs` passou
@@ -33,9 +34,11 @@ Ultima atualizacao: 2026-05-20
   - `graphify update .` passou
 - Deploy:
   - publicado com Wrangler 4.83.0
-  - preview: `https://289d774a.precision-inventory.pages.dev`
+  - preview inicial do feedback de front: `https://289d774a.precision-inventory.pages.dev`
+  - preview final com streaming da API: `https://07b2471a.precision-inventory.pages.dev`
   - producao `https://precision-inventory.pages.dev/` passou a servir `/assets/index-BnaSF83I.js`
-  - `/api/state` respondeu `200` em 10 repeticoes seguidas, sem `1102`, com `1710` itens, `3401` logs e `384` solicitacoes
+  - antes do ajuste de streaming, uma validacao final ainda capturou `1102` em `/api/state`; por isso a API foi alterada para streaming
+  - depois do streaming, `/api/state` respondeu `200` em 20 repeticoes seguidas, sem `1102`, com `1710` itens, `3401` logs e `384` solicitacoes
   - `/api/operation-journal` respondeu `OPTIONS 200`
 - Instrucao operacional:
   - recarregar a pagina; se o navegador insistir no asset antigo, usar Ctrl+F5

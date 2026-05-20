@@ -175,6 +175,7 @@ Permissoes de gravacao:
 - se o menu mostrar `Sistema Local` ou `Falha online`, investigar primeiro `GET /api/state` e o detalhe HTTP exibido no menu; nao assumir perda no D1 sem validar
 - quando `GET /api/state` falhar, o front deve mostrar o motivo curto em `Sistema`, porque o dado pode existir no servidor mas a leitura do estado grande pode ter falhado
 - para estado grande, manter a leitura otimizada/State V2 em `functions/api/state.js` e evitar parsing/deserializacao desnecessaria no Worker
+- no State V2, `GET /api/state` deve responder em streaming para nao montar uma string gigante antes de enviar; isso reduz risco de Cloudflare `1102`
 - se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
 - com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 

@@ -198,7 +198,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L1",
       "id": "functions_api_operation_journal_js",
-      "community": 6,
+      "community": 7,
       "norm_label": "operation-journal.js"
     },
     {
@@ -207,7 +207,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L15",
       "id": "api_operation_journal_onrequestpost",
-      "community": 6,
+      "community": 7,
       "norm_label": "onrequestpost()"
     },
     {
@@ -216,7 +216,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L79",
       "id": "api_operation_journal_onrequestput",
-      "community": 6,
+      "community": 7,
       "norm_label": "onrequestput()"
     },
     {
@@ -225,7 +225,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L115",
       "id": "api_operation_journal_onrequestoptions",
-      "community": 6,
+      "community": 7,
       "norm_label": "onrequestoptions()"
     },
     {
@@ -234,7 +234,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L125",
       "id": "api_operation_journal_ensureschema",
-      "community": 6,
+      "community": 7,
       "norm_label": "ensureschema()"
     },
     {
@@ -243,7 +243,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L165",
       "id": "api_operation_journal_cleanupoldjournalrows",
-      "community": 6,
+      "community": 7,
       "norm_label": "cleanupoldjournalrows()"
     },
     {
@@ -252,7 +252,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L174",
       "id": "api_operation_journal_safejson",
-      "community": 6,
+      "community": 7,
       "norm_label": "safejson()"
     },
     {
@@ -261,7 +261,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L182",
       "id": "api_operation_journal_sanitizeentry",
-      "community": 6,
+      "community": 7,
       "norm_label": "sanitizeentry()"
     },
     {
@@ -270,7 +270,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L205",
       "id": "api_operation_journal_sanitizetext",
-      "community": 6,
+      "community": 7,
       "norm_label": "sanitizetext()"
     },
     {
@@ -279,7 +279,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L209",
       "id": "api_operation_journal_sanitizeiso",
-      "community": 6,
+      "community": 7,
       "norm_label": "sanitizeiso()"
     },
     {
@@ -288,7 +288,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L215",
       "id": "api_operation_journal_replayentries",
-      "community": 6,
+      "community": 7,
       "norm_label": "replayentries()"
     },
     {
@@ -297,7 +297,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L302",
       "id": "api_operation_journal_applypatchestostatev2",
-      "community": 6,
+      "community": 7,
       "norm_label": "applypatchestostatev2()"
     },
     {
@@ -306,7 +306,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L356",
       "id": "api_operation_journal_normalizepatchlist",
-      "community": 6,
+      "community": 7,
       "norm_label": "normalizepatchlist()"
     },
     {
@@ -315,7 +315,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L385",
       "id": "api_operation_journal_savechunkedarraypart",
-      "community": 6,
+      "community": 7,
       "norm_label": "savechunkedarraypart()"
     },
     {
@@ -324,7 +324,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L394",
       "id": "api_operation_journal_upsertstaterow",
-      "community": 6,
+      "community": 7,
       "norm_label": "upsertstaterow()"
     },
     {
@@ -333,7 +333,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L409",
       "id": "api_operation_journal_loadstatev2",
-      "community": 6,
+      "community": 7,
       "norm_label": "loadstatev2()"
     },
     {
@@ -342,7 +342,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L444",
       "id": "api_operation_journal_loadchunkedarray",
-      "community": 6,
+      "community": 7,
       "norm_label": "loadchunkedarray()"
     },
     {
@@ -351,7 +351,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L456",
       "id": "api_operation_journal_savestatev2",
-      "community": 6,
+      "community": 7,
       "norm_label": "savestatev2()"
     },
     {
@@ -360,7 +360,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L545",
       "id": "api_operation_journal_writechunkedarray",
-      "community": 6,
+      "community": 7,
       "norm_label": "writechunkedarray()"
     },
     {
@@ -369,7 +369,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L551",
       "id": "api_operation_journal_chunkarray",
-      "community": 6,
+      "community": 7,
       "norm_label": "chunkarray()"
     },
     {
@@ -378,7 +378,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L575",
       "id": "api_operation_journal_bytelength",
-      "community": 6,
+      "community": 7,
       "norm_label": "bytelength()"
     },
     {
@@ -387,7 +387,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L580",
       "id": "api_operation_journal_collectmanifestkeyssafe",
-      "community": 6,
+      "community": 7,
       "norm_label": "collectmanifestkeyssafe()"
     },
     {
@@ -396,7 +396,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L605",
       "id": "api_operation_journal_hassafemanifestparts",
-      "community": 6,
+      "community": 7,
       "norm_label": "hassafemanifestparts()"
     },
     {
@@ -405,7 +405,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L613",
       "id": "api_operation_journal_normalizestate",
-      "community": 6,
+      "community": 7,
       "norm_label": "normalizestate()"
     },
     {
@@ -414,7 +414,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L625",
       "id": "api_operation_journal_applypatchtostate",
-      "community": 6,
+      "community": 7,
       "norm_label": "applypatchtostate()"
     },
     {
@@ -423,7 +423,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L647",
       "id": "api_operation_journal_mergeitemsbysku",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergeitemsbysku()"
     },
     {
@@ -432,7 +432,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L661",
       "id": "api_operation_journal_mergerequestsbyid",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergerequestsbyid()"
     },
     {
@@ -441,7 +441,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L675",
       "id": "api_operation_journal_mergematerialrequest",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergematerialrequest()"
     },
     {
@@ -450,7 +450,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L707",
       "id": "api_operation_journal_mergerequeststatus",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergerequeststatus()"
     },
     {
@@ -459,7 +459,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L719",
       "id": "api_operation_journal_requeststatusrank",
-      "community": 6,
+      "community": 7,
       "norm_label": "requeststatusrank()"
     },
     {
@@ -468,7 +468,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L736",
       "id": "api_operation_journal_mergerequestitems",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergerequestitems()"
     },
     {
@@ -477,7 +477,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L769",
       "id": "api_operation_journal_mergeaudittrail",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergeaudittrail()"
     },
     {
@@ -486,7 +486,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L788",
       "id": "api_operation_journal_mergevehiclesbyid",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergevehiclesbyid()"
     },
     {
@@ -495,7 +495,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L800",
       "id": "api_operation_journal_mergepurchasesbyid",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergepurchasesbyid()"
     },
     {
@@ -504,7 +504,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L814",
       "id": "api_operation_journal_mergelogsbyid",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergelogsbyid()"
     },
     {
@@ -513,7 +513,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L826",
       "id": "api_operation_journal_mergesettings",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergesettings()"
     },
     {
@@ -522,7 +522,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L833",
       "id": "api_operation_journal_mergealiases",
-      "community": 6,
+      "community": 7,
       "norm_label": "mergealiases()"
     },
     {
@@ -531,7 +531,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L840",
       "id": "api_operation_journal_choosenewerrecord",
-      "community": 6,
+      "community": 7,
       "norm_label": "choosenewerrecord()"
     },
     {
@@ -540,7 +540,7 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L851",
       "id": "api_operation_journal_parseupdatedat",
-      "community": 6,
+      "community": 7,
       "norm_label": "parseupdatedat()"
     },
     {
@@ -648,7 +648,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L1",
       "id": "functions_api_state_js",
-      "community": 7,
+      "community": 6,
       "norm_label": "state.js"
     },
     {
@@ -657,7 +657,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L13",
       "id": "api_state_onrequestget",
-      "community": 7,
+      "community": 6,
       "norm_label": "onrequestget()"
     },
     {
@@ -666,7 +666,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L26",
       "id": "api_state_onrequestput",
-      "community": 7,
+      "community": 6,
       "norm_label": "onrequestput()"
     },
     {
@@ -675,313 +675,322 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L108",
       "id": "api_state_loadstatev1",
-      "community": 7,
+      "community": 6,
       "norm_label": "loadstatev1()"
+    },
+    {
+      "label": "loadStateV2Manifest()",
+      "file_type": "code",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L113",
+      "id": "api_state_loadstatev2manifest",
+      "community": 6,
+      "norm_label": "loadstatev2manifest()"
     },
     {
       "label": "loadStateV2()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L113",
+      "source_location": "L128",
       "id": "api_state_loadstatev2",
-      "community": 7,
+      "community": 6,
       "norm_label": "loadstatev2()"
     },
     {
-      "label": "loadStateV2ResponseText()",
+      "label": "streamStateV2Response()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L148",
-      "id": "api_state_loadstatev2responsetext",
-      "community": 7,
-      "norm_label": "loadstatev2responsetext()"
+      "source_location": "L154",
+      "id": "api_state_streamstatev2response",
+      "community": 6,
+      "norm_label": "streamstatev2response()"
     },
     {
-      "label": "loadChunkedArrayText()",
+      "label": "writeChunkedArrayTextStream()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L176",
-      "id": "api_state_loadchunkedarraytext",
-      "community": 7,
-      "norm_label": "loadchunkedarraytext()"
+      "source_location": "L190",
+      "id": "api_state_writechunkedarraytextstream",
+      "community": 6,
+      "norm_label": "writechunkedarraytextstream()"
     },
     {
       "label": "loadChunkedArray()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L189",
+      "source_location": "L207",
       "id": "api_state_loadchunkedarray",
-      "community": 7,
+      "community": 6,
       "norm_label": "loadchunkedarray()"
     },
     {
       "label": "saveStateV2()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L201",
+      "source_location": "L219",
       "id": "api_state_savestatev2",
-      "community": 7,
+      "community": 6,
       "norm_label": "savestatev2()"
     },
     {
       "label": "writeChunkedArray()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L291",
+      "source_location": "L309",
       "id": "api_state_writechunkedarray",
-      "community": 7,
+      "community": 6,
       "norm_label": "writechunkedarray()"
     },
     {
       "label": "chunkArray()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L297",
+      "source_location": "L315",
       "id": "api_state_chunkarray",
-      "community": 7,
+      "community": 6,
       "norm_label": "chunkarray()"
     },
     {
       "label": "byteLength()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L321",
+      "source_location": "L339",
       "id": "api_state_bytelength",
-      "community": 7,
+      "community": 6,
       "norm_label": "bytelength()"
     },
     {
       "label": "collectManifestKeysSafe()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L326",
+      "source_location": "L344",
       "id": "api_state_collectmanifestkeyssafe",
-      "community": 7,
+      "community": 6,
       "norm_label": "collectmanifestkeyssafe()"
     },
     {
       "label": "hasSafeManifestParts()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L354",
+      "source_location": "L372",
       "id": "api_state_hassafemanifestparts",
-      "community": 7,
+      "community": 6,
       "norm_label": "hassafemanifestparts()"
     },
     {
       "label": "onRequestOptions()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L362",
+      "source_location": "L380",
       "id": "api_state_onrequestoptions",
-      "community": 7,
+      "community": 6,
       "norm_label": "onrequestoptions()"
     },
     {
       "label": "ensureSchema()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L372",
+      "source_location": "L390",
       "id": "api_state_ensureschema",
-      "community": 7,
+      "community": 6,
       "norm_label": "ensureschema()"
     },
     {
       "label": "normalizeState()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L426",
+      "source_location": "L444",
       "id": "api_state_normalizestate",
-      "community": 7,
+      "community": 6,
       "norm_label": "normalizestate()"
     },
     {
       "label": "mergeStates()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L438",
+      "source_location": "L456",
       "id": "api_state_mergestates",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergestates()"
     },
     {
       "label": "mergeConsultaRequestState()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L450",
+      "source_location": "L468",
       "id": "api_state_mergeconsultarequeststate",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergeconsultarequeststate()"
     },
     {
       "label": "filterConsultaCreatedRequests()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L457",
+      "source_location": "L475",
       "id": "api_state_filterconsultacreatedrequests",
-      "community": 7,
+      "community": 6,
       "norm_label": "filterconsultacreatedrequests()"
     },
     {
       "label": "isConsultaCreatedRequest()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L462",
+      "source_location": "L480",
       "id": "api_state_isconsultacreatedrequest",
-      "community": 7,
+      "community": 6,
       "norm_label": "isconsultacreatedrequest()"
     },
     {
       "label": "mergeItemsBySku()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L477",
+      "source_location": "L495",
       "id": "api_state_mergeitemsbysku",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergeitemsbysku()"
     },
     {
       "label": "mergeRequestsById()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L491",
+      "source_location": "L509",
       "id": "api_state_mergerequestsbyid",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergerequestsbyid()"
     },
     {
       "label": "mergeMaterialRequest()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L505",
+      "source_location": "L523",
       "id": "api_state_mergematerialrequest",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergematerialrequest()"
     },
     {
       "label": "mergeRequestStatus()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L537",
+      "source_location": "L555",
       "id": "api_state_mergerequeststatus",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergerequeststatus()"
     },
     {
       "label": "requestStatusRank()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L549",
+      "source_location": "L567",
       "id": "api_state_requeststatusrank",
-      "community": 7,
+      "community": 6,
       "norm_label": "requeststatusrank()"
     },
     {
       "label": "mergeRequestItems()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L566",
+      "source_location": "L584",
       "id": "api_state_mergerequestitems",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergerequestitems()"
     },
     {
       "label": "mergeAuditTrail()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L599",
+      "source_location": "L617",
       "id": "api_state_mergeaudittrail",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergeaudittrail()"
     },
     {
       "label": "mergeVehiclesById()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L618",
+      "source_location": "L636",
       "id": "api_state_mergevehiclesbyid",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergevehiclesbyid()"
     },
     {
       "label": "mergePurchasesById()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L630",
+      "source_location": "L648",
       "id": "api_state_mergepurchasesbyid",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergepurchasesbyid()"
     },
     {
       "label": "mergeLogsById()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L644",
+      "source_location": "L662",
       "id": "api_state_mergelogsbyid",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergelogsbyid()"
     },
     {
       "label": "mergeSettings()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L656",
+      "source_location": "L674",
       "id": "api_state_mergesettings",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergesettings()"
     },
     {
       "label": "mergeAliases()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L663",
+      "source_location": "L681",
       "id": "api_state_mergealiases",
-      "community": 7,
+      "community": 6,
       "norm_label": "mergealiases()"
     },
     {
       "label": "chooseNewerRecord()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L670",
+      "source_location": "L688",
       "id": "api_state_choosenewerrecord",
-      "community": 7,
+      "community": 6,
       "norm_label": "choosenewerrecord()"
     },
     {
       "label": "parseUpdatedAt()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L681",
+      "source_location": "L699",
       "id": "api_state_parseupdatedat",
-      "community": 7,
+      "community": 6,
       "norm_label": "parseupdatedat()"
     },
     {
       "label": "collectNewDivergenceLogs()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L687",
+      "source_location": "L705",
       "id": "api_state_collectnewdivergencelogs",
-      "community": 7,
+      "community": 6,
       "norm_label": "collectnewdivergencelogs()"
     },
     {
       "label": "sendDivergenceNotifications()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L699",
+      "source_location": "L717",
       "id": "api_state_senddivergencenotifications",
-      "community": 7,
+      "community": 6,
       "norm_label": "senddivergencenotifications()"
     },
     {
       "label": "postWebhook()",
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L729",
+      "source_location": "L747",
       "id": "api_state_postwebhook",
-      "community": 7,
+      "community": 6,
       "norm_label": "postwebhook()"
     },
     {
@@ -1215,7 +1224,7 @@
       "source_file": "scripts\\test-operation-journal-api.mjs",
       "source_location": "L1",
       "id": "scripts_test_operation_journal_api_mjs",
-      "community": 6,
+      "community": 7,
       "norm_label": "test-operation-journal-api.mjs"
     },
     {
@@ -1224,7 +1233,7 @@
       "source_file": "scripts\\test-operation-journal-api.mjs",
       "source_location": "L72",
       "id": "scripts_test_operation_journal_api_createfakedb",
-      "community": 6,
+      "community": 7,
       "norm_label": "createfakedb()"
     },
     {
@@ -1242,7 +1251,7 @@
       "source_file": "scripts\\test-operation-journal-replay-patches-v2-direct.mjs",
       "source_location": "L1",
       "id": "scripts_test_operation_journal_replay_patches_v2_direct_mjs",
-      "community": 6,
+      "community": 7,
       "norm_label": "test-operation-journal-replay-patches-v2-direct.mjs"
     },
     {
@@ -1251,7 +1260,7 @@
       "source_file": "scripts\\test-operation-journal-replay-patches-v2-direct.mjs",
       "source_location": "L38",
       "id": "scripts_test_operation_journal_replay_patches_v2_direct_createfakedb",
-      "community": 6,
+      "community": 7,
       "norm_label": "createfakedb()"
     },
     {
@@ -1260,7 +1269,7 @@
       "source_file": "scripts\\test-operation-journal-replay-save.mjs",
       "source_location": "L1",
       "id": "scripts_test_operation_journal_replay_save_mjs",
-      "community": 6,
+      "community": 7,
       "norm_label": "test-operation-journal-replay-save.mjs"
     },
     {
@@ -1269,7 +1278,7 @@
       "source_file": "scripts\\test-operation-journal-replay-save.mjs",
       "source_location": "L29",
       "id": "scripts_test_operation_journal_replay_save_createfakedb",
-      "community": 6,
+      "community": 7,
       "norm_label": "createfakedb()"
     },
     {
@@ -1278,7 +1287,7 @@
       "source_file": "scripts\\test-state-consulta-save.mjs",
       "source_location": "L1",
       "id": "scripts_test_state_consulta_save_mjs",
-      "community": 7,
+      "community": 6,
       "norm_label": "test-state-consulta-save.mjs"
     },
     {
@@ -1287,7 +1296,7 @@
       "source_file": "scripts\\test-state-consulta-save.mjs",
       "source_location": "L76",
       "id": "scripts_test_state_consulta_save_createfakedb",
-      "community": 7,
+      "community": 6,
       "norm_label": "createfakedb()"
     },
     {
@@ -1296,7 +1305,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L1",
       "id": "scripts_test_state_get_large_response_mjs",
-      "community": 7,
+      "community": 6,
       "norm_label": "test-state-get-large-response.mjs"
     },
     {
@@ -1305,7 +1314,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L32",
       "id": "scripts_test_state_get_large_response_createfakedb",
-      "community": 7,
+      "community": 6,
       "norm_label": "createfakedb()"
     },
     {
@@ -1314,7 +1323,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L64",
       "id": "scripts_test_state_get_large_response_createfakedbwithunsafemanifest",
-      "community": 7,
+      "community": 6,
       "norm_label": "createfakedbwithunsafemanifest()"
     },
     {
@@ -1782,7 +1791,7 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1491",
       "id": "src_app_ignorecloudupdate",
-      "community": 3,
+      "community": 1,
       "norm_label": "ignorecloudupdate()"
     },
     {
@@ -2592,7 +2601,7 @@
       "source_file": "src\\divergenceRules.ts",
       "source_location": "L46",
       "id": "src_divergencerules_getopendivergencemap",
-      "community": 8,
+      "community": 0,
       "norm_label": "getopendivergencemap()"
     },
     {
@@ -4248,7 +4257,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1060",
       "id": "components_automaticpurchases_handleaddmanualdraftitem",
-      "community": 1,
+      "community": 2,
       "norm_label": "handleaddmanualdraftitem()"
     },
     {
@@ -5067,7 +5076,7 @@
       "source_file": "src\\components\\RequestHistory.tsx",
       "source_location": "L416",
       "id": "components_requesthistory_reverseselectedrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "reverseselectedrequest()"
     },
     {
@@ -5589,7 +5598,7 @@
       "source_file": "src\\components\\StockUpdate.tsx",
       "source_location": "L531",
       "id": "components_stockupdate_opencreateitem",
-      "community": 0,
+      "community": 1,
       "norm_label": "opencreateitem()"
     },
     {
@@ -5780,6 +5789,24 @@
       "id": "components_vehiclepartsbrowser_normalizeuserfacingtext",
       "community": 4,
       "norm_label": "normalizeuserfacingtext()"
+    },
+    {
+      "label": "loadStateV2ResponseText()",
+      "file_type": "code",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L148",
+      "community": 6,
+      "norm_label": "loadstatev2responsetext()",
+      "id": "api_state_loadstatev2responsetext"
+    },
+    {
+      "label": "loadChunkedArrayText()",
+      "file_type": "code",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L176",
+      "community": 6,
+      "norm_label": "loadchunkedarraytext()",
+      "id": "api_state_loadchunkedarraytext"
     },
     {
       "label": "formatCloudStatus()",
@@ -7698,6 +7725,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\state.js",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "functions_api_state_js",
+      "target": "api_state_loadstatev2manifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
       "source_location": "L112",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -7708,21 +7745,21 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L148",
+      "source_location": "L154",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_state_loadstatev2responsetext"
+      "target": "api_state_streamstatev2response",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L176",
+      "source_location": "L190",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_state_loadchunkedarraytext"
+      "target": "api_state_writechunkedarraytextstream",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -8035,15 +8072,46 @@
       "target": "api_state_postwebhook"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L148",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "functions_api_state_js",
+      "target": "api_state_loadstatev2responsetext"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L176",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "functions_api_state_js",
+      "target": "api_state_loadchunkedarraytext"
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\state.js",
       "source_location": "L14",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "api_state_onrequestget",
-      "target": "api_state_loadstatev2responsetext"
+      "target": "api_state_loadstatev2manifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "api_state_onrequestget",
+      "target": "api_state_streamstatev2response",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -8055,6 +8123,17 @@
       "confidence_score": 1.0,
       "source": "scripts_test_state_get_large_response_mjs",
       "target": "api_state_onrequestget"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "api_state_onrequestget",
+      "target": "api_state_loadstatev2responsetext"
     },
     {
       "relation": "calls",
@@ -8206,9 +8285,20 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L122",
       "weight": 1.0,
-      "confidence_score": 1.0,
+      "source": "api_state_loadstatev2manifest",
+      "target": "api_state_hassafemanifestparts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L129",
+      "weight": 1.0,
       "source": "api_state_loadstatev2",
-      "target": "api_state_hassafemanifestparts"
+      "target": "api_state_loadstatev2manifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -8237,22 +8327,11 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\state.js",
-      "source_location": "L157",
+      "source_location": "L122",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "api_state_loadstatev2responsetext",
+      "source": "api_state_loadstatev2",
       "target": "api_state_hassafemanifestparts"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "functions\\api\\state.js",
-      "source_location": "L162",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "api_state_loadstatev2responsetext",
-      "target": "api_state_loadchunkedarraytext"
     },
     {
       "relation": "calls",
@@ -8296,6 +8375,17 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "api_state_collectmanifestkeyssafe",
+      "target": "api_state_hassafemanifestparts"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L157",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "api_state_loadstatev2responsetext",
       "target": "api_state_hassafemanifestparts"
     },
     {
@@ -9967,9 +10057,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L718",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_tsx",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "contains",
@@ -11528,9 +11618,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1131",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_loadonlinestate",
-      "target": "src_app_appendsyncevent",
-      "confidence_score": 1.0
+      "target": "src_app_appendsyncevent"
     },
     {
       "relation": "calls",
@@ -11605,9 +11695,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1088",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_flushoutbox",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -11616,9 +11706,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1129",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_loadonlinestate",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -11627,9 +11717,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1422",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_refreshcloudstate",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -11638,9 +11728,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1474",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_applycloudupdatenow",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -11649,9 +11739,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L2075",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_handlebackupuploadinputchange",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -11660,9 +11750,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L2142",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_handlediscardlocalpending",
-      "target": "src_app_describeclouderror",
-      "confidence_score": 1.0
+      "target": "src_app_describeclouderror"
     },
     {
       "relation": "calls",
@@ -21833,6 +21923,17 @@
       "confidence_score": 1.0,
       "source": "components_vehiclepartsbrowser_geteffectivevehiclemodel",
       "target": "components_vehiclepartsbrowser_normalizeuserfacingtext"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\state.js",
+      "source_location": "L162",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "api_state_loadstatev2responsetext",
+      "target": "api_state_loadchunkedarraytext"
     }
   ],
   "hyperedges": []

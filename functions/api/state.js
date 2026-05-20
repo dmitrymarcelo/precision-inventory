@@ -11,9 +11,9 @@ const jsonHeaders = {
 };
 
 export async function onRequestGet({ env }) {
-  const v2Text = await loadStateV2ResponseText(env.DB);
-  if (v2Text) {
-    return new Response(v2Text, { headers: jsonHeaders });
+  const v2Manifest = await loadStateV2Manifest(env.DB);
+  if (v2Manifest) {
+    return new Response(streamStateV2Response(env.DB, v2Manifest), { headers: jsonHeaders });
   }
 
   const row = await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
@@ -110,7 +110,7 @@ async function loadStateV1(db) {
   return row ? normalizeState(JSON.parse(row.value)) : null;
 }
 
-async function loadStateV2(db) {
+async function loadStateV2Manifest(db) {
   const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
   if (!manifestRow?.value) return null;
   let manifest = null;
@@ -122,6 +122,12 @@ async function loadStateV2(db) {
   if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
     return null;
   }
+  return manifest;
+}
+
+async function loadStateV2(db) {
+  const manifest = await loadStateV2Manifest(db);
+  if (!manifest) return null;
 
   const state = normalizeState({});
   const parts = manifest.parts || {};
@@ -145,45 +151,57 @@ async function loadStateV2(db) {
   return { state, updatedAt: manifest.updatedAt };
 }
 
-async function loadStateV2ResponseText(db) {
-  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
-  if (!manifestRow?.value) return null;
-  let manifest = null;
-  try {
-    manifest = JSON.parse(manifestRow.value);
-  } catch {
-    return null;
-  }
-  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
-    return null;
-  }
-
+function streamStateV2Response(db, manifest) {
   const parts = manifest.parts || {};
-  const items = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
-  const logs = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
-  const requests = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
-  const vehicles = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
-  const purchases = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+  const encoder = new TextEncoder();
 
-  const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
-  const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
-  const settings = settingsRow?.value ? String(settingsRow.value) : '{}';
-  const ocrAliases = aliasesRow?.value ? String(aliasesRow.value) : '{}';
+  return new ReadableStream({
+    async start(controller) {
+      const write = text => controller.enqueue(encoder.encode(text));
 
-  return `{"state":{"items":${items},"logs":${logs},"settings":${settings},"requests":${requests},"vehicles":${vehicles},"purchases":${purchases},"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)}}`;
+      try {
+        write('{"state":{"items":');
+        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+        write(',"logs":');
+        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+
+        const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+        const settings = settingsRow?.value ? String(settingsRow.value) : '{}';
+        write(`,"settings":${settings}`);
+
+        write(',"requests":');
+        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+        write(',"vehicles":');
+        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+        write(',"purchases":');
+        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+        const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+        const ocrAliases = aliasesRow?.value ? String(aliasesRow.value) : '{}';
+        write(`,"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)}}`);
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    }
+  });
 }
 
-async function loadChunkedArrayText(db, prefix, count) {
-  const parts = [];
+async function writeChunkedArrayTextStream(write, db, prefix, count) {
+  write('[');
+  let hasContent = false;
   for (let i = 0; i < count; i += 1) {
     const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${prefix}${i}`).first();
     const value = row?.value ? String(row.value).trim() : '';
     if (!value || value === '[]') continue;
     if (!value.startsWith('[') || !value.endsWith(']')) continue;
     const inner = value.slice(1, -1).trim();
-    if (inner) parts.push(inner);
+    if (!inner) continue;
+    if (hasContent) write(',');
+    write(inner);
+    hasContent = true;
   }
-  return `[${parts.join(',')}]`;
+  write(']');
 }
 
 async function loadChunkedArray(db, prefix, count) {
