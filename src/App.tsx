@@ -924,15 +924,27 @@ export default function App() {
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
+      const httpMatch = message.match(/HTTP\s+(\d{3})/i);
+      const httpStatus = httpMatch ? Number(httpMatch[1]) : null;
       if (message === 'AUTH') {
         showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
         setAuthSession(null);
       }
-      lastFlushResultRef.current = { ok: false, code: message === 'AUTH' ? 'auth' : 'error', at: Date.now() };
-      setCloudAvailable(false);
-      setCloudStatus('offline');
-      wasOfflineRef.current = true;
-      appendSyncEvent('flush_fail', reason);
+      lastFlushResultRef.current = {
+        ok: false,
+        code: message === 'AUTH' ? 'auth' : httpStatus ? `http-${httpStatus}` : 'error',
+        at: Date.now()
+      };
+      if (httpStatus) {
+        setCloudAvailable(true);
+        setCloudStatus('online');
+        appendSyncEvent('flush_fail', `${reason} (HTTP ${httpStatus})`);
+      } else {
+        setCloudAvailable(false);
+        setCloudStatus('offline');
+        wasOfflineRef.current = true;
+        appendSyncEvent('flush_fail', reason);
+      }
       return false;
     } finally {
       flushInFlightRef.current = false;
@@ -1748,6 +1760,23 @@ export default function App() {
           }
           if (code === 'defer-newer-outbox') {
             showToast('Nova alteração detectada. Tentando sincronizar novamente...', 'info');
+            return;
+          }
+          if (code.startsWith('http-')) {
+            const status = Number(code.slice(5)) || 0;
+            if (status === 413) {
+              showToast('Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup.', 'info');
+              return;
+            }
+            if (status === 429) {
+              showToast('Servidor ocupado no momento. Aguarde alguns segundos e tente novamente.', 'info');
+              return;
+            }
+            if (status >= 500) {
+              showToast('Servidor com instabilidade agora. Aguarde e tente novamente.', 'info');
+              return;
+            }
+            showToast(`Nao foi possivel sincronizar (HTTP ${status}).`, 'info');
             return;
           }
           showToast('Nao foi possivel sincronizar agora. Verifique a internet e tente novamente.', 'info');
