@@ -76,6 +76,7 @@ Regras de negocio que nao podem quebrar:
 - Painel: manter objetivo para o armazem; nao destacar `Memoria operacional`; mostrar contagem diaria no Painel somente quando houver obrigatoriedade pendente para o usuario.
 - Inventario ciclico obrigatorio: configurado em Usuarios para Operacao/Admin; Consulta nao pode ser marcada; usuario marcado fica limitado a Painel, Estoque e Inventario Operacional ate finalizar a contagem diaria; regra central em src/cyclicInventory.ts.
 - Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no D1 sem aprovacao e politica de retencao.
+- Ponte segura de operacoes: `/api/operation-journal`, tabela D1 `operation_journal`, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
 - Pedido entregue/atendido vira consulta: nao editar nem excluir.
 - Mobile e prioridade operacional.

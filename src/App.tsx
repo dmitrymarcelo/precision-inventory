@@ -27,6 +27,14 @@ import { formatDivergenceDelta, getOpenDivergences } from './divergenceRules';
 import { getFlushCompletionMode, isSameCloudOutbox } from './syncOutbox';
 import { getAbcAnalysisForSku, getAbcClassPriority } from './abcAnalysis';
 import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, getLatestOperationalLogBySku } from './cyclicInventory';
+import {
+  createOperationJournalEntry,
+  enqueueOperationJournalEntry,
+  flushOperationJournalQueue,
+  getPendingOperationJournalQueue,
+  markOperationJournalApplied,
+  removeOperationJournalEntries
+} from './operationJournal';
 
 const StockWorkspace = React.lazy(() => import('./components/StockWorkspace'));
 const InventoryOperation = React.lazy(() => import('./components/InventoryOperation'));
@@ -182,7 +190,7 @@ type AuthSession = {
 };
 
 type SyncEvent = { at: string; event: string; detail?: string };
-type CloudOutbox = { state: CloudInventoryState; queuedAt: string; localUpdatedAt: string };
+type CloudOutbox = { state: CloudInventoryState; queuedAt: string; localUpdatedAt: string; journalIds?: string[] };
 
 function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   const [hasUsers, setHasUsers] = useState<boolean | null>(null);
@@ -503,6 +511,7 @@ export default function App() {
   }
   const outboxRef = useRef<CloudOutbox | null>(initialOutbox);
   const [localPendingSync, setLocalPendingSync] = useState(Boolean(initialOutbox) || localDirtyRef.current);
+  const [pendingJournalCount, setPendingJournalCount] = useState(() => getPendingOperationJournalQueue().length);
 
   useEffect(() => {
     if (outboxRef.current && !localDirtyRef.current) {
@@ -612,6 +621,7 @@ export default function App() {
 
   const mustChangePassword = authSession?.mustChangePassword === true;
   const isStockConsulta = authSession?.mode === 'stock-consulta';
+  const hasPendingSafetySync = !isStockConsulta && (localPendingSync || pendingJournalCount > 0);
 
   const handleForcePasswordChange = async () => {
     if (!authSession?.token) {
@@ -695,8 +705,8 @@ export default function App() {
     });
   };
 
-  const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string) => {
-    const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt };
+  const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string, journalIds: string[] = []) => {
+    const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt, journalIds };
     outboxRef.current = outbox;
     setLocalPendingSync(true);
     try {
@@ -714,6 +724,37 @@ export default function App() {
     } catch {}
     setLocalPendingSync(localDirtyRef.current);
     return true;
+  };
+
+  const refreshPendingJournalCount = () => {
+    setPendingJournalCount(getPendingOperationJournalQueue().length);
+  };
+
+  const flushJournalBridge = async (reason: string) => {
+    try {
+      const result = await flushOperationJournalQueue(authSession?.token);
+      setPendingJournalCount(result.remaining);
+      if (result.accepted > 0) {
+        appendSyncEvent('journal_flush_ok', `${result.accepted} operacao(oes) protegida(s) no D1`);
+      }
+      return true;
+    } catch {
+      refreshPendingJournalCount();
+      appendSyncEvent('journal_flush_fail', reason);
+      return false;
+    }
+  };
+
+  const markJournalEntriesApplied = async (ids: string[] = []) => {
+    if (!ids.length) return;
+    removeOperationJournalEntries(ids);
+    refreshPendingJournalCount();
+    try {
+      await markOperationJournalApplied(ids, authSession?.token);
+      appendSyncEvent('journal_applied', `${ids.length} operacao(oes) confirmada(s) no estado online`);
+    } catch {
+      appendSyncEvent('journal_apply_mark_fail');
+    }
   };
 
   const applyCloudStateIfNewer = (
@@ -799,6 +840,7 @@ export default function App() {
     let shouldFlushAgain = false;
 
     try {
+      await flushJournalBridge(reason);
       const result = await saveCloudState(outbox.state, authSession?.token);
       setCloudHasState(true);
       setCloudAvailable(true);
@@ -816,6 +858,7 @@ export default function App() {
       localStorage.removeItem(localDirtyStorageKey);
       localUpdatedAtRef.current = result.updatedAt;
       localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
+      latestCloudResultRef.current = { state: result.state || outbox.state, updatedAt: result.updatedAt };
       if (result.state) {
         suppressOutboxWriteRef.current = true;
         setItems(normalizeStoredItems(result.state.items));
@@ -831,6 +874,7 @@ export default function App() {
         );
       }
       clearOutbox(outbox);
+      await markJournalEntriesApplied(outbox.journalIds);
       setCloudUpdatePending(null);
       appendSyncEvent('flush_ok', reason);
       if (wasOfflineRef.current) {
@@ -911,6 +955,7 @@ export default function App() {
     const handleOnline = () => {
       wasOfflineRef.current = true;
       setCloudStatus('loading');
+      void flushJournalBridge('online_event');
       void flushOutbox('online_event');
     };
     const handleOffline = () => {
@@ -928,6 +973,16 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasPendingSafetySync) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasPendingSafetySync]);
 
   useEffect(() => {
     if (authSession) {
@@ -1021,7 +1076,17 @@ export default function App() {
     outboxWriteTimerRef.current = window.setTimeout(() => {
       const queuedAt = new Date().toISOString();
       const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
-      setOutbox(state, queuedAt, localUpdatedAtRef.current);
+      const journalEntry = createOperationJournalEntry({
+        previousState: latestCloudResultRef.current?.state,
+        nextState: state,
+        createdAt: queuedAt
+      });
+      if (journalEntry) {
+        enqueueOperationJournalEntry(journalEntry);
+        refreshPendingJournalCount();
+        appendSyncEvent('journal_queued', 'Operacao entrou na ponte segura de 7 dias');
+      }
+      setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntry ? [journalEntry.id] : []);
       appendSyncEvent('outbox_write');
       if (navigator.onLine) {
         void flushOutbox('outbox_write');
@@ -1623,6 +1688,43 @@ export default function App() {
     syncUrl('vehicle-parts', selectedSku, null, inventoryFilter);
   };
 
+  const handleForcePendingSync = () => {
+    void (async () => {
+      const journalOk = await flushJournalBridge('manual_force_sync');
+      if (outboxRef.current) {
+        await flushOutbox('manual_force_sync');
+        return;
+      }
+      if (journalOk) {
+        showToast('Ponte de seguranca sincronizada.', 'success');
+      }
+    })();
+  };
+
+  const handleExportPendingBackup = () => {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      kind: 'precision-inventory-pending-operation-backup',
+      localUpdatedAt: localUpdatedAtRef.current,
+      hasLocalDirty: localDirtyRef.current,
+      outbox: outboxRef.current,
+      operationJournalQueue: getPendingOperationJournalQueue(),
+      syncEvents
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup-operacao-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    appendSyncEvent('backup_exported', 'Backup de emergencia gerado neste aparelho');
+    showToast('Backup de emergencia gerado.', 'success');
+  };
+
   if (!authSession) {
     return (
       <LoginScreen
@@ -1643,9 +1745,19 @@ export default function App() {
         cloudStatus={cloudStatus}
         cloudUpdatePending={Boolean(cloudUpdatePending)}
         cloudUpdateAt={cloudUpdatePending?.updatedAt}
+        localPendingSync={hasPendingSafetySync}
+        pendingJournalCount={pendingJournalCount}
         onApplyCloudUpdate={() => void applyCloudUpdateNow()}
         onIgnoreCloudUpdate={ignoreCloudUpdate}
+        onForcePendingSync={handleForcePendingSync}
+        onExportPendingBackup={handleExportPendingBackup}
         onLogout={() => {
+          if (hasPendingSafetySync) {
+            const confirmLogout = window.confirm(
+              'Existe operacao ainda sem confirmacao completa no servidor. Sincronize ou exporte o backup antes de sair. Deseja sair mesmo assim?'
+            );
+            if (!confirmLogout) return;
+          }
           if (authSession.token) {
             void fetch('/api/auth?action=logout', {
               method: 'POST',
@@ -1831,9 +1943,12 @@ export default function App() {
               inventoryLogs={logs}
               requests={requests}
               cloudStatus={cloudStatus}
-              hasLocalPending={localPendingSync}
+              hasLocalPending={hasPendingSafetySync}
+              pendingJournalCount={pendingJournalCount}
               cloudUpdatePending={Boolean(cloudUpdatePending)}
               onApplyCloudUpdate={() => void applyCloudUpdateNow()}
+              onForcePendingSync={handleForcePendingSync}
+              onExportPendingBackup={handleExportPendingBackup}
             />
           )}
         </Suspense>

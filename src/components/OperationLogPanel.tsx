@@ -9,8 +9,11 @@ type OperationLogPanelProps = {
   requests: MaterialRequest[];
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
   hasLocalPending: boolean;
+  pendingJournalCount?: number;
   cloudUpdatePending: boolean;
   onApplyCloudUpdate?: () => void;
+  onForcePendingSync?: () => void;
+  onExportPendingBackup?: () => void;
 };
 
 type Filter = 'all' | OperationLogModule;
@@ -21,8 +24,11 @@ export default function OperationLogPanel({
   requests,
   cloudStatus,
   hasLocalPending,
+  pendingJournalCount = 0,
   cloudUpdatePending,
-  onApplyCloudUpdate
+  onApplyCloudUpdate,
+  onForcePendingSync,
+  onExportPendingBackup
 }: OperationLogPanelProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const entries = useMemo(
@@ -51,6 +57,7 @@ export default function OperationLogPanel({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <StatusCard label="Sistema" value={formatCloudStatus(cloudStatus)} tone={cloudStatus === 'offline' ? 'danger' : 'default'} />
             <StatusCard label="Pendente local" value={hasLocalPending ? 'Sim' : 'Nao'} tone={hasLocalPending ? 'warning' : 'default'} />
+            <StatusCard label="Ponte local" value={String(pendingJournalCount)} tone={pendingJournalCount > 0 ? 'warning' : 'default'} />
             <StatusCard label="Eventos" value={String(entries.length)} tone="default" />
             <StatusCard label="Online novo" value={cloudUpdatePending ? 'Sim' : 'Nao'} tone={cloudUpdatePending ? 'warning' : 'default'} />
           </div>
@@ -64,6 +71,26 @@ export default function OperationLogPanel({
             <button type="button" onClick={onApplyCloudUpdate} className="h-10 px-4 rounded-xl bg-primary text-on-primary font-bold">
               Atualizar agora
             </button>
+          </div>
+        ) : null}
+
+        {hasLocalPending ? (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm font-semibold text-red-950">
+              Existe operacao aguardando confirmacao completa no servidor. Sincronize antes de limpar dados do aparelho.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {onForcePendingSync ? (
+                <button type="button" onClick={onForcePendingSync} className="h-10 px-4 rounded-xl bg-primary text-on-primary font-bold">
+                  Sincronizar agora
+                </button>
+              ) : null}
+              {onExportPendingBackup ? (
+                <button type="button" onClick={onExportPendingBackup} className="h-10 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold">
+                  Exportar backup
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>

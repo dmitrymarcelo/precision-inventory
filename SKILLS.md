@@ -166,6 +166,11 @@ Permissoes de gravacao:
 - o `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
 - o `Log do sistema` nao deve criar tabela nova nem historico longo no D1 sem aprovacao explicita
 - eventos locais de sync devem continuar limitados no navegador; para historico servidor, definir retencao antes
+- a ponte segura de operacoes usa `/api/operation-journal` e tabela D1 `operation_journal`
+- a retencao da ponte e 7 dias; ela e transicao/confirmacao, nao historico permanente
+- o front deve enviar patch compacto por SKU/id, nunca snapshot gigante do estado inteiro
+- se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
+- com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 
 ## Skill 8.1 - Inventario ciclico obrigatorio
 

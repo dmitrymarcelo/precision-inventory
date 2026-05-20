@@ -91,6 +91,18 @@ function formatSyncEvent(event: string) {
       return 'Sync antigo preservou alteracao nova';
     case 'outbox_write':
       return 'Alteracao entrou na fila de salvamento';
+    case 'journal_queued':
+      return 'Operacao entrou na ponte segura';
+    case 'journal_flush_ok':
+      return 'Ponte segura gravada no D1';
+    case 'journal_flush_fail':
+      return 'Falha ao gravar ponte segura';
+    case 'journal_applied':
+      return 'Operacao confirmada no estado online';
+    case 'journal_apply_mark_fail':
+      return 'Falha ao marcar ponte como aplicada';
+    case 'backup_exported':
+      return 'Backup de emergencia exportado';
     case 'cloud_refresh_applied':
       return 'Estado online aplicado';
     case 'cloud_refresh_forced':
@@ -127,4 +139,3 @@ function formatRequestEvent(event: MaterialRequestAuditEntry['event']) {
       return normalizeUserFacingText(event);
   }
 }
-

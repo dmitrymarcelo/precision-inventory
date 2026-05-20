@@ -33,8 +33,12 @@ interface LayoutProps {
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
   cloudUpdatePending?: boolean;
   cloudUpdateAt?: string;
+  localPendingSync?: boolean;
+  pendingJournalCount?: number;
   onApplyCloudUpdate?: () => void;
   onIgnoreCloudUpdate?: () => void;
+  onForcePendingSync?: () => void;
+  onExportPendingBackup?: () => void;
 }
 
 type NavigationItem = {
@@ -57,7 +61,11 @@ export default function Layout({
   cloudUpdatePending,
   cloudUpdateAt,
   onApplyCloudUpdate,
-  onIgnoreCloudUpdate
+  onIgnoreCloudUpdate,
+  localPendingSync = false,
+  pendingJournalCount = 0,
+  onForcePendingSync,
+  onExportPendingBackup
 }: LayoutProps) {
   const [supportsFullscreen, setSupportsFullscreen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -323,6 +331,44 @@ export default function Layout({
       </header>
 
       <main className="flex-grow pt-20 pb-8 px-3 sm:px-4 lg:px-6 xl:px-8 2xl:px-10 max-w-[1720px] 2xl:max-w-[1880px] mx-auto w-full">
+        {localPendingSync ? (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-red-800">
+                  Salvamento pendente neste aparelho
+                </p>
+                <p className="mt-1 text-sm font-semibold text-red-950">
+                  Nao limpe dados do navegador, nao troque de aparelho e nao formate antes de sincronizar.
+                </p>
+                <p className="mt-1 text-xs text-red-800">
+                  A ponte de seguranca guarda a operacao por ate 7 dias no D1 quando consegue chegar ao servidor.
+                  {pendingJournalCount > 0 ? ` Pendencias locais da ponte: ${pendingJournalCount}.` : ''}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {onForcePendingSync ? (
+                  <button
+                    type="button"
+                    onClick={onForcePendingSync}
+                    className="h-11 px-4 rounded-xl bg-primary text-on-primary font-bold"
+                  >
+                    Sincronizar agora
+                  </button>
+                ) : null}
+                {onExportPendingBackup ? (
+                  <button
+                    type="button"
+                    onClick={onExportPendingBackup}
+                    className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
+                  >
+                    Exportar backup
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
         {cloudUpdatePending ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

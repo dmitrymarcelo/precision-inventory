@@ -2,6 +2,52 @@
 
 Ultima atualizacao: 2026-05-20
 
+## Ponte segura de operacoes com retencao de 7 dias em 2026-05-20
+
+- Pedido do usuario:
+  - deixar a memoria operacional mais robusta para reduzir risco de perda antes de alguem limpar dados do navegador, trocar de celular, formatar ou apagar cache
+  - usar retencao curta de 7 dias no D1, porque a memoria e somente transicao/confirmacao de seguranca
+- Implementado:
+  - nova API `functions/api/operation-journal.js`
+  - nova tabela D1 `operation_journal`
+  - retencao automatica de 7 dias por `created_at`
+  - novo cliente `src/operationJournal.ts`
+  - ao escrever outbox, o front cria um patch compacto da mudanca e guarda em fila local `precisionInventory.operationJournal.queue.v1`
+  - antes do `PUT /api/state`, o sistema tenta enviar a ponte para `/api/operation-journal`
+  - depois que o estado principal salva, a ponte e marcada como `applied`
+  - aviso forte no topo quando existir pendencia local: nao limpar dados, nao trocar aparelho, nao formatar antes de sincronizar
+  - `beforeunload` alerta ao tentar fechar/recarregar com pendencia
+  - logout pede confirmacao se ainda existir operacao sem confirmacao completa
+  - `Log do sistema` ganhou botoes `Sincronizar agora` e `Exportar backup`
+  - backup exportado gera JSON local com outbox, fila da ponte e eventos de sync
+- Decisao tecnica:
+  - a ponte nao e historico longo
+  - payload e patch pequeno por SKU/id; payload grande demais nao e enviado para evitar pesar o D1
+  - se o aparelho estiver totalmente offline, nada chega ao servidor; nesse caso a protecao e aviso forte + backup exportavel
+  - importacao automatica de backup nao foi feita para evitar aplicar dados antigos sobre o estado online sem revisao administrativa
+- Testes criados:
+  - `scripts/test-operation-journal-api.mjs`
+  - `scripts/test-operation-journal-patch.mjs`
+- Validado:
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://5bbd7b06.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-CPGcSEG_.js`
+- Pendencias:
+  - se o usuario quiser recuperacao por UI, criar fluxo admin separado para importar/revisar backup sem sobrescrever estado online por acidente
+
 ## Painel mais objetivo e memoria operacional em 2026-05-20
 
 - Pedido do usuario:
