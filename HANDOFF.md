@@ -2,6 +2,218 @@
 
 Ultima atualizacao: 2026-05-20
 
+## Hotfix de producao: front ficava em Local/Conectando sem feedback em 2026-05-20
+
+- Problema:
+  - usuario relatou que o menu ficava alternando entre `Sistema Conectando` e `Sistema Local`
+  - a suspeita operacional era que os dados podiam estar no servidor, mas o front nao dava feedback correto
+- Causa encontrada:
+  - producao estava servindo o rollback final antigo (`/assets/index-C72JfE5o.js`)
+  - em validacao direta, `/api/state` chegou a retornar erro Cloudflare `1102` em uma chamada com o estado grande
+  - quando isso acontecia, o front antigo caia para `Local` sem mostrar o motivo HTTP/Cloudflare para o usuario
+- Implementado:
+  - `src/cloudState.ts` agora inclui status HTTP e trecho da resposta quando `GET /api/state` falha
+  - `src/App.tsx` guarda `cloudStatusDetail` e limpa o detalhe quando a conexao volta
+  - `src/components/Layout.tsx` mostra `Falha online` e o detalhe curto no menu da conta quando o sistema nao consegue falar com o servidor
+  - mantido o hotfix atual de State V2/ponte por patch para reduzir risco de estouro com estado grande
+- Validado local:
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-auth-login-async-hash.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com Node portatil, mas os shims retornaram `Acesso negado`
+  - equivalentes diretos passaram: `node node_modules/typescript/bin/tsc --noEmit` e `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview: `https://289d774a.precision-inventory.pages.dev`
+  - producao `https://precision-inventory.pages.dev/` passou a servir `/assets/index-BnaSF83I.js`
+  - `/api/state` respondeu `200` em 10 repeticoes seguidas, sem `1102`, com `1710` itens, `3401` logs e `384` solicitacoes
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina; se o navegador insistir no asset antigo, usar Ctrl+F5
+  - se aparecer `Falha online`, abrir o menu da conta e ler o detalhe exibido abaixo de `Sistema`
+  - nao limpar cache/dados do navegador enquanto houver banner de salvamento pendente; primeiro sincronizar ou exportar backup
+
+## Rollback operacional para o ponto anterior a conversa em 2026-05-20
+
+- Pedido do usuario:
+  - voltar o sistema para o ponto mostrado na conversa de 2026-05-19, antes do pacote grande de alteracoes iniciado depois da analise de processos nao salvos
+  - testar se a sincronizacao continua funcionando
+- Decisao:
+  - primeiro foi testado e publicado o rollback intermediario `1b98fa4`, anterior a ponte/backup/State V2
+  - depois, ao revisar o ponto exato da imagem, o rollback final foi feito para `06c5c98` (`Stop tracking local Claude settings e ignorar arquivos .claude`), anterior ao commit grande `9a71899` (`Melhora painel e operacao do armazem`)
+  - o rollback foi feito por deploy de codigo/Functions, sem limpar nem recriar o banco D1
+  - as versoes antigas `5bbd7b06` (`1b98fa4`) e `e3f85370` (`06c5c98`) foram testadas antes e conseguiram ler o estado atual do D1 com payload de `2183449` caracteres
+- Validado antes do deploy:
+  - worktree isolado criado em `C:\Users\dmitry.santos\Desktop\Sistema inventario rollback-06c5c98`
+  - `06c5c98` nao tinha a pasta `scripts`, entao a validacao automatizada disponivel foi compilacao/build
+  - `node node_modules/typescript/bin/tsc --noEmit` passou no rollback final
+  - `node node_modules/vite/bin/vite.js build` passou no rollback final
+  - no rollback intermediario `1b98fa4`, tambem passaram `scripts/test-sync-outbox.mjs`, `scripts/test-state-consulta-save.mjs`, `scripts/test-users-primary-admin-access.mjs`, `scripts/test-user-cycle-requirement.mjs` e `scripts/test-cyclic-inventory.mjs`
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - rollback intermediario publicado: `https://60830a8a.precision-inventory.pages.dev`
+  - rollback final publicado: `https://18d5841f.precision-inventory.pages.dev`
+  - producao `https://precision-inventory.pages.dev/` passou a servir `assets/index-C72JfE5o.js` e `assets/index-TxhciXQH.css`, gerados no rollback final
+- Validado em producao apos rollback:
+  - pagina principal respondeu `200`
+  - `/api/users?meta=1` respondeu `200 {"ok":true,"hasUsers":true}`
+  - `/api/state` respondeu `200` com `2183449` caracteres
+  - login invalido para matricula `24000` respondeu `401` JSON em 10 repeticoes seguidas, sem `503`
+  - `PUT /api/state` sem token respondeu `401`, confirmando que a gravacao continua exigindo sessao valida
+- Teste de sincronizacao com estado real:
+  - usando o estado atual de producao, o `PUT /api/state` da versao rollback final foi exercitado localmente com sessao admin fake para nao alterar o D1 real
+  - resultado: `ok`, preservando `1710` itens, `3399` logs, `384` solicitacoes e gravando payload de `2183400` caracteres
+- Observacao importante:
+  - teste autenticado real em producao exige usuario/senha ou token de sessao valido; nao foi criado usuario temporario nem mexido diretamente na tabela `users/sessions`, porque o `wrangler d1 execute --remote` falhou com autorizacao Cloudflare `7403`
+  - para validar na operacao, entrar no sistema, fazer uma pequena alteracao controlada em um SKU de teste e confirmar em outro aparelho/aba apos atualizar
+
+## Hotfix de producao: login voltando 503 em 2026-05-20
+
+- Problema:
+  - apos sair do sistema, o login mostrava `Falha de conexao` mesmo com internet funcionando
+  - chamadas reais para `/api/auth?action=login` alternavam entre `401` correto e `503` HTML do Cloudflare
+- Causa encontrada:
+  - o login calculava o hash da senha com SHA-256 em JavaScript puro, sincronamente, por 50.000 rodadas
+  - em Cloudflare Pages Functions isso podia estourar limite de CPU do Worker e cair como `503`
+- Implementado:
+  - `functions/api/auth.js` agora calcula o mesmo hash de forma assincrona usando `crypto.subtle.digest` quando disponivel, preservando as senhas ja existentes
+  - `functions/api/users.js` recebeu o mesmo ajuste para criacao/reset de senha
+  - criado `scripts/test-auth-login-async-hash.mjs` para garantir que o hash e assincrono e que o login aguarda o hash antes de aceitar a senha
+- Validado local:
+  - `scripts/test-auth-login-async-hash.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - hash real com 50.000 rodadas levou cerca de 1,3s local usando Web Crypto
+  - `npm.cmd run lint` e `npm.cmd run build` foram tentados, mas `npm.cmd` nao esta no PATH desta sessao
+  - equivalentes diretos passaram: `node node_modules/typescript/bin/tsc --noEmit` e `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview: `https://e402cdd5.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/auth?action=login` com senha invalida respondeu `401` JSON em 12 repeticoes seguidas, sem `503`
+  - `/api/state` respondeu `200` com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - usuario deve recarregar a pagina e tentar entrar novamente
+  - se navegador estiver preso em cache antigo, usar Ctrl+F5 antes de entrar
+
+## Hotfix definitivo: sincronizacao por patch sem PUT completo em 2026-05-20
+
+- Problema:
+  - mesmo apos State V2, aparelhos ainda mostravam `Servidor com instabilidade` em `Sincronizar agora`
+  - `Enviar backup ao servidor` tambem falhava com mensagem generica
+- Causa encontrada:
+  - o front ainda tentava `PUT /api/state` com snapshot completo antes de usar a ponte segura
+  - ao chamar `flushJournalBridge`, a fila local da ponte era enviada ao D1 e removida do navegador; se o PUT completo falhava depois, o replay procurava localmente uma operacao que ja tinha sido removida
+  - o replay do backup no servidor ainda carregava e regravava o estado inteiro para aplicar um patch pequeno
+- Implementado:
+  - `src/App.tsx` agora prioriza replay da ponte para estado grande, operacao manual ou outbox com `journalIds`
+  - fallback por replay tambem roda para HTTP 5xx, nao apenas 413
+  - replay por `journalIds` consegue usar operacoes ja recebidas pelo servidor, mesmo que a fila local tenha sido removida apos o POST
+  - `functions/api/operation-journal.js?action=replay` aplica patches diretamente no State V2, carregando/regravando somente colecoes alteradas (`items`, `logs`, `requests`, etc.)
+  - `src/syncOutbox.ts` ganhou regra testavel para preferir replay em estado grande
+  - criado `scripts/test-operation-journal-replay-patches-v2-direct.mjs`
+- Validado:
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com o Node portatil, mas os shims `tsc`/`vite` retornaram `Acesso negado`
+  - `node node_modules/typescript/bin/tsc --noEmit` passou
+  - `node node_modules/vite/bin/vite.js build` passou
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview: `https://05618778.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - asset principal em producao: `/assets/index-CF98BVrj.js`
+  - `/api/state` respondeu `200` em 10 repeticoes seguidas com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina antes de tocar em `Sincronizar agora`
+  - se houver banner vermelho, tocar em `Sincronizar agora`; o caminho esperado agora e replay por patch, sem depender de PUT completo
+
+## Ajuste do hotfix de sincronizacao grande em 2026-05-20
+
+- Problema:
+  - apos alteracoes externas, `Sincronizar agora` ainda podia mostrar `dados muito grandes` ou `Servidor com instabilidade`
+  - causa provavel: o State V2 ja dividia o estado em linhas menores, mas gravava todos os blocos em um `db.batch`; com estado acima de 2MB, o D1/Pages podia recusar o pacote inteiro ou responder erro generico
+- Implementado:
+  - `functions/api/state.js` continua salvando em State V2, mas agora executa cada upsert/delete de bloco separadamente
+  - `functions/api/state.js` tambem passou a responder o GET grande sem parsear/serializar o estado inteiro de novo, reduzindo uso de CPU do Worker
+  - manifests V2 com contagem anormal de chunks sao ignorados e o sistema cai para o estado V1, evitando loop de leitura que estoura limite do Worker
+  - `functions/api/operation-journal.js?action=replay` recebeu o mesmo ajuste para aplicar patches da ponte sem empacotar estado grande em batch unico
+  - `functions/api/operation-journal.js` tambem valida a contagem de chunks do manifest antes de carregar V2
+  - criado `scripts/test-operation-journal-replay-save.mjs` para garantir que o replay salva estado V2
+  - criado `scripts/test-state-get-large-response.mjs` para garantir GET grande em V2 e fallback quando manifest V2 estiver inseguro
+  - atualizado o fake DB de `scripts/test-state-consulta-save.mjs` para cobrir a leitura V1 usada pelo State V2
+- Validado:
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com o Node portatil, mas os shims `tsc`/`vite` retornaram `Acesso negado`
+  - equivalente direto passou: `node node_modules/typescript/bin/tsc --noEmit`
+  - equivalente direto passou: `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou apos os ajustes finais
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview final: `https://dcc2429a.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200` em 10 repeticoes seguidas com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-Df4nPS-V.js`
+- Instrucao operacional:
+  - pedir para o usuario recarregar a pagina em cada aparelho antes de tocar em `Sincronizar agora`
+  - se o banner vermelho continuar, tocar em `Sincronizar agora`; nao limpar dados do navegador antes de exportar backup
+
+## Hotfix: sincronizacao 413 por estado grande (State V2 chunked) em 2026-05-20
+
+- Problema:
+  - sincronizar retornava `413 (dados muito grandes)` quando o estado passou de ~2MB
+  - backup exportado do aparelho pode passar de 3MB mesmo com mudanca pequena (estado total grande)
+- Implementado:
+  - `functions/api/state.js` salva o estado em formato V2 (chunked) no `app_state`, permitindo estado total > 2MB
+  - escrita V2 ficou mais segura: grava novos chunks + manifest e so depois remove chunks antigos (reduz risco de estado incompleto)
+  - `functions/api/operation-journal.js` (action=replay) agora tambem le/salva em V2, evitando 413 ao aplicar patches quando o online ja e grande
+- Validado:
+  - `npm run lint` passou
+  - `npm run build` passou
+  - `node scripts/test-operation-journal-api.mjs` passou
+  - `node scripts/test-operation-journal-patch.mjs` passou
+  - `node scripts/test-state-consulta-save.mjs` passou
+- Producao:
+  - `/api/state` respondeu `200` com payload > 2MB (confirmando State V2 ativo)
+
 ## Hotfix: salvamento pendente travado em aparelhos em 2026-05-20
 
 - Pedido do usuario:

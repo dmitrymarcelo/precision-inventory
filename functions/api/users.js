@@ -435,14 +435,23 @@ function concatBytes(...parts) {
   return merged;
 }
 
-function hashPassword(password, saltValue, iterations) {
+async function hashPassword(password, saltValue, iterations) {
   const enc = new TextEncoder();
   const salt = decodeSalt(saltValue);
   let data = concatBytes(salt, enc.encode(':'), enc.encode(password));
   const rounds = Number.isFinite(iterations) && iterations > 0 ? Math.floor(iterations) : 50000;
-  for (let i = 0; i < rounds; i += 1) {
-    data = sha256(data);
+  const subtle = globalThis.crypto?.subtle;
+
+  if (subtle && typeof subtle.digest === 'function') {
+    for (let i = 0; i < rounds; i += 1) {
+      data = new Uint8Array(await subtle.digest('SHA-256', data));
+    }
+  } else {
+    for (let i = 0; i < rounds; i += 1) {
+      data = sha256(data);
+    }
   }
+
   return bytesToHex(data);
 }
 
@@ -450,7 +459,7 @@ async function updatePassword(db, id, password, updatedAt, mustChangePassword) {
   const iterations = 50000;
   const saltBytes = getRandomBytes(16);
   const salt = bytesToHex(saltBytes);
-  const hash = hashPassword(password, salt, iterations);
+  const hash = await hashPassword(password, salt, iterations);
 
   await db
     .prepare(

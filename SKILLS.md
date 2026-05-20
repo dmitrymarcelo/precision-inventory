@@ -172,6 +172,9 @@ Permissoes de gravacao:
 - quando existir pendencia local, o botao superior deve agir como `Sincronizar`, nao como `Atualizar do online`
 - se houver `dirty` local antigo sem outbox, o clique em `Sincronizar agora` deve reconstruir a outbox a partir do estado atual antes de enviar
 - se o usuario escolher aplicar o estado online e descartar o local, limpar dirty, outbox e fila local da ponte para nao manter banner vermelho falso
+- se o menu mostrar `Sistema Local` ou `Falha online`, investigar primeiro `GET /api/state` e o detalhe HTTP exibido no menu; nao assumir perda no D1 sem validar
+- quando `GET /api/state` falhar, o front deve mostrar o motivo curto em `Sistema`, porque o dado pode existir no servidor mas a leitura do estado grande pode ter falhado
+- para estado grande, manter a leitura otimizada/State V2 em `functions/api/state.js` e evitar parsing/deserializacao desnecessaria no Worker
 - se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
 - com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 

@@ -24,15 +24,18 @@ import { classifyInventoryCategory } from './categoryCatalog';
 import { getVehicleTypeFromModel, normalizeOfficialVehicleModel, normalizeOperationalVehicleType } from './vehicleCatalog';
 import { normalizeInventoryStatus, normalizeLocationText, normalizeUserFacingText } from './textUtils';
 import { formatDivergenceDelta, getOpenDivergences } from './divergenceRules';
-import { getFlushCompletionMode, isSameCloudOutbox } from './syncOutbox';
+import { getFlushCompletionMode, isSameCloudOutbox, shouldUseJournalReplayForSync } from './syncOutbox';
 import { getAbcAnalysisForSku, getAbcClassPriority } from './abcAnalysis';
 import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, getLatestOperationalLogBySku } from './cyclicInventory';
 import {
+  buildOperationJournalPatch,
   createOperationJournalEntry,
   createOperationJournalEntriesForBackup,
+  enqueueOperationJournalEntries,
   enqueueOperationJournalEntry,
   flushOperationJournalQueue,
   getPendingOperationJournalQueue,
+  hasOperationJournalPatchChanges,
   markOperationJournalApplied,
   postOperationJournalEntries,
   replayOperationJournalEntries,
@@ -478,6 +481,7 @@ export default function App() {
   const [activeTab, setActiveTabState] = useState(getInitialTab);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
   const [cloudStatus, setCloudStatus] = useState<'loading' | 'online' | 'offline' | 'saving'>('loading');
+  const [cloudStatusDetail, setCloudStatusDetail] = useState('');
   const [cloudLoaded, setCloudLoaded] = useState(false);
   const [cloudAvailable, setCloudAvailable] = useState(false);
   const [cloudHasState, setCloudHasState] = useState(false);
@@ -711,6 +715,12 @@ export default function App() {
     });
   };
 
+  const describeCloudError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : '';
+    if (!message) return 'Falha ao falar com o servidor.';
+    return normalizeUserFacingText(message).slice(0, 180);
+  };
+
   const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string, journalIds: string[] = []) => {
     const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt, journalIds };
     outboxRef.current = outbox;
@@ -763,22 +773,102 @@ export default function App() {
     }
   };
 
+  const applyOutboxViaJournalReplay = async (
+    expectedOutbox: CloudOutbox,
+    reason: string
+  ): Promise<{ ok: boolean; updatedAt?: string | null }> => {
+    const current = outboxRef.current;
+    if (!current || !isSameCloudOutbox(current, expectedOutbox)) {
+      appendSyncEvent('journal_replay_skipped', 'Outbox mudou durante a tentativa de replay');
+      return { ok: false };
+    }
+
+    if (!authSession?.token) {
+      return { ok: false };
+    }
+
+    let journalIds = Array.isArray(current.journalIds) ? current.journalIds.slice() : [];
+    if (journalIds.length === 0) {
+      const patch = buildOperationJournalPatch(latestCloudResultRef.current?.state, current.state);
+      if (hasOperationJournalPatchChanges(patch)) {
+        const entries = createOperationJournalEntriesForBackup({
+          previousState: latestCloudResultRef.current?.state,
+          nextState: current.state,
+          createdAt: current.queuedAt
+        });
+        if (entries.length > 0) {
+          enqueueOperationJournalEntries(entries);
+          refreshPendingJournalCount();
+          journalIds = entries.map(entry => entry.id);
+          setOutbox(current.state, current.queuedAt, current.localUpdatedAt, journalIds);
+          appendSyncEvent('journal_queued', `${entries.length} operacao(oes) entrou(aram) na ponte segura (replay)`);
+        }
+      }
+    }
+
+    if (journalIds.length === 0) {
+      appendSyncEvent('journal_replay_fail', 'Sem operacoes na ponte para aplicar');
+      return { ok: false };
+    }
+
+    const queue = getPendingOperationJournalQueue();
+    const byId = new Map(queue.map(entry => [entry.id, entry]));
+    const entriesToSend = journalIds.map(id => byId.get(id)).filter(Boolean);
+
+    appendSyncEvent('journal_replay_start', reason);
+
+    let remainingIds = journalIds.slice();
+    while (entriesToSend.length > 0) {
+      const batch = entriesToSend.splice(0, 25);
+      const result = await postOperationJournalEntries(batch, authSession.token);
+      if (result.acceptedIds.length > 0) {
+        removeOperationJournalEntries(result.acceptedIds);
+      }
+    }
+    refreshPendingJournalCount();
+
+    let updatedAt: string | null = null;
+    let applied = 0;
+    while (remainingIds.length > 0) {
+      const batchIds = remainingIds.slice(0, 25);
+      remainingIds = remainingIds.slice(25);
+      const replay = await replayOperationJournalEntries(batchIds, authSession.token);
+      if (replay.updatedAt) updatedAt = replay.updatedAt;
+      applied += replay.applied;
+    }
+
+    if (applied === 0 && !updatedAt) {
+      appendSyncEvent('journal_replay_fail', 'Operacao nao encontrada no servidor');
+      return { ok: false };
+    }
+
+    await markJournalEntriesApplied(journalIds);
+
+    latestCloudResultRef.current = { state: current.state, updatedAt: updatedAt || new Date().toISOString() };
+    appendSyncEvent('journal_replay_ok', `${journalIds.length} operacao(oes) aplicada(s) no estado online`);
+    return { ok: true, updatedAt };
+  };
+
   const queueCurrentStateForSync = (reason: string) => {
     const queuedAt = new Date().toISOString();
     const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
-    const journalEntry = createOperationJournalEntry({
-      previousState: latestCloudResultRef.current?.state,
-      nextState: state,
-      createdAt: queuedAt
-    });
+    const previousState = latestCloudResultRef.current?.state;
+    const journalEntry = createOperationJournalEntry({ previousState, nextState: state, createdAt: queuedAt });
+    const journalEntries = journalEntry
+      ? [journalEntry]
+      : createOperationJournalEntriesForBackup({ previousState, nextState: state, createdAt: queuedAt });
 
-    if (journalEntry) {
-      enqueueOperationJournalEntry(journalEntry);
+    if (journalEntries.length > 0) {
+      if (journalEntries.length === 1) {
+        enqueueOperationJournalEntry(journalEntries[0]);
+      } else {
+        enqueueOperationJournalEntries(journalEntries);
+      }
       refreshPendingJournalCount();
-      appendSyncEvent('journal_queued', 'Operacao entrou na ponte segura de 7 dias');
+      appendSyncEvent('journal_queued', `${journalEntries.length} operacao(oes) entrou(aram) na ponte segura de 7 dias`);
     }
 
-    setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntry ? [journalEntry.id] : []);
+    setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntries.map(entry => entry.id));
     appendSyncEvent('outbox_write', reason);
   };
 
@@ -882,12 +972,50 @@ export default function App() {
     appendSyncEvent('flush_start', reason);
     let shouldFlushAgain = false;
 
+    const finishJournalReplay = async (updatedAtValue?: string | null) => {
+      const updatedAt = updatedAtValue || new Date().toISOString();
+      localDirtyRef.current = false;
+      localStorage.removeItem(localDirtyStorageKey);
+      localUpdatedAtRef.current = updatedAt;
+      localStorage.setItem(localUpdatedAtStorageKey, updatedAt);
+      latestCloudResultRef.current = { state: outbox.state, updatedAt };
+      setCloudHasState(true);
+      setCloudAvailable(true);
+      setCloudStatus('online');
+      setCloudStatusDetail('');
+      clearOutbox(outbox);
+      setCloudUpdatePending(null);
+      setLocalPendingSync(false);
+      appendSyncEvent('flush_ok', `${reason} (replay)`);
+      lastFlushResultRef.current = { ok: true, code: 'ok', at: Date.now() };
+      if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        showToast('Internet voltou. Alteracoes sincronizadas.', 'success');
+      }
+      return true;
+    };
+
     try {
+      const serializedStateLength = JSON.stringify(outbox.state).length;
+      if (
+        shouldUseJournalReplayForSync({
+          serializedStateLength,
+          journalIdCount: Array.isArray(outbox.journalIds) ? outbox.journalIds.length : 0,
+          reason
+        })
+      ) {
+        const replay = await applyOutboxViaJournalReplay(outbox, `${reason}_journal_first`);
+        if (replay.ok) {
+          return finishJournalReplay(replay.updatedAt);
+        }
+      }
+
       await flushJournalBridge(reason);
       const result = await saveCloudState(outbox.state, authSession?.token);
       setCloudHasState(true);
       setCloudAvailable(true);
       setCloudStatus('online');
+      setCloudStatusDetail('');
       const completionMode = getFlushCompletionMode(outbox, outboxRef.current);
 
       if (completionMode === 'defer-newer-outbox') {
@@ -934,6 +1062,15 @@ export default function App() {
       if (message === 'AUTH') {
         showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
         setAuthSession(null);
+      } else if (httpStatus === 413 || (httpStatus !== null && httpStatus >= 500)) {
+        try {
+          const replay = await applyOutboxViaJournalReplay(outbox, reason);
+          if (replay.ok) {
+            return finishJournalReplay(replay.updatedAt);
+          }
+        } catch {
+          appendSyncEvent('journal_replay_fail', 'Falha ao aplicar via ponte segura');
+        }
       }
       lastFlushResultRef.current = {
         ok: false,
@@ -943,10 +1080,12 @@ export default function App() {
       if (httpStatus) {
         setCloudAvailable(true);
         setCloudStatus('online');
+        setCloudStatusDetail('');
         appendSyncEvent('flush_fail', `${reason} (HTTP ${httpStatus})`);
       } else {
         setCloudAvailable(false);
         setCloudStatus('offline');
+        setCloudStatusDetail(describeCloudError(error));
         wasOfflineRef.current = true;
         appendSyncEvent('flush_fail', reason);
       }
@@ -975,6 +1114,7 @@ export default function App() {
 
         setCloudAvailable(true);
         setCloudStatus('online');
+        setCloudStatusDetail('');
         if (cloudRetryTimerRef.current) {
           window.clearTimeout(cloudRetryTimerRef.current);
           cloudRetryTimerRef.current = null;
@@ -982,10 +1122,13 @@ export default function App() {
         if (outboxRef.current && localDirtyRef.current) {
           void flushOutbox('initial_load');
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setCloudAvailable(false);
           setCloudStatus('offline');
+          const detail = describeCloudError(error);
+          setCloudStatusDetail(detail);
+          appendSyncEvent('cloud_refresh_fail', `initial_load: ${detail}`);
           wasOfflineRef.current = true;
           if (!cloudRetryTimerRef.current) {
             cloudRetryTimerRef.current = window.setTimeout(() => {
@@ -1016,6 +1159,7 @@ export default function App() {
     const handleOnline = () => {
       wasOfflineRef.current = true;
       setCloudStatus('loading');
+      setCloudStatusDetail('');
       void flushJournalBridge('online_event');
       void flushOutbox('online_event');
     };
@@ -1023,6 +1167,7 @@ export default function App() {
       wasOfflineRef.current = true;
       setCloudAvailable(false);
       setCloudStatus('offline');
+      setCloudStatusDetail('Navegador sem internet.');
       appendSyncEvent('offline');
     };
 
@@ -1203,14 +1348,17 @@ export default function App() {
       cloudRetryTimerRef.current = null;
       try {
         setCloudStatus('loading');
+        setCloudStatusDetail('');
         const result = await loadCloudState();
         applyCloudStateIfNewer(result, 'retry');
 
         setCloudAvailable(true);
         setCloudStatus('online');
-      } catch {
+        setCloudStatusDetail('');
+      } catch (error) {
         setCloudAvailable(false);
         setCloudStatus('offline');
+        setCloudStatusDetail(describeCloudError(error));
       }
     }, 4000);
 
@@ -1266,11 +1414,14 @@ export default function App() {
         }
         setCloudAvailable(true);
         setCloudStatus('online');
-      } catch {
+        setCloudStatusDetail('');
+      } catch (error) {
         if (cancelled) return;
         setCloudAvailable(false);
         setCloudStatus('offline');
-        appendSyncEvent('cloud_refresh_fail', reason);
+        const detail = describeCloudError(error);
+        setCloudStatusDetail(detail);
+        appendSyncEvent('cloud_refresh_fail', `${reason}: ${detail}`);
       } finally {
         inFlight = false;
       }
@@ -1319,8 +1470,10 @@ export default function App() {
       try {
         result = await loadCloudState();
         latestCloudResultRef.current = result;
-      } catch {
-        showToast('Não foi possível carregar o estado online agora.', 'info');
+      } catch (error) {
+        const detail = describeCloudError(error);
+        setCloudStatusDetail(detail);
+        showToast(`Não foi possível carregar o estado online agora: ${detail}`, 'info');
         return;
       }
     }
@@ -1329,6 +1482,7 @@ export default function App() {
     if (applied) {
       setCloudAvailable(true);
       setCloudStatus('online');
+      setCloudStatusDetail('');
       setCloudUpdatePending(null);
       showToast('Tela atualizada com o estado online.', 'success');
     }
@@ -1914,9 +2068,11 @@ export default function App() {
         applyCloudStateIfNewer(result, 'backup_uploaded');
         setCloudAvailable(true);
         setCloudStatus('online');
-      } catch {
+        setCloudStatusDetail('');
+      } catch (error) {
         setCloudAvailable(false);
         setCloudStatus('offline');
+        setCloudStatusDetail(describeCloudError(error));
       }
 
       showToast('Backup enviado ao servidor e aparelho destravado.', 'success');
@@ -1973,14 +2129,17 @@ export default function App() {
 
     try {
       setCloudStatus('loading');
+      setCloudStatusDetail('');
       const result = await loadCloudState();
       latestCloudResultRef.current = result;
       applyCloudStateIfNewer(result, 'discard_local_pending');
       setCloudAvailable(true);
       setCloudStatus('online');
-    } catch {
+      setCloudStatusDetail('');
+    } catch (error) {
       setCloudAvailable(false);
       setCloudStatus('offline');
+      setCloudStatusDetail(describeCloudError(error));
     }
   };
 
@@ -2002,6 +2161,7 @@ export default function App() {
         authMode={authSession.mode}
         canManageUsers={canManageUsers}
         cloudStatus={cloudStatus}
+        cloudStatusDetail={cloudStatusDetail}
         cloudUpdatePending={Boolean(cloudUpdatePending)}
         cloudUpdateAt={cloudUpdatePending?.updatedAt}
         localPendingSync={hasPendingSafetySync}

@@ -3,7 +3,9 @@ import { getSessionFromRequest } from './auth.js';
 const RETENTION_DAYS = 7;
 const MAX_PAYLOAD_CHARS = 220000;
 const STATE_KEY = 'inventory';
-const MAX_STATE_CHARS = 1800000;
+const STATE_V2_MANIFEST_KEY = 'inventory_v2_manifest';
+const STATE_V2_PREFIX = 'inventory_v2';
+const MAX_STATE_ROW_BYTES = 1900000;
 
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
@@ -239,11 +241,7 @@ async function replayEntries({ request, env }) {
 
   list.sort((a, b) => parseUpdatedAt(a?.created_at) - parseUpdatedAt(b?.created_at));
 
-  const existingRow = await env.DB
-    .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-    .bind(STATE_KEY)
-    .first();
-  let state = existingRow ? normalizeState(JSON.parse(existingRow.value)) : normalizeState({});
+  const patches = [];
 
   for (const row of list) {
     let patch = null;
@@ -253,28 +251,34 @@ async function replayEntries({ request, env }) {
       patch = null;
     }
     if (!patch || typeof patch !== 'object') continue;
-    state = applyPatchToState(state, patch);
+    patches.push(patch);
   }
 
   const updatedAt = new Date().toISOString();
-  const serialized = JSON.stringify(state);
-  if (serialized.length > MAX_STATE_CHARS) {
-    return Response.json(
-      { ok: false, message: 'Estado grande demais para aplicar agora. Aplique em lotes menores.' },
-      { status: 413, headers: jsonHeaders }
-    );
-  }
+  const directV2 = await applyPatchesToStateV2(env.DB, patches, updatedAt);
+  if (!directV2.ok) {
+    const existingV2 = await loadStateV2(env.DB);
+    const existingRow = existingV2
+      ? null
+      : await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+    let state = existingV2?.state
+      ? normalizeState(existingV2.state)
+      : existingRow?.value
+        ? normalizeState(JSON.parse(existingRow.value))
+        : normalizeState({});
 
-  await env.DB
-    .prepare(`
-      INSERT INTO app_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `)
-    .bind(STATE_KEY, serialized, updatedAt)
-    .run();
+    for (const patch of patches) {
+      state = applyPatchToState(state, patch);
+    }
+
+    const saved = await saveStateV2(env.DB, state, updatedAt);
+    if (!saved.ok) {
+      return Response.json(
+        { ok: false, message: 'Estado grande demais para aplicar agora. Aplique em lotes menores.' },
+        { status: 413, headers: jsonHeaders }
+      );
+    }
+  }
 
   const appliedAt = updatedAt;
   const updateResult = await env.DB
@@ -293,6 +297,317 @@ async function replayEntries({ request, env }) {
     { ok: true, updatedAt, applied: Number(updateResult?.meta?.changes) || 0, cleanupDeleted },
     { headers: jsonHeaders }
   );
+}
+
+async function applyPatchesToStateV2(db, patches, updatedAt) {
+  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  if (!manifestRow?.value) return { ok: false };
+
+  let manifest = null;
+  try {
+    manifest = JSON.parse(manifestRow.value);
+  } catch {
+    return { ok: false };
+  }
+  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
+    return { ok: false };
+  }
+
+  const incoming = normalizePatchList(patches);
+  const nextParts = { ...(manifest.parts || {}) };
+
+  const updateArrayPart = async (field, prefix, mergeFn) => {
+    if (!incoming[field].length) return true;
+    const current = await loadChunkedArray(db, prefix, Number(nextParts[field]) || 0);
+    const chunks = chunkArray(mergeFn(current, incoming[field]));
+    if (chunks.tooLarge) return false;
+    await saveChunkedArrayPart(db, prefix, chunks.chunks, Number(nextParts[field]) || 0, updatedAt);
+    nextParts[field] = chunks.chunks.length;
+    return true;
+  };
+
+  if (!(await updateArrayPart('items', `${STATE_V2_PREFIX}:items:`, mergeItemsBySku))) return { ok: false };
+  if (!(await updateArrayPart('logs', `${STATE_V2_PREFIX}:logs:`, mergeLogsById))) return { ok: false };
+  if (!(await updateArrayPart('requests', `${STATE_V2_PREFIX}:requests:`, mergeRequestsById))) return { ok: false };
+  if (!(await updateArrayPart('vehicles', `${STATE_V2_PREFIX}:vehicles:`, mergeVehiclesById))) return { ok: false };
+  if (!(await updateArrayPart('purchases', `${STATE_V2_PREFIX}:purchases:`, mergePurchasesById))) return { ok: false };
+
+  if (incoming.settings) {
+    const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+    const currentSettings = settingsRow?.value ? JSON.parse(settingsRow.value) : {};
+    await upsertStateRow(db, `${STATE_V2_PREFIX}:settings`, JSON.stringify(mergeSettings(currentSettings, incoming.settings)), updatedAt);
+  }
+
+  if (incoming.ocrAliases) {
+    const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+    const currentAliases = aliasesRow?.value ? JSON.parse(aliasesRow.value) : {};
+    await upsertStateRow(db, `${STATE_V2_PREFIX}:ocrAliases`, JSON.stringify(mergeAliases(currentAliases, incoming.ocrAliases)), updatedAt);
+  }
+
+  await upsertStateRow(
+    db,
+    STATE_V2_MANIFEST_KEY,
+    JSON.stringify({ version: 2, updatedAt, parts: nextParts }),
+    updatedAt
+  );
+  return { ok: true };
+}
+
+function normalizePatchList(patches) {
+  const out = {
+    items: [],
+    logs: [],
+    requests: [],
+    vehicles: [],
+    purchases: [],
+    settings: null,
+    ocrAliases: null
+  };
+
+  for (const patch of Array.isArray(patches) ? patches : []) {
+    if (!patch || typeof patch !== 'object') continue;
+    if (Array.isArray(patch.items)) out.items.push(...patch.items);
+    if (Array.isArray(patch.logs)) out.logs.push(...patch.logs);
+    if (Array.isArray(patch.requests)) out.requests.push(...patch.requests);
+    if (Array.isArray(patch.vehicles)) out.vehicles.push(...patch.vehicles);
+    if (Array.isArray(patch.purchases)) out.purchases.push(...patch.purchases);
+    if (patch.settings && typeof patch.settings === 'object') {
+      out.settings = mergeSettings(out.settings || {}, patch.settings);
+    }
+    if (patch.ocrAliases && typeof patch.ocrAliases === 'object') {
+      out.ocrAliases = mergeAliases(out.ocrAliases || {}, patch.ocrAliases);
+    }
+  }
+
+  return out;
+}
+
+async function saveChunkedArrayPart(db, prefix, chunks, previousCount, updatedAt) {
+  for (let i = 0; i < chunks.length; i += 1) {
+    await upsertStateRow(db, `${prefix}${i}`, JSON.stringify(chunks[i]), updatedAt);
+  }
+  for (let i = chunks.length; i < previousCount; i += 1) {
+    await db.prepare('DELETE FROM app_state WHERE key = ?').bind(`${prefix}${i}`).run();
+  }
+}
+
+async function upsertStateRow(db, key, value, updatedAt) {
+  await db
+    .prepare(
+      `
+        INSERT INTO app_state (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `
+    )
+    .bind(key, value, updatedAt)
+    .run();
+}
+
+async function loadStateV2(db) {
+  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  if (!manifestRow?.value) return null;
+  let manifest = null;
+  try {
+    manifest = JSON.parse(manifestRow.value);
+  } catch {
+    return null;
+  }
+  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
+    return null;
+  }
+
+  const state = normalizeState({});
+  const parts = manifest.parts || {};
+  const items = await loadChunkedArray(db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+  const logs = await loadChunkedArray(db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+  const requests = await loadChunkedArray(db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+  const vehicles = await loadChunkedArray(db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+  const purchases = await loadChunkedArray(db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+  const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+  const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+
+  state.items = items;
+  state.logs = logs;
+  state.requests = requests;
+  state.vehicles = vehicles;
+  state.purchases = purchases;
+  state.settings = settingsRow?.value ? JSON.parse(settingsRow.value) : {};
+  state.ocrAliases = aliasesRow?.value ? JSON.parse(aliasesRow.value) : {};
+
+  return { state, updatedAt: manifest.updatedAt };
+}
+
+async function loadChunkedArray(db, prefix, count) {
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const key = `${prefix}${i}`;
+    const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(key).first();
+    if (!row?.value) continue;
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) out.push(...parsed);
+  }
+  return out;
+}
+
+async function saveStateV2(db, state, updatedAt) {
+  const chunks = {
+    items: chunkArray(state.items || []),
+    logs: chunkArray(state.logs || []),
+    requests: chunkArray(state.requests || []),
+    vehicles: chunkArray(state.vehicles || []),
+    purchases: chunkArray(state.purchases || [])
+  };
+
+  if (
+    chunks.items.tooLarge ||
+    chunks.logs.tooLarge ||
+    chunks.requests.tooLarge ||
+    chunks.vehicles.tooLarge ||
+    chunks.purchases.tooLarge
+  ) {
+    return { ok: false };
+  }
+
+  const previous = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  const previousKeys = previous?.value ? collectManifestKeysSafe(previous.value) : [];
+  const nextKeys = [];
+  const statements = [];
+
+  const upsert = (key, value) => {
+    nextKeys.push(key);
+    statements.push(
+      db
+        .prepare(
+          `
+            INSERT INTO app_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = excluded.updated_at
+          `
+        )
+        .bind(key, value, updatedAt)
+    );
+  };
+
+  upsert(`${STATE_V2_PREFIX}:settings`, JSON.stringify(state.settings || {}));
+  upsert(`${STATE_V2_PREFIX}:ocrAliases`, JSON.stringify(state.ocrAliases || {}));
+
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:items:`, chunks.items.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:logs:`, chunks.logs.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:requests:`, chunks.requests.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:vehicles:`, chunks.vehicles.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:purchases:`, chunks.purchases.chunks);
+
+  const manifest = {
+    version: 2,
+    updatedAt,
+    parts: {
+      items: chunks.items.chunks.length,
+      logs: chunks.logs.chunks.length,
+      requests: chunks.requests.chunks.length,
+      vehicles: chunks.vehicles.chunks.length,
+      purchases: chunks.purchases.chunks.length
+    }
+  };
+  nextKeys.push(STATE_V2_MANIFEST_KEY);
+  statements.push(
+    db
+      .prepare(
+        `
+          INSERT INTO app_state (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        `
+      )
+      .bind(STATE_V2_MANIFEST_KEY, JSON.stringify(manifest), updatedAt)
+  );
+
+  const nextKeySet = new Set(nextKeys);
+  for (const key of previousKeys) {
+    if (nextKeySet.has(key)) continue;
+    statements.push(db.prepare('DELETE FROM app_state WHERE key = ?').bind(key));
+  }
+
+  for (const statement of statements) {
+    await statement.run();
+  }
+
+  return { ok: true };
+}
+
+function writeChunkedArray(upsert, prefix, list) {
+  for (let i = 0; i < list.length; i += 1) {
+    upsert(`${prefix}${i}`, JSON.stringify(list[i]));
+  }
+}
+
+function chunkArray(records) {
+  const chunks = [];
+  let current = [];
+
+  const fits = value => byteLength(JSON.stringify(value)) <= MAX_STATE_ROW_BYTES;
+
+  for (const record of Array.isArray(records) ? records : []) {
+    current.push(record);
+    if (fits(current)) continue;
+    current.pop();
+    if (current.length === 0) {
+      return { chunks: [], tooLarge: true };
+    }
+    chunks.push(current);
+    current = [record];
+    if (!fits(current)) {
+      return { chunks: [], tooLarge: true };
+    }
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return { chunks, tooLarge: false };
+}
+
+function byteLength(text) {
+  const encoder = new TextEncoder();
+  return encoder.encode(text).length;
+}
+
+function collectManifestKeysSafe(raw) {
+  let manifest = null;
+  try {
+    manifest = JSON.parse(String(raw || ''));
+  } catch {
+    return [];
+  }
+  if (!manifest || manifest.version !== 2 || !hasSafeManifestParts(manifest.parts)) return [];
+  const parts = manifest.parts || {};
+  const keys = [`${STATE_V2_PREFIX}:settings`, `${STATE_V2_PREFIX}:ocrAliases`];
+
+  const pushChunks = (prefix, count) => {
+    const total = Number(count) || 0;
+    for (let i = 0; i < total; i += 1) keys.push(`${prefix}${i}`);
+  };
+
+  pushChunks(`${STATE_V2_PREFIX}:items:`, parts.items);
+  pushChunks(`${STATE_V2_PREFIX}:logs:`, parts.logs);
+  pushChunks(`${STATE_V2_PREFIX}:requests:`, parts.requests);
+  pushChunks(`${STATE_V2_PREFIX}:vehicles:`, parts.vehicles);
+  pushChunks(`${STATE_V2_PREFIX}:purchases:`, parts.purchases);
+  keys.push(STATE_V2_MANIFEST_KEY);
+  return keys;
+}
+
+function hasSafeManifestParts(parts) {
+  if (!parts || typeof parts !== 'object') return false;
+  return ['items', 'logs', 'requests', 'vehicles', 'purchases'].every(key => {
+    const value = Number(parts[key]) || 0;
+    return Number.isInteger(value) && value >= 0 && value <= 80;
+  });
 }
 
 function normalizeState(body) {

@@ -31,6 +31,7 @@ interface LayoutProps {
   canManageUsers?: boolean;
   onLogout: () => void;
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
+  cloudStatusDetail?: string;
   cloudUpdatePending?: boolean;
   cloudUpdateAt?: string;
   localPendingSync?: boolean;
@@ -60,6 +61,7 @@ export default function Layout({
   canManageUsers = false,
   onLogout,
   cloudStatus,
+  cloudStatusDetail = '',
   cloudUpdatePending,
   cloudUpdateAt,
   onApplyCloudUpdate,
@@ -84,7 +86,9 @@ export default function Layout({
         ? 'Salvando'
         : cloudStatus === 'loading'
           ? 'Conectando'
-          : 'Local';
+          : cloudStatusDetail
+            ? 'Falha online'
+            : 'Local';
   const cloudTone =
     cloudStatus === 'online'
       ? 'bg-primary-container text-on-primary-container'
@@ -283,12 +287,19 @@ export default function Layout({
                           </span>
                           <strong className="text-on-surface">{roleLabel}</strong>
                         </div>
-                        <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${cloudTone}`}>
-                          <span className="inline-flex items-center gap-2 font-semibold">
-                            <Cloud size={16} />
-                            Sistema
-                          </span>
-                          <strong>{cloudLabel}</strong>
+                        <div className={`rounded-xl px-3 py-2 ${cloudTone}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="inline-flex items-center gap-2 font-semibold">
+                              <Cloud size={16} />
+                              Sistema
+                            </span>
+                            <strong>{cloudLabel}</strong>
+                          </div>
+                          {cloudStatusDetail ? (
+                            <p className="mt-1 text-[11px] font-semibold leading-snug opacity-85">
+                              {cloudStatusDetail}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>

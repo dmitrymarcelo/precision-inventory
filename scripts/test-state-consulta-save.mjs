@@ -105,7 +105,7 @@ function createFakeDb(initialState, sessionRole) {
             expiresAt: '2026-06-19T12:00:00.000Z'
           };
         }
-        if (sql.includes('SELECT value, updated_at FROM app_state')) {
+        if (sql.includes('SELECT value FROM app_state') || sql.includes('SELECT value, updated_at FROM app_state')) {
           return stateRow;
         }
         return null;

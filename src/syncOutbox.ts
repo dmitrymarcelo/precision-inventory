@@ -5,6 +5,8 @@ export type CloudOutboxIdentity = {
 
 export type FlushCompletionMode = 'accept' | 'defer-newer-outbox';
 
+const largeStateReplayThreshold = 1500000;
+
 export function isSameCloudOutbox(left: CloudOutboxIdentity, right: CloudOutboxIdentity) {
   if (!left || !right) return false;
   return String(left.queuedAt || '') === String(right.queuedAt || '')
@@ -19,3 +21,18 @@ export function getFlushCompletionMode(
   return isSameCloudOutbox(flushedOutbox, currentOutbox) ? 'accept' : 'defer-newer-outbox';
 }
 
+export function shouldUseJournalReplayForSync({
+  serializedStateLength,
+  journalIdCount,
+  reason
+}: {
+  serializedStateLength: number;
+  journalIdCount: number;
+  reason?: string;
+}) {
+  return (
+    journalIdCount > 0 ||
+    serializedStateLength > largeStateReplayThreshold ||
+    String(reason || '').includes('manual_force_sync')
+  );
+}

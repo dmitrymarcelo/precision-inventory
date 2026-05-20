@@ -23,7 +23,13 @@ export async function loadCloudState() {
   });
 
   if (!response.ok) {
-    throw new Error('Estado online indisponível');
+    const detail = await response.text().catch(() => '');
+    const cleanDetail = detail.replace(/\s+/g, ' ').trim().slice(0, 160);
+    throw new Error(
+      cleanDetail
+        ? `Estado online indisponivel (HTTP ${response.status}): ${cleanDetail}`
+        : `Estado online indisponivel (HTTP ${response.status})`
+    );
   }
 
   return response.json() as Promise<{ state: CloudInventoryState | null; updatedAt: string | null }>;
@@ -43,7 +49,7 @@ export async function saveCloudState(state: CloudInventoryState, token?: string)
     throw new Error('AUTH');
   }
   if (!response.ok) {
-    throw new Error(`Não foi possível salvar no Cloudflare (HTTP ${response.status})`);
+    throw new Error(`Nao foi possivel salvar no Cloudflare (HTTP ${response.status})`);
   }
 
   return response.json() as Promise<{ ok: boolean; updatedAt: string; state?: CloudInventoryState }>;

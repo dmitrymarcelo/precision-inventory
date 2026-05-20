@@ -1,6 +1,9 @@
 import { getSessionFromRequest } from './auth.js';
 
 const STATE_KEY = 'inventory';
+const STATE_V2_MANIFEST_KEY = 'inventory_v2_manifest';
+const STATE_V2_PREFIX = 'inventory_v2';
+const MAX_STATE_ROW_BYTES = 1900000;
 
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
@@ -8,17 +11,16 @@ const jsonHeaders = {
 };
 
 export async function onRequestGet({ env }) {
-  await ensureSchema(env.DB);
+  const v2Text = await loadStateV2ResponseText(env.DB);
+  if (v2Text) {
+    return new Response(v2Text, { headers: jsonHeaders });
+  }
 
-  const row = await env.DB
-    .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-    .bind(STATE_KEY)
-    .first();
-
-  return Response.json({
-    state: row ? JSON.parse(row.value) : null,
-    updatedAt: row?.updated_at ?? null
-  }, { headers: jsonHeaders });
+  const row = await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+  const stateText = row?.value ? String(row.value) : 'null';
+  return new Response(`{"state":${stateText},"updatedAt":${JSON.stringify(row?.updated_at ?? null)}}`, {
+    headers: jsonHeaders
+  });
 }
 
 export async function onRequestPut({ request, env, context }) {
@@ -43,42 +45,26 @@ export async function onRequestPut({ request, env, context }) {
     const incomingState = normalizeState(body);
     const updatedAt = new Date().toISOString();
 
-    const existingRow = await env.DB
-      .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-      .bind(STATE_KEY)
-      .first();
-
-    const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
+    const existingV2 = await loadStateV2(env.DB);
+    const existingState = existingV2 ? normalizeState(existingV2.state) : await loadStateV1(env.DB);
     const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
     const state = canWriteFullState
-      ? existingRow
+      ? existingState
         ? mergeStates(existingState, incomingState)
         : incomingState
       : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
 
-    const serialized = JSON.stringify(state);
-    const maxChars = 1800000;
-    if (serialized.length > maxChars) {
+    const saved = await saveStateV2(env.DB, state, updatedAt);
+    if (!saved.ok) {
       return Response.json(
         {
           ok: false,
           message:
-            'Estado grande demais para salvar agora. Exporte o backup neste aparelho e depois descarte a pendencia local para continuar.'
+            'Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup e Enviar backup ao servidor.'
         },
         { status: 413, headers: jsonHeaders }
       );
     }
-
-    await env.DB
-      .prepare(`
-        INSERT INTO app_state (key, value, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET
-          value = excluded.value,
-          updated_at = excluded.updated_at
-      `)
-      .bind(STATE_KEY, serialized, updatedAt)
-      .run();
 
     const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
     if (newDivergenceLogs.length > 0) {
@@ -117,6 +103,260 @@ export async function onRequestPut({ request, env, context }) {
       { status: 500, headers: jsonHeaders }
     );
   }
+}
+
+async function loadStateV1(db) {
+  const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+  return row ? normalizeState(JSON.parse(row.value)) : null;
+}
+
+async function loadStateV2(db) {
+  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  if (!manifestRow?.value) return null;
+  let manifest = null;
+  try {
+    manifest = JSON.parse(manifestRow.value);
+  } catch {
+    return null;
+  }
+  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
+    return null;
+  }
+
+  const state = normalizeState({});
+  const parts = manifest.parts || {};
+  const items = await loadChunkedArray(db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+  const logs = await loadChunkedArray(db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+  const requests = await loadChunkedArray(db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+  const vehicles = await loadChunkedArray(db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+  const purchases = await loadChunkedArray(db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+  const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+  const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+
+  state.items = items;
+  state.logs = logs;
+  state.requests = requests;
+  state.vehicles = vehicles;
+  state.purchases = purchases;
+  state.settings = settingsRow?.value ? JSON.parse(settingsRow.value) : {};
+  state.ocrAliases = aliasesRow?.value ? JSON.parse(aliasesRow.value) : {};
+
+  return { state, updatedAt: manifest.updatedAt };
+}
+
+async function loadStateV2ResponseText(db) {
+  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  if (!manifestRow?.value) return null;
+  let manifest = null;
+  try {
+    manifest = JSON.parse(manifestRow.value);
+  } catch {
+    return null;
+  }
+  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
+    return null;
+  }
+
+  const parts = manifest.parts || {};
+  const items = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+  const logs = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+  const requests = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+  const vehicles = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+  const purchases = await loadChunkedArrayText(db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+  const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+  const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+  const settings = settingsRow?.value ? String(settingsRow.value) : '{}';
+  const ocrAliases = aliasesRow?.value ? String(aliasesRow.value) : '{}';
+
+  return `{"state":{"items":${items},"logs":${logs},"settings":${settings},"requests":${requests},"vehicles":${vehicles},"purchases":${purchases},"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)}}`;
+}
+
+async function loadChunkedArrayText(db, prefix, count) {
+  const parts = [];
+  for (let i = 0; i < count; i += 1) {
+    const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${prefix}${i}`).first();
+    const value = row?.value ? String(row.value).trim() : '';
+    if (!value || value === '[]') continue;
+    if (!value.startsWith('[') || !value.endsWith(']')) continue;
+    const inner = value.slice(1, -1).trim();
+    if (inner) parts.push(inner);
+  }
+  return `[${parts.join(',')}]`;
+}
+
+async function loadChunkedArray(db, prefix, count) {
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const key = `${prefix}${i}`;
+    const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(key).first();
+    if (!row?.value) continue;
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) out.push(...parsed);
+  }
+  return out;
+}
+
+async function saveStateV2(db, state, updatedAt) {
+  const chunks = {
+    items: chunkArray(state.items || []),
+    logs: chunkArray(state.logs || []),
+    requests: chunkArray(state.requests || []),
+    vehicles: chunkArray(state.vehicles || []),
+    purchases: chunkArray(state.purchases || [])
+  };
+
+  if (
+    chunks.items.tooLarge ||
+    chunks.logs.tooLarge ||
+    chunks.requests.tooLarge ||
+    chunks.vehicles.tooLarge ||
+    chunks.purchases.tooLarge
+  ) {
+    return { ok: false };
+  }
+
+  const previous = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  const previousKeys = previous?.value ? collectManifestKeysSafe(previous.value) : [];
+  const nextKeys = [];
+
+  const statements = [];
+
+  const upsert = (key, value) => {
+    nextKeys.push(key);
+    statements.push(
+      db
+        .prepare(
+          `
+            INSERT INTO app_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = excluded.updated_at
+          `
+        )
+        .bind(key, value, updatedAt)
+    );
+  };
+
+  upsert(`${STATE_V2_PREFIX}:settings`, JSON.stringify(state.settings || {}));
+  upsert(`${STATE_V2_PREFIX}:ocrAliases`, JSON.stringify(state.ocrAliases || {}));
+
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:items:`, chunks.items.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:logs:`, chunks.logs.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:requests:`, chunks.requests.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:vehicles:`, chunks.vehicles.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:purchases:`, chunks.purchases.chunks);
+
+  const manifest = {
+    version: 2,
+    updatedAt,
+    parts: {
+      items: chunks.items.chunks.length,
+      logs: chunks.logs.chunks.length,
+      requests: chunks.requests.chunks.length,
+      vehicles: chunks.vehicles.chunks.length,
+      purchases: chunks.purchases.chunks.length
+    }
+  };
+  nextKeys.push(STATE_V2_MANIFEST_KEY);
+  statements.push(
+    db
+      .prepare(
+        `
+          INSERT INTO app_state (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        `
+      )
+      .bind(STATE_V2_MANIFEST_KEY, JSON.stringify(manifest), updatedAt)
+  );
+
+  const nextKeySet = new Set(nextKeys);
+  for (const key of previousKeys) {
+    if (nextKeySet.has(key)) continue;
+    statements.push(db.prepare('DELETE FROM app_state WHERE key = ?').bind(key));
+  }
+
+  for (const statement of statements) {
+    await statement.run();
+  }
+
+  return { ok: true };
+}
+
+function writeChunkedArray(upsert, prefix, list) {
+  for (let i = 0; i < list.length; i += 1) {
+    upsert(`${prefix}${i}`, JSON.stringify(list[i]));
+  }
+}
+
+function chunkArray(records) {
+  const chunks = [];
+  let current = [];
+
+  const fits = value => byteLength(JSON.stringify(value)) <= MAX_STATE_ROW_BYTES;
+
+  for (const record of Array.isArray(records) ? records : []) {
+    current.push(record);
+    if (fits(current)) continue;
+    current.pop();
+    if (current.length === 0) {
+      return { chunks: [], tooLarge: true };
+    }
+    chunks.push(current);
+    current = [record];
+    if (!fits(current)) {
+      return { chunks: [], tooLarge: true };
+    }
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return { chunks, tooLarge: false };
+}
+
+function byteLength(text) {
+  const encoder = new TextEncoder();
+  return encoder.encode(text).length;
+}
+
+function collectManifestKeysSafe(raw) {
+  let manifest = null;
+  try {
+    manifest = JSON.parse(String(raw || ''));
+  } catch {
+    return [];
+  }
+  if (!manifest || manifest.version !== 2 || !hasSafeManifestParts(manifest.parts)) return [];
+  const parts = manifest.parts || {};
+  const keys = [
+    `${STATE_V2_PREFIX}:settings`,
+    `${STATE_V2_PREFIX}:ocrAliases`
+  ];
+
+  const pushChunks = (prefix, count) => {
+    const total = Number(count) || 0;
+    for (let i = 0; i < total; i += 1) keys.push(`${prefix}${i}`);
+  };
+
+  pushChunks(`${STATE_V2_PREFIX}:items:`, parts.items);
+  pushChunks(`${STATE_V2_PREFIX}:logs:`, parts.logs);
+  pushChunks(`${STATE_V2_PREFIX}:requests:`, parts.requests);
+  pushChunks(`${STATE_V2_PREFIX}:vehicles:`, parts.vehicles);
+  pushChunks(`${STATE_V2_PREFIX}:purchases:`, parts.purchases);
+  keys.push(STATE_V2_MANIFEST_KEY);
+  return keys;
+}
+
+function hasSafeManifestParts(parts) {
+  if (!parts || typeof parts !== 'object') return false;
+  return ['items', 'logs', 'requests', 'vehicles', 'purchases'].every(key => {
+    const value = Number(parts[key]) || 0;
+    return Number.isInteger(value) && value >= 0 && value <= 80;
+  });
 }
 
 export function onRequestOptions() {

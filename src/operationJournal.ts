@@ -23,6 +23,7 @@ const operationJournalQueueKey = 'precisionInventory.operationJournal.queue.v1';
 const operationJournalDeviceKey = 'precisionInventory.operationJournal.deviceId.v1';
 const maxPayloadChars = 220000;
 const maxBatchEntries = 25;
+const maxQueueEntries = 600;
 
 export function buildOperationJournalPatch(
   previousState: CloudInventoryState | null | undefined,
@@ -220,7 +221,7 @@ export function getPendingOperationJournalQueue(): OperationJournalEntry[] {
   try {
     const stored = localStorage.getItem(operationJournalQueueKey);
     const parsed = stored ? (JSON.parse(stored) as OperationJournalEntry[]) : [];
-    return Array.isArray(parsed) ? parsed.filter(isValidEntry).slice(0, 80) : [];
+    return Array.isArray(parsed) ? parsed.filter(isValidEntry).slice(0, maxQueueEntries) : [];
   } catch {
     return [];
   }
@@ -229,7 +230,33 @@ export function getPendingOperationJournalQueue(): OperationJournalEntry[] {
 export function enqueueOperationJournalEntry(entry: OperationJournalEntry) {
   if (!hasLocalStorage()) return [];
   const current = getPendingOperationJournalQueue();
-  const next = [entry, ...current.filter(item => item.id !== entry.id)].slice(0, 80);
+  const next = [entry, ...current.filter(item => item.id !== entry.id)].slice(0, maxQueueEntries);
+  localStorage.setItem(operationJournalQueueKey, JSON.stringify(next));
+  return next;
+}
+
+export function enqueueOperationJournalEntries(entries: OperationJournalEntry[]) {
+  if (!hasLocalStorage()) return [];
+  const safeEntries = Array.isArray(entries) ? entries.filter(isValidEntry) : [];
+  if (safeEntries.length === 0) return getPendingOperationJournalQueue();
+
+  const current = getPendingOperationJournalQueue();
+  const seen = new Set<string>();
+  const merged: OperationJournalEntry[] = [];
+
+  for (const entry of safeEntries) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    merged.push(entry);
+  }
+
+  for (const entry of current) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    merged.push(entry);
+  }
+
+  const next = merged.slice(0, maxQueueEntries);
   localStorage.setItem(operationJournalQueueKey, JSON.stringify(next));
   return next;
 }

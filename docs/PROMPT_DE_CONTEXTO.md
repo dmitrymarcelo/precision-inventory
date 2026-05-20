@@ -78,6 +78,7 @@ Regras de negocio que nao podem quebrar:
 - Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no D1 sem aprovacao e politica de retencao.
 - Ponte segura de operacoes: `/api/operation-journal`, tabela D1 `operation_journal`, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
 - Hotfix de sync pendente em 2026-05-20: quando houver pendencia local, o botao superior deve virar/agir como `Sincronizar`; nao chamar `Atualizar do online` antes de tentar enviar. Clique manual deve reconstruir outbox se existir `dirty` antigo sem outbox. Se o usuario confirmar descarte pelo online, limpar dirty, outbox e fila local da ponte.
+- Hotfix de leitura online em 2026-05-20: se o menu mostrar `Sistema Local` ou `Falha online`, validar primeiro `/api/state`, asset publicado e detalhe HTTP; o D1 pode ter os dados, mas a leitura do estado grande pode falhar. O front deve mostrar detalhe curto abaixo de `Sistema`.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
 - Pedido entregue/atendido vira consulta: nao editar nem excluir.
 - Mobile e prioridade operacional.
