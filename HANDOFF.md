@@ -33,8 +33,11 @@ Ultima atualizacao: 2026-05-20
   - producao: `https://precision-inventory.pages.dev/` respondeu `200`
   - `/api/state` respondeu `200`
   - asset principal em producao: `/assets/index-DBXfTrXI.js`
-- Pendente nesta etapa:
-  - atualizar GitHub apos revisar o escopo do commit
+- GitHub:
+  - commit principal da etapa: `9a71899` (`Melhora painel e operacao do armazem`)
+  - branch local/remota usada: `codex-active-button-confirmation`
+- Pendencias:
+  - sem pendencia funcional conhecida apos validacao e deploy
 
 ## Restricao do modulo Usuarios em 2026-05-20
 
