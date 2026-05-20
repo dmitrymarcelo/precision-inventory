@@ -926,6 +926,7 @@ export default function App() {
       const message = error instanceof Error ? error.message : '';
       if (message === 'AUTH') {
         showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
+        setAuthSession(null);
       }
       lastFlushResultRef.current = { ok: false, code: message === 'AUTH' ? 'auth' : 'error', at: Date.now() };
       setCloudAvailable(false);
@@ -1045,6 +1046,13 @@ export default function App() {
           headers: { authorization: `Bearer ${authSession?.token}` },
           cache: 'no-store'
         });
+        if (response.status === 401 || response.status === 403) {
+          setAuthSession(previous => {
+            if (!previous || previous.token !== authSession.token) return previous;
+            return null;
+          });
+          return;
+        }
         const data = (await response.json()) as {
           ok?: boolean;
           user?: {
