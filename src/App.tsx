@@ -492,6 +492,7 @@ export default function App() {
   const cloudRetryTimerRef = useRef<number | null>(null);
   const outboxWriteTimerRef = useRef<number | null>(null);
   const flushInFlightRef = useRef(false);
+  const lastFlushResultRef = useRef<{ ok: boolean; code: string; at: number } | null>(null);
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
@@ -853,11 +854,23 @@ export default function App() {
   };
 
   async function flushOutbox(reason: string, options: { force?: boolean } = {}) {
-    if (isStockConsulta) return false;
+    if (isStockConsulta) {
+      lastFlushResultRef.current = { ok: false, code: 'stock-consulta', at: Date.now() };
+      return false;
+    }
     const outbox = outboxRef.current;
-    if (!outbox) return false;
-    if (!cloudLoaded && !options.force) return false;
-    if (flushInFlightRef.current) return false;
+    if (!outbox) {
+      lastFlushResultRef.current = { ok: false, code: 'no-outbox', at: Date.now() };
+      return false;
+    }
+    if (!cloudLoaded && !options.force) {
+      lastFlushResultRef.current = { ok: false, code: 'not-loaded', at: Date.now() };
+      return false;
+    }
+    if (flushInFlightRef.current) {
+      lastFlushResultRef.current = { ok: false, code: 'busy', at: Date.now() };
+      return false;
+    }
 
     flushInFlightRef.current = true;
     setCloudStatus('saving');
@@ -876,6 +889,7 @@ export default function App() {
         setLocalPendingSync(true);
         appendSyncEvent('flush_deferred_newer_outbox', reason);
         shouldFlushAgain = true;
+        lastFlushResultRef.current = { ok: false, code: 'defer-newer-outbox', at: Date.now() };
         return false;
       }
 
@@ -906,12 +920,14 @@ export default function App() {
         wasOfflineRef.current = false;
         showToast('Internet voltou. Alterações sincronizadas.', 'success');
       }
+      lastFlushResultRef.current = { ok: true, code: 'ok', at: Date.now() };
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message === 'AUTH') {
         showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
       }
+      lastFlushResultRef.current = { ok: false, code: message === 'AUTH' ? 'auth' : 'error', at: Date.now() };
       setCloudAvailable(false);
       setCloudStatus('offline');
       wasOfflineRef.current = true;
@@ -1713,6 +1729,19 @@ export default function App() {
         if (saved) {
           showToast('Alteracoes sincronizadas com o servidor.', 'success');
         } else {
+          const code = lastFlushResultRef.current?.code || '';
+          if (code === 'auth') {
+            showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
+            return;
+          }
+          if (code === 'busy') {
+            showToast('Sincronização já está em andamento. Aguarde alguns segundos.', 'info');
+            return;
+          }
+          if (code === 'defer-newer-outbox') {
+            showToast('Nova alteração detectada. Tentando sincronizar novamente...', 'info');
+            return;
+          }
           showToast('Nao foi possivel sincronizar agora. Verifique a internet e tente novamente.', 'info');
         }
         return;
