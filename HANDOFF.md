@@ -18,6 +18,8 @@ Ultima atualizacao: 2026-05-20
   - `flushOutbox` agora retorna booleano de sucesso/falha e aceita `force` para clique manual mesmo antes do carregamento completo do cloud
   - `forceApplyCloudState` agora limpa tambem a fila local da ponte quando o usuario escolhe descartar local e aplicar online
   - `src/components/Layout.tsx` transforma o botao superior em `Sincronizar` quando existe pendencia local, chamando `onForcePendingSync` em vez de `Atualizar do online`
+  - `src/components/Layout.tsx` ganhou botao `Continuar (descartar local)` para destravar operacao quando a sincronizacao falhar, com confirmacao dupla e orientacao para exportar backup antes
+  - `functions/api/state.js` passou a responder `413` quando o estado for grande demais (limite dobrado para reduzir falso-positivo), evitando erro generico de instabilidade
   - `src/operationLog.ts` registra `Ponte local descartada`
 - Validado:
   - `scripts/test-operation-journal-api.mjs` passou

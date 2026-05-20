@@ -1,12 +1,12 @@
 # Graph Report - Sistema inventario  (2026-05-20)
 
 ## Corpus Check
-- 51 files · ~120,290 words
+- 51 files · ~121,401 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 586 nodes · 1337 edges · 13 communities detected
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 168 edges (avg confidence: 0.8)
+- 587 nodes · 1345 edges · 13 communities detected
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 171 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -25,7 +25,7 @@
 - [[_COMMUNITY_Community 12|Community 12]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `showToast()` - 75 edges
+1. `showToast()` - 76 edges
 2. `normalizeUserFacingText()` - 27 edges
 3. `normalizeOperationalVehicleType()` - 19 edges
 4. `getVehicleTypeFromModel()` - 17 edges
@@ -33,8 +33,8 @@
 6. `getSessionFromRequest()` - 14 edges
 7. `decodeFileCode()` - 13 edges
 8. `normalizeLocationText()` - 13 edges
-9. `calculateItemStatus()` - 12 edges
-10. `normalizeUserFacingText()` - 12 edges
+9. `appendSyncEvent()` - 12 edges
+10. `calculateItemStatus()` - 12 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `handleFilterClick()` --calls--> `showToast()`  [INFERRED]
@@ -52,19 +52,19 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (73): acquireOrLoad(), applyManualSeparatedChange(), bootScanner(), closeScanner(), describeCurrentLockHolder(), finalizeRequest(), handleBeforeUnload(), handleDetectedCode() (+65 more)
+Nodes (74): acquireOrLoad(), applyManualSeparatedChange(), bootScanner(), closeScanner(), describeCurrentLockHolder(), finalizeRequest(), handleBeforeUnload(), handleDetectedCode() (+66 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.05
 Nodes (67): addManualLinkedItem(), AutomaticPurchases(), blockPaymentProgressIfHasDivergences(), buildInitialQuotationRows(), buildLinkedQuotationId(), buildQuotationBudgetItems(), buildQuotationPayload(), calculateQuotationScore() (+59 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.05
-Nodes (61): handleAddManualDraftItem(), acquireOrLoad(), addItemToDraft(), addKitToDraft(), addSelectedPickerItems(), appendAuditEntry(), applyDetectedSku(), clearDraftForNextRequest() (+53 more)
+Cohesion: 0.06
+Nodes (59): appendSyncEvent(), applyCloudStateIfNewer(), applyCloudUpdateNow(), clearOutbox(), flushJournalBridge(), flushOutbox(), forceApplyCloudState(), handleClearRequestEditor() (+51 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.06
-Nodes (56): appendSyncEvent(), applyCloudStateIfNewer(), applyCloudUpdateNow(), clearOutbox(), flushJournalBridge(), flushOutbox(), forceApplyCloudState(), handleClearRequestEditor() (+48 more)
+Nodes (58): handleAddManualDraftItem(), acquireOrLoad(), addItemToDraft(), addKitToDraft(), addSelectedPickerItems(), appendAuditEntry(), applyDetectedSku(), clearDraftForNextRequest() (+50 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.05
@@ -95,20 +95,20 @@ Cohesion: 0.32
 Nodes (8): cleanupOldJournalRows(), ensureSchema(), onRequestPost(), onRequestPut(), safeJson(), sanitizeEntry(), sanitizeIso(), sanitizeText()
 
 ### Community 11 - "Community 11"
-Cohesion: 0.27
-Nodes (6): buildBatterySearchText(), getBatteryValidityMonths(), isBatteryInventoryItem(), isBatteryLikeText(), isBatteryRequestItem(), normalizeSku()
-
-### Community 12 - "Community 12"
 Cohesion: 0.31
 Nodes (10): handlePrintLabels(), handlePrintCurrentLabel(), buildLabelPreviewMarkup(), buildQrSvgMarkup(), createBarcodePrintDocument(), createLabelMarkup(), escapeHtml(), getLabelNameSizeClass() (+2 more)
+
+### Community 12 - "Community 12"
+Cohesion: 0.27
+Nodes (6): buildBatterySearchText(), getBatteryValidityMonths(), isBatteryInventoryItem(), isBatteryLikeText(), isBatteryRequestItem(), normalizeSku()
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `normalizeUserFacingText()` connect `Community 4` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 12`?**
   _High betweenness centrality (0.208) - this node is a cross-community bridge._
-- **Why does `showToast()` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 6`, `Community 8`, `Community 12`?**
-  _High betweenness centrality (0.106) - this node is a cross-community bridge._
+- **Why does `showToast()` connect `Community 3` to `Community 0`, `Community 1`, `Community 2`, `Community 4`, `Community 6`, `Community 8`, `Community 11`?**
+  _High betweenness centrality (0.107) - this node is a cross-community bridge._
 - **Why does `normalizeOperationalVehicleType()` connect `Community 4` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 6`?**
   _High betweenness centrality (0.032) - this node is a cross-community bridge._
 - **Are the 61 inferred relationships involving `showToast()` (e.g. with `blockPaymentProgressIfHasDivergences()` and `handleAddManualDraftItem()`) actually correct?**
