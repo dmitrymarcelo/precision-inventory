@@ -39,6 +39,7 @@ interface LayoutProps {
   onIgnoreCloudUpdate?: () => void;
   onForcePendingSync?: () => void;
   onExportPendingBackup?: () => void;
+  onDiscardLocalPending?: () => void;
 }
 
 type NavigationItem = {
@@ -65,7 +66,8 @@ export default function Layout({
   localPendingSync = false,
   pendingJournalCount = 0,
   onForcePendingSync,
-  onExportPendingBackup
+  onExportPendingBackup,
+  onDiscardLocalPending
 }: LayoutProps) {
   const [supportsFullscreen, setSupportsFullscreen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -370,6 +372,15 @@ export default function Layout({
                     className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
                   >
                     Exportar backup
+                  </button>
+                ) : null}
+                {onDiscardLocalPending ? (
+                  <button
+                    type="button"
+                    onClick={onDiscardLocalPending}
+                    className="h-11 px-4 rounded-xl bg-white text-red-900 border border-red-300 font-bold"
+                  >
+                    Continuar (descartar local)
                   </button>
                 ) : null}
               </div>

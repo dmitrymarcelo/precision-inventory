@@ -22,61 +22,101 @@ export async function onRequestGet({ env }) {
 }
 
 export async function onRequestPut({ request, env, context }) {
-  await ensureSchema(env.DB);
+  try {
+    await ensureSchema(env.DB);
 
-  const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
-  const hasUsers = (Number(userCountRow?.count) || 0) > 0;
-  let sessionRole = '';
-  if (hasUsers) {
-    const session = await getSessionFromRequest(request, env.DB);
-    if (!session) {
-      return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
+    const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
+    const hasUsers = (Number(userCountRow?.count) || 0) > 0;
+    let sessionRole = '';
+    if (hasUsers) {
+      const session = await getSessionFromRequest(request, env.DB);
+      if (!session) {
+        return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
+      }
+      sessionRole = String(session.role || '');
+      if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
+        return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+      }
     }
-    sessionRole = String(session.role || '');
-    if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
-      return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+
+    const body = await request.json();
+    const incomingState = normalizeState(body);
+    const updatedAt = new Date().toISOString();
+
+    const existingRow = await env.DB
+      .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
+      .bind(STATE_KEY)
+      .first();
+
+    const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
+    const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
+    const state = canWriteFullState
+      ? existingRow
+        ? mergeStates(existingState, incomingState)
+        : incomingState
+      : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
+
+    const serialized = JSON.stringify(state);
+    const maxChars = 900000;
+    if (serialized.length > maxChars) {
+      return Response.json(
+        {
+          ok: false,
+          message:
+            'Estado grande demais para salvar agora. Exporte o backup neste aparelho e depois descarte a pendencia local para continuar.'
+        },
+        { status: 413, headers: jsonHeaders }
+      );
     }
+
+    await env.DB
+      .prepare(`
+        INSERT INTO app_state (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `)
+      .bind(STATE_KEY, serialized, updatedAt)
+      .run();
+
+    const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+    if (newDivergenceLogs.length > 0) {
+      const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+      if (context?.waitUntil) {
+        context.waitUntil(task);
+      } else {
+        void task;
+      }
+    }
+
+    return Response.json({ ok: true, updatedAt, state }, { headers: jsonHeaders });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const lowered = String(message || '').toLowerCase();
+    const looksTooLarge =
+      lowered.includes('toobig') ||
+      lowered.includes('too big') ||
+      lowered.includes('too large') ||
+      lowered.includes('payload') ||
+      lowered.includes('entity too large');
+
+    if (looksTooLarge) {
+      return Response.json(
+        {
+          ok: false,
+          message:
+            'Estado grande demais para salvar agora. Exporte o backup neste aparelho e depois descarte a pendencia local para continuar.'
+        },
+        { status: 413, headers: jsonHeaders }
+      );
+    }
+
+    return Response.json(
+      { ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' },
+      { status: 500, headers: jsonHeaders }
+    );
   }
-
-  const body = await request.json();
-  const incomingState = normalizeState(body);
-  const updatedAt = new Date().toISOString();
-
-  const existingRow = await env.DB
-    .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-    .bind(STATE_KEY)
-    .first();
-
-  const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
-  const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
-  const state = canWriteFullState
-    ? existingRow
-      ? mergeStates(existingState, incomingState)
-      : incomingState
-    : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
-
-  await env.DB
-    .prepare(`
-      INSERT INTO app_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `)
-    .bind(STATE_KEY, JSON.stringify(state), updatedAt)
-    .run();
-
-  const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
-  if (newDivergenceLogs.length > 0) {
-    const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
-    if (context?.waitUntil) {
-      context.waitUntil(task);
-    } else {
-      void task;
-    }
-  }
-
-  return Response.json({ ok: true, updatedAt, state }, { headers: jsonHeaders });
 }
 
 export function onRequestOptions() {

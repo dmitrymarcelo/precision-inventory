@@ -1821,6 +1821,52 @@ export default function App() {
     showToast('Backup de emergencia gerado.', 'success');
   };
 
+  const handleDiscardLocalPending = async () => {
+    if (isStockConsulta) return;
+    const outboxExists = Boolean(outboxRef.current || localDirtyRef.current);
+    const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+    const hasPending = outboxExists || pendingJournalIds.length > 0;
+    if (!hasPending) {
+      setLocalPendingSync(false);
+      setPendingJournalCount(0);
+      return;
+    }
+
+    const confirmBackup = window.confirm(
+      'ATENCAO: isso vai DESCARTAR as alteracoes deste aparelho que ainda nao foram sincronizadas. Primeiro, toque em "Exportar backup" para guardar um arquivo. Deseja continuar mesmo assim?'
+    );
+    if (!confirmBackup) return;
+
+    const confirmFinal = window.confirm('Ultima confirmacao: descartar agora e continuar no estado online?');
+    if (!confirmFinal) return;
+
+    clearOutbox();
+    localDirtyRef.current = false;
+    localStorage.removeItem(localDirtyStorageKey);
+    localUpdatedAtRef.current = '';
+    localStorage.removeItem(localUpdatedAtStorageKey);
+    if (pendingJournalIds.length > 0) {
+      removeOperationJournalEntries(pendingJournalIds);
+      setPendingJournalCount(0);
+      appendSyncEvent('journal_discarded', 'Ponte local descartada manualmente para destravar operacao');
+    }
+    setLocalPendingSync(false);
+    appendSyncEvent('flush_fail', 'Pendencia local descartada para continuar trabalhando');
+    showToast('Pendencia local descartada. Tela voltou a usar o estado online.', 'success');
+
+    try {
+      setCloudStatus('loading');
+      const result = await loadCloudState();
+      latestCloudResultRef.current = result;
+      applyCloudStateIfNewer(result, 'discard_local_pending');
+      setCloudAvailable(true);
+      setCloudStatus('online');
+    } catch {
+      setCloudAvailable(false);
+      setCloudStatus('offline');
+    }
+  };
+
   if (!authSession) {
     return (
       <LoginScreen
@@ -1847,6 +1893,7 @@ export default function App() {
         onIgnoreCloudUpdate={ignoreCloudUpdate}
         onForcePendingSync={handleForcePendingSync}
         onExportPendingBackup={handleExportPendingBackup}
+        onDiscardLocalPending={() => void handleDiscardLocalPending()}
         onLogout={() => {
           if (hasPendingSafetySync) {
             const confirmLogout = window.confirm(
