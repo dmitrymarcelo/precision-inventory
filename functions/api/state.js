@@ -57,7 +57,7 @@ export async function onRequestPut({ request, env, context }) {
       : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
 
     const serialized = JSON.stringify(state);
-    const maxChars = 900000;
+    const maxChars = 1800000;
     if (serialized.length > maxChars) {
       return Response.json(
         {
