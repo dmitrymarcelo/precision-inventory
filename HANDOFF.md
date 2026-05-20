@@ -36,6 +36,9 @@ Ultima atualizacao: 2026-05-20
   - `/api/state` respondeu `200`
   - `/api/operation-journal` respondeu `OPTIONS 200`
   - asset principal em producao: `/assets/index-DcQR5AXj.js`
+- GitHub:
+  - commit principal da correcao: `e654f50` (`Corrige sincronizacao pendente travada`)
+  - branch local/remota: `codex-active-button-confirmation`
 - Instrucao operacional imediata:
   - pedir para os usuarios atualizarem a pagina uma vez para carregar o asset novo
   - se aparecer aviso vermelho, tocar em `Sincronizar agora`
