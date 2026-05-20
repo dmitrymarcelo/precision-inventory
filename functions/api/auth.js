@@ -22,7 +22,8 @@ export async function onRequestGet({ request, env }) {
           id: session.userId,
           matricula: session.matricula,
           name: session.name,
-          role: session.role
+          role: session.role,
+          requiresDailyCycleInventory: session.requiresDailyCycleInventory === true
         }
       },
       { headers: jsonHeaders }
@@ -50,7 +51,8 @@ export async function onRequestPost({ request, env }) {
     const user = await env.DB
       .prepare(
         `
-          SELECT id, matricula, name, role, password_hash, password_salt, password_iters, active, must_change_password
+          SELECT id, matricula, name, role, password_hash, password_salt, password_iters, active, must_change_password,
+                 requires_daily_cycle_inventory as requiresDailyCycleInventory
           FROM users
           WHERE matricula = ?
           LIMIT 1
@@ -94,7 +96,8 @@ export async function onRequestPost({ request, env }) {
           id: String(user.id),
           matricula: String(user.matricula),
           name: String(user.name || ''),
-          role: String(user.role)
+          role: String(user.role),
+          requiresDailyCycleInventory: Number(user.requiresDailyCycleInventory) === 1
         }
       },
       { headers: jsonHeaders }
@@ -184,6 +187,7 @@ async function ensureAuthSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -194,6 +198,9 @@ async function ensureAuthSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -437,7 +444,8 @@ export async function getSessionFromRequest(request, db) {
   const session = await db
     .prepare(
       `
-        SELECT s.token, s.user_id as userId, s.role, s.expires_at as expiresAt, u.matricula, u.name, u.active
+        SELECT s.token, s.user_id as userId, s.role, s.expires_at as expiresAt, u.matricula, u.name, u.active,
+               u.requires_daily_cycle_inventory as requiresDailyCycleInventory
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.token = ?
@@ -456,6 +464,7 @@ export async function getSessionFromRequest(request, db) {
     userId: String(session.userId),
     matricula: String(session.matricula || ''),
     name: String(session.name || ''),
-    role: String(session.role || '')
+    role: String(session.role || ''),
+    requiresDailyCycleInventory: Number(session.requiresDailyCycleInventory) === 1
   };
 }

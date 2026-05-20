@@ -26,12 +26,14 @@ export async function onRequestPut({ request, env, context }) {
 
   const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
   const hasUsers = (Number(userCountRow?.count) || 0) > 0;
+  let sessionRole = '';
   if (hasUsers) {
     const session = await getSessionFromRequest(request, env.DB);
     if (!session) {
       return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
     }
-    if (session.role !== 'operacao' && session.role !== 'admin') {
+    sessionRole = String(session.role || '');
+    if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
       return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
     }
   }
@@ -46,9 +48,12 @@ export async function onRequestPut({ request, env, context }) {
     .first();
 
   const existingState = existingRow ? normalizeState(JSON.parse(existingRow.value)) : null;
-  const state = existingRow
-    ? mergeStates(existingState, incomingState)
-    : incomingState;
+  const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
+  const state = canWriteFullState
+    ? existingRow
+      ? mergeStates(existingState, incomingState)
+      : incomingState
+    : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
 
   await env.DB
     .prepare(`
@@ -107,6 +112,7 @@ async function ensureSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -117,6 +123,9 @@ async function ensureSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -156,6 +165,33 @@ function mergeStates(existing, incoming) {
     purchases: mergePurchasesById(existing.purchases || [], incoming.purchases || []),
     ocrAliases: mergeAliases(existing.ocrAliases, incoming.ocrAliases)
   };
+}
+
+function mergeConsultaRequestState(existing, incoming) {
+  return {
+    ...existing,
+    requests: mergeRequestsById(existing.requests, filterConsultaCreatedRequests(existing.requests, incoming.requests))
+  };
+}
+
+function filterConsultaCreatedRequests(existingRequests, incomingRequests) {
+  const existingIds = new Set(existingRequests.map(request => (request?.id ? String(request.id) : '')).filter(Boolean));
+  return incomingRequests.filter(request => isConsultaCreatedRequest(request, existingIds));
+}
+
+function isConsultaCreatedRequest(request, existingIds) {
+  if (!request || !request.id || existingIds.has(String(request.id))) return false;
+  if (request.deletedAt || request.reversedAt || request.fulfilledAt) return false;
+  if (request.status !== 'Aberta') return false;
+  if (!request.vehiclePlate || !request.costCenter) return false;
+  if (!Array.isArray(request.items) || request.items.length === 0) return false;
+
+  return request.items.every(item => {
+    if (!item || !item.sku) return false;
+    const requestedQuantity = Number(item.requestedQuantity);
+    const separatedQuantity = Number(item.separatedQuantity) || 0;
+    return Number.isFinite(requestedQuantity) && requestedQuantity > 0 && separatedQuantity <= 0;
+  });
 }
 
 function mergeItemsBySku(existingItems, incomingItems) {

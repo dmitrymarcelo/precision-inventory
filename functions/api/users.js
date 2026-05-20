@@ -1,5 +1,7 @@
 import { createUser, getSessionFromRequest } from './auth.js';
 
+const PRIMARY_USER_MANAGER_MATRICULA = '24000';
+
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store'
@@ -21,12 +23,18 @@ export async function onRequestGet({ request, env }) {
   if (!session) {
     return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
   }
-  if (session.role !== 'admin') {
+  if (!canManageUsers(session)) {
     return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
   }
 
   const rows = await env.DB
-    .prepare('SELECT id, matricula, name, role, active, created_at as createdAt, updated_at as updatedAt FROM users ORDER BY matricula')
+    .prepare(
+      `SELECT id, matricula, name, role, active,
+              requires_daily_cycle_inventory as requiresDailyCycleInventory,
+              created_at as createdAt, updated_at as updatedAt
+       FROM users
+       ORDER BY matricula`
+    )
     .all();
 
   return Response.json({ ok: true, users: rows?.results ?? [] }, { headers: jsonHeaders });
@@ -42,6 +50,7 @@ export async function onRequestPost({ request, env }) {
   const matricula = normalizeMatricula(body?.matricula);
   const name = typeof body?.nome === 'string' ? body.nome.trim() : '';
   const role = normalizeRole(body?.role);
+  const requiresDailyCycleInventory = role !== 'consulta' && body?.requiresDailyCycleInventory === true ? 1 : 0;
   const password = typeof body?.senha === 'string' ? body.senha : '';
 
   if (!matricula || !name || !password) {
@@ -63,7 +72,7 @@ export async function onRequestPost({ request, env }) {
     if (!session) {
       return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
     }
-    if (session.role !== 'admin') {
+    if (!canManageUsers(session)) {
       return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
     }
   } else if (!bootstrap) {
@@ -81,8 +90,8 @@ export async function onRequestPost({ request, env }) {
 
     const result = await createUser(env.DB, { matricula, name, role, password });
     await env.DB
-      .prepare('UPDATE users SET must_change_password = 1 WHERE id = ?')
-      .bind(result.id)
+      .prepare('UPDATE users SET must_change_password = 1, requires_daily_cycle_inventory = ? WHERE id = ?')
+      .bind(requiresDailyCycleInventory, result.id)
       .run();
     return Response.json({ ok: true, id: result.id, createdAt: result.createdAt }, { headers: jsonHeaders });
   } catch (error) {
@@ -104,7 +113,7 @@ export async function onRequestPut({ request, env }) {
   if (!session) {
     return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
   }
-  if (session.role !== 'admin') {
+  if (!canManageUsers(session)) {
     return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
   }
 
@@ -117,10 +126,11 @@ export async function onRequestPut({ request, env }) {
   const name = typeof body?.nome === 'string' ? body.nome.trim() : undefined;
   const role = body?.role !== undefined ? normalizeRole(body.role) : undefined;
   const active = body?.active !== undefined ? (body.active ? 1 : 0) : undefined;
+  const hasCycleRequirement = body?.requiresDailyCycleInventory !== undefined;
   const password = typeof body?.senha === 'string' ? body.senha : '';
 
   const existing = await env.DB
-    .prepare('SELECT id, matricula, role, active FROM users WHERE id = ? LIMIT 1')
+    .prepare('SELECT id, matricula, role, active, requires_daily_cycle_inventory as requiresDailyCycleInventory FROM users WHERE id = ? LIMIT 1')
     .bind(id)
     .first();
 
@@ -137,6 +147,14 @@ export async function onRequestPut({ request, env }) {
   }
 
   const now = new Date().toISOString();
+  const nextRole = role || String(existing.role || '');
+  const requiresDailyCycleInventory =
+    nextRole === 'consulta'
+      ? 0
+      : hasCycleRequirement
+        ? body.requiresDailyCycleInventory === true ? 1 : 0
+        : undefined;
+
   await env.DB
     .prepare(
       `
@@ -145,11 +163,12 @@ export async function onRequestPut({ request, env }) {
           name = COALESCE(?, name),
           role = COALESCE(?, role),
           active = COALESCE(?, active),
+          requires_daily_cycle_inventory = COALESCE(?, requires_daily_cycle_inventory),
           updated_at = ?
         WHERE id = ?
       `
     )
-    .bind(name ?? null, role ?? null, active ?? null, now, id)
+    .bind(name ?? null, role ?? null, active ?? null, requiresDailyCycleInventory ?? null, now, id)
     .run();
 
   if (password) {
@@ -185,6 +204,7 @@ async function ensureAuthSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -195,6 +215,9 @@ async function ensureAuthSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -230,6 +253,10 @@ function normalizeRole(value) {
   if (role === 'admin') return 'admin';
   if (role === 'operacao' || role === 'operação') return 'operacao';
   return 'consulta';
+}
+
+function canManageUsers(session) {
+  return String(session?.role || '') === 'admin' && normalizeMatricula(session?.matricula) === PRIMARY_USER_MANAGER_MATRICULA;
 }
 
 async function bootstrapUpsertAdmin(db, { matricula, name, password }) {

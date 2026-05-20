@@ -38,6 +38,21 @@ interface DashboardProps {
   requests: MaterialRequest[];
   authRole: 'consulta' | 'operacao' | 'admin';
   viewMode?: 'default' | 'stock-consulta';
+  dailyCycle?: {
+    dayKey: string;
+    required: boolean;
+    rows: Array<{
+      item: InventoryItem;
+      countedToday: boolean;
+      needsRecount?: boolean;
+      abcClass?: string;
+      liveStatus: InventoryItem['status'];
+    }>;
+    pendingCount: number;
+    completedCount: number;
+    onOpenSku: (sku: string) => void;
+    onOpenInventoryOperations: () => void;
+  };
   onSelectSku: (sku: string) => void;
   onOpenSeparation: (requestId: string) => void;
   onOpenRequest: (requestId: string) => void;
@@ -51,6 +66,7 @@ export default function Dashboard({
   requests,
   authRole,
   viewMode = 'default',
+  dailyCycle,
   onSelectSku,
   onOpenSeparation,
   onOpenRequest,
@@ -188,6 +204,9 @@ export default function Dashboard({
   const reportPolicy = reportItem ? getAdaptiveAbcStockPolicy(reportItem.sku, logs) : null;
   const reportSettings = reportItem ? getItemAlertSettings(reportItem, settings, logs) : null;
   const reportStatus = reportItem ? calculateItemStatus(reportItem, settings, logs) : null;
+  const dailyCycleProgressPercent = dailyCycle?.rows.length
+    ? Math.round((dailyCycle.completedCount / dailyCycle.rows.length) * 100)
+    : 0;
 
   const handleAlertListChange = (list: AlertList) => {
     setActiveAlertList(list);
@@ -497,6 +516,102 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {!isConsulta && dailyCycle?.required && dailyCycle.pendingCount > 0 ? (
+        <section
+          className="mb-6 overflow-hidden rounded-2xl border border-amber-300 bg-amber-50 shadow-sm"
+        >
+          <div className="p-5 md:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full bg-primary-container px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-on-primary-container">
+                  <ClipboardList size={14} />
+                  Inventario ciclico - {dailyCycle.dayKey}
+                </div>
+                <h2 className="mt-3 font-headline text-2xl font-extrabold tracking-tight text-on-surface">
+                  Contagem obrigatória do dia
+                </h2>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Conte estes itens para liberar o restante do sistema hoje.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 min-w-[260px]">
+                <div className="rounded-xl bg-surface-container-lowest/80 border border-white/50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-outline">Progresso</p>
+                  <p className="mt-1 text-xl font-headline font-bold text-primary">{dailyCycleProgressPercent}%</p>
+                </div>
+                <div className="rounded-xl bg-surface-container-lowest/80 border border-white/50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-outline">Contados</p>
+                  <p className="mt-1 text-xl font-headline font-bold text-primary">{dailyCycle.completedCount}</p>
+                </div>
+                <div className="rounded-xl bg-surface-container-lowest/80 border border-white/50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-outline">Pendentes</p>
+                  <p className={`mt-1 text-xl font-headline font-bold ${dailyCycle.pendingCount > 0 ? 'text-error' : 'text-primary'}`}>
+                    {dailyCycle.pendingCount}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {dailyCycle.rows.map(row => {
+                const isPending = !row.countedToday || row.needsRecount;
+                return (
+                  <button
+                    key={`dashboard-cycle-${row.item.sku}`}
+                    type="button"
+                    onClick={() => dailyCycle.onOpenSku(row.item.sku)}
+                    className={`text-left rounded-xl border px-4 py-4 transition-colors ${
+                      isPending
+                        ? 'border-amber-300 bg-white hover:bg-amber-50'
+                        : 'border-outline-variant/20 bg-surface-container-low hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wider text-outline">SKU {row.item.sku}</p>
+                        <p className="mt-1 font-semibold text-on-surface truncate">{normalizeUserFacingText(row.item.name)}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold text-primary">
+                        {row.abcClass ? `ABC ${row.abcClass}` : 'ABC -'}
+                      </span>
+                    </div>
+                    <div className="mt-3 text-[11px] font-semibold text-on-surface-variant flex flex-col gap-1">
+                      <span>{normalizeLocationText(row.item.location)}</span>
+                      <span>{normalizeUserFacingText(row.liveStatus)}</span>
+                      <span className={isPending ? 'text-error' : 'text-primary'}>
+                        {row.needsRecount ? 'Recontagem pendente' : row.countedToday ? 'Ja contado hoje' : 'Pendente hoje'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = dailyCycle.rows.find(row => !row.countedToday || row.needsRecount) || dailyCycle.rows[0];
+                  if (next) dailyCycle.onOpenSku(next.item.sku);
+                }}
+                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-bold flex items-center justify-center gap-2"
+              >
+                <ArrowRight size={18} />
+                Contar agora
+              </button>
+              <button
+                type="button"
+                onClick={dailyCycle.onOpenInventoryOperations}
+                className="h-11 px-4 rounded-xl bg-surface-container-highest text-primary font-bold"
+              >
+                Abrir inventario operacional
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {fluidMonitorSection}
 

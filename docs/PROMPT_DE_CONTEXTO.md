@@ -71,6 +71,11 @@ Regras de negocio que nao podem quebrar:
 - Solicitacao de pecas gira em torno de placa e centro de custo.
 - Nao adicionar item sem saldo na solicitacao; bloquear visualmente.
 - Bateria por placa: se a mesma placa ja recebeu bateria em solicitacao Atendida ainda dentro da validade, abrir popup de confirmacao antes de incluir outra bateria; bateria geral vale 12 meses e SKU 12047 vale 6 meses; regra em src/batteryWarrantyRules.ts.
+- Persistencia online: admin/operacao gravam estado completo; consulta so pode criar novas solicitacoes Aberta via backend, sem alterar estoque/logs/configuracoes.
+- Modulo Usuarios: acesso exclusivo para Dmitry Marcelo, matricula 24000, admin; outros admins devem ser bloqueados tambem pela API /api/users.
+- Painel: manter objetivo para o armazem; nao destacar `Memoria operacional`; mostrar contagem diaria no Painel somente quando houver obrigatoriedade pendente para o usuario.
+- Inventario ciclico obrigatorio: configurado em Usuarios para Operacao/Admin; Consulta nao pode ser marcada; usuario marcado fica limitado a Painel, Estoque e Inventario Operacional ate finalizar a contagem diaria; regra central em src/cyclicInventory.ts.
+- Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no D1 sem aprovacao e politica de retencao.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
 - Pedido entregue/atendido vira consulta: nao editar nem excluir.
 - Mobile e prioridade operacional.

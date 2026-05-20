@@ -3,20 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, Info } from 'lucide-react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
-import StockWorkspace from './components/StockWorkspace';
-import InventoryOperation from './components/InventoryOperation';
-import RequestManager from './components/RequestManager';
-import RequestHistory from './components/RequestHistory';
-import MaterialSeparation from './components/MaterialSeparation';
-import VehiclePartsBrowser from './components/VehiclePartsBrowser';
-import PreventiveKits from './components/PreventiveKits';
-import UserManager from './components/UserManager';
-import AutomaticPurchases from './components/AutomaticPurchases';
 import {
   InventoryItem,
   InventoryLog,
@@ -33,6 +24,20 @@ import { classifyInventoryCategory } from './categoryCatalog';
 import { getVehicleTypeFromModel, normalizeOfficialVehicleModel, normalizeOperationalVehicleType } from './vehicleCatalog';
 import { normalizeInventoryStatus, normalizeLocationText, normalizeUserFacingText } from './textUtils';
 import { formatDivergenceDelta, getOpenDivergences } from './divergenceRules';
+import { getFlushCompletionMode, isSameCloudOutbox } from './syncOutbox';
+import { getAbcAnalysisForSku, getAbcClassPriority } from './abcAnalysis';
+import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, getLatestOperationalLogBySku } from './cyclicInventory';
+
+const StockWorkspace = React.lazy(() => import('./components/StockWorkspace'));
+const InventoryOperation = React.lazy(() => import('./components/InventoryOperation'));
+const RequestManager = React.lazy(() => import('./components/RequestManager'));
+const RequestHistory = React.lazy(() => import('./components/RequestHistory'));
+const MaterialSeparation = React.lazy(() => import('./components/MaterialSeparation'));
+const VehiclePartsBrowser = React.lazy(() => import('./components/VehiclePartsBrowser'));
+const PreventiveKits = React.lazy(() => import('./components/PreventiveKits'));
+const UserManager = React.lazy(() => import('./components/UserManager'));
+const AutomaticPurchases = React.lazy(() => import('./components/AutomaticPurchases'));
+const OperationLogPanel = React.lazy(() => import('./components/OperationLogPanel'));
 
 const initialData: InventoryItem[] = [
   { sku: '01074', name: 'CATALISADOR PARA TINTAS', quantity: 11, category: 'Grupo 0004', location: 'Sem localização', status: 'Repor em Breve' },
@@ -72,6 +77,7 @@ const validTabs = [
   'separation',
   'inventory',
   'inventory-operations',
+  'operation-log',
   'users',
   'purchases'
 ];
@@ -92,6 +98,10 @@ function getInitialRequestId() {
 
 function getInitialInventoryFilter() {
   return new URLSearchParams(window.location.search).get('filter') || '';
+}
+
+function isDailyCycleGateAllowedTab(tab: string) {
+  return tab === 'dashboard' || tab === 'inventory' || tab === 'inventory-operations';
 }
 
 function normalizeStoredItems(items: InventoryItem[]) {
@@ -167,6 +177,7 @@ type AuthSession = {
   matricula?: string;
   name?: string;
   mustChangePassword?: boolean;
+  requiresDailyCycleInventory?: boolean;
   mode?: 'password' | 'stock-consulta';
 };
 
@@ -223,7 +234,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
         message?: string;
         token?: string;
         mustChangePassword?: boolean;
-        user?: { id: string; matricula: string; name: string; role: UserRole };
+        user?: { id: string; matricula: string; name: string; role: UserRole; requiresDailyCycleInventory?: boolean };
       };
 
       if (!response.ok || !data?.ok || !data.user || !data.token) {
@@ -238,6 +249,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
         matricula: data.user.matricula,
         name: data.user.name,
         mustChangePassword: Boolean(data.mustChangePassword),
+        requiresDailyCycleInventory: Boolean(data.user.requiresDailyCycleInventory),
         mode: 'password'
       });
     } catch {
@@ -441,6 +453,16 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   );
 }
 
+function ModuleLoading() {
+  return (
+    <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+      <div className="h-2 w-32 rounded-full bg-surface-container-highest animate-pulse" />
+      <div className="mt-4 h-4 w-56 rounded-full bg-surface-container-highest animate-pulse" />
+      <p className="mt-4 text-sm font-semibold text-on-surface-variant">Carregando modulo...</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTabState] = useState(getInitialTab);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
@@ -450,9 +472,18 @@ export default function App() {
   const [cloudHasState, setCloudHasState] = useState(false);
   const [cloudUpdatePending, setCloudUpdatePending] = useState<{ updatedAt: string; reason: string } | null>(null);
   const [ocrAliases, setOcrAliases] = useState<Record<string, string>>({});
+  const [syncEvents, setSyncEvents] = useState<SyncEvent[]>(() => {
+    try {
+      const stored = localStorage.getItem(syncEventsStorageKey);
+      return stored ? (JSON.parse(stored) as SyncEvent[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const saveTimerRef = useRef<number | null>(null);
   const cloudRetryTimerRef = useRef<number | null>(null);
   const outboxWriteTimerRef = useRef<number | null>(null);
+  const flushInFlightRef = useRef(false);
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
@@ -471,11 +502,13 @@ export default function App() {
     initialOutbox = null;
   }
   const outboxRef = useRef<CloudOutbox | null>(initialOutbox);
+  const [localPendingSync, setLocalPendingSync] = useState(Boolean(initialOutbox) || localDirtyRef.current);
 
   useEffect(() => {
     if (outboxRef.current && !localDirtyRef.current) {
       localDirtyRef.current = true;
       localStorage.setItem(localDirtyStorageKey, '1');
+      setLocalPendingSync(true);
     }
   }, []);
 
@@ -500,6 +533,8 @@ export default function App() {
         matricula: typeof parsed.matricula === 'string' ? parsed.matricula : undefined,
         name: typeof parsed.name === 'string' ? parsed.name : undefined,
         mustChangePassword: typeof parsed.mustChangePassword === 'boolean' ? parsed.mustChangePassword : undefined,
+        requiresDailyCycleInventory:
+          typeof parsed.requiresDailyCycleInventory === 'boolean' ? parsed.requiresDailyCycleInventory : undefined,
         mode: parsed.mode === 'password' || parsed.mode === 'stock-consulta' ? parsed.mode : undefined
       };
     } catch {
@@ -651,27 +686,34 @@ export default function App() {
   }, [mustChangePassword]);
 
   const appendSyncEvent = (event: string, detail?: string) => {
-    try {
-      const existing = localStorage.getItem(syncEventsStorageKey);
-      const current = existing ? (JSON.parse(existing) as SyncEvent[]) : [];
+    setSyncEvents(current => {
       const next = [{ at: new Date().toISOString(), event, detail }, ...current].slice(0, 40);
-      localStorage.setItem(syncEventsStorageKey, JSON.stringify(next));
-    } catch {}
+      try {
+        localStorage.setItem(syncEventsStorageKey, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   };
 
   const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string) => {
     const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt };
     outboxRef.current = outbox;
+    setLocalPendingSync(true);
     try {
       localStorage.setItem(cloudOutboxStorageKey, JSON.stringify(outbox));
     } catch {}
   };
 
-  const clearOutbox = () => {
+  const clearOutbox = (expected?: CloudOutbox | null) => {
+    if (expected && !isSameCloudOutbox(outboxRef.current, expected)) {
+      return false;
+    }
     outboxRef.current = null;
     try {
       localStorage.removeItem(cloudOutboxStorageKey);
     } catch {}
+    setLocalPendingSync(localDirtyRef.current);
+    return true;
   };
 
   const applyCloudStateIfNewer = (
@@ -718,6 +760,7 @@ export default function App() {
     clearOutbox();
     localDirtyRef.current = false;
     localStorage.removeItem(localDirtyStorageKey);
+    setLocalPendingSync(false);
 
     suppressOutboxWriteRef.current = true;
     setItems(normalizeStoredItems(result.state.items));
@@ -748,16 +791,27 @@ export default function App() {
     const outbox = outboxRef.current;
     if (!outbox) return;
     if (!cloudLoaded) return;
-    if (cloudStatus === 'saving') return;
+    if (flushInFlightRef.current) return;
 
+    flushInFlightRef.current = true;
     setCloudStatus('saving');
     appendSyncEvent('flush_start', reason);
+    let shouldFlushAgain = false;
 
     try {
       const result = await saveCloudState(outbox.state, authSession?.token);
       setCloudHasState(true);
       setCloudAvailable(true);
       setCloudStatus('online');
+      const completionMode = getFlushCompletionMode(outbox, outboxRef.current);
+
+      if (completionMode === 'defer-newer-outbox') {
+        setLocalPendingSync(true);
+        appendSyncEvent('flush_deferred_newer_outbox', reason);
+        shouldFlushAgain = true;
+        return;
+      }
+
       localDirtyRef.current = false;
       localStorage.removeItem(localDirtyStorageKey);
       localUpdatedAtRef.current = result.updatedAt;
@@ -776,7 +830,7 @@ export default function App() {
             : {}
         );
       }
-      clearOutbox();
+      clearOutbox(outbox);
       setCloudUpdatePending(null);
       appendSyncEvent('flush_ok', reason);
       if (wasOfflineRef.current) {
@@ -792,6 +846,11 @@ export default function App() {
       setCloudStatus('offline');
       wasOfflineRef.current = true;
       appendSyncEvent('flush_fail', reason);
+    } finally {
+      flushInFlightRef.current = false;
+      if (shouldFlushAgain && navigator.onLine) {
+        window.setTimeout(() => void flushOutbox('newer_outbox_pending'), 0);
+      }
     }
   }
 
@@ -877,6 +936,49 @@ export default function App() {
       localStorage.removeItem(authSessionStorageKey);
     }
   }, [authSession]);
+
+  useEffect(() => {
+    if (!authSession?.token || authSession.mode !== 'password') return;
+    let cancelled = false;
+
+    async function refreshSessionUser() {
+      try {
+        const response = await fetch('/api/auth?action=me', {
+          headers: { authorization: `Bearer ${authSession?.token}` },
+          cache: 'no-store'
+        });
+        const data = (await response.json()) as {
+          ok?: boolean;
+          user?: {
+            id: string;
+            matricula: string;
+            name: string;
+            role: UserRole;
+            requiresDailyCycleInventory?: boolean;
+          };
+        };
+        if (cancelled || !response.ok || !data?.ok || !data.user) return;
+        setAuthSession(previous => {
+          if (!previous || previous.token !== authSession.token) return previous;
+          return {
+            ...previous,
+            userId: data.user?.id,
+            matricula: data.user?.matricula,
+            name: data.user?.name,
+            role: data.user?.role || previous.role,
+            requiresDailyCycleInventory: Boolean(data.user?.requiresDailyCycleInventory)
+          };
+        });
+      } catch {
+        return;
+      }
+    }
+
+    void refreshSessionUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.mode, authSession?.token]);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(items));
@@ -1123,6 +1225,7 @@ export default function App() {
     if (isStockConsulta) return;
     localDirtyRef.current = true;
     localStorage.setItem(localDirtyStorageKey, '1');
+    setLocalPendingSync(true);
     lastLocalMutationAtRef.current = Date.now();
   };
 
@@ -1147,7 +1250,7 @@ export default function App() {
   const canEditExistingRequests = role === 'admin' || role === 'operacao';
   const canDeleteRequests = role === 'admin';
   const canReverseRequests = role === 'admin';
-  const canManageUsers = role === 'admin';
+  const canManageUsers = role === 'admin' && String(authSession?.matricula || '').replace(/\s+/g, '') === '24000';
   const canWriteItemsAndLogs = role === 'admin' || role === 'operacao';
   const canWriteVehicles = role === 'admin' || role === 'operacao';
   const canWriteSettings = role === 'admin';
@@ -1156,21 +1259,68 @@ export default function App() {
   const openDivergences = useMemo(() => getOpenDivergences(logs), [logs]);
   const divergenceGateBlocking =
     !isStockConsulta && (role === 'admin' || role === 'operacao') && openDivergences.length > 0;
+  const openDivergenceSkuSet = useMemo(
+    () => new Set(openDivergences.map(divergence => String(divergence.sku || ''))),
+    [openDivergences]
+  );
+  const dailyCycleDayKey = getCalendarDayKey(new Date(), APP_TIME_ZONE);
+  const dailyCycleRows = useMemo(() => {
+    const latestLogBySku = getLatestOperationalLogBySku(logs, new Date(), APP_TIME_ZONE);
+    const candidateBySku = new Map<string, InventoryItem>();
+
+    items.forEach(item => {
+      if (item.isActiveInWarehouse === true) {
+        candidateBySku.set(item.sku, item);
+      }
+    });
+
+    openDivergences.forEach(divergence => {
+      const item = items.find(candidate => candidate.sku === divergence.sku);
+      if (item) candidateBySku.set(item.sku, item);
+    });
+
+    const candidates = Array.from(candidateBySku.values()).map(item => {
+      const abcRecord = getAbcAnalysisForSku(item.sku);
+      return {
+        item,
+        countedToday: latestLogBySku.has(item.sku),
+        needsRecount: openDivergenceSkuSet.has(item.sku),
+        cycleWeight: getAbcClassPriority(item.sku),
+        abcClass: abcRecord?.className,
+        liveStatus: calculateItemStatus(item, settings, logs)
+      };
+    });
+
+    return buildDailyCycleRows(candidates, { count: 5, dayKey: dailyCycleDayKey });
+  }, [dailyCycleDayKey, items, logs, openDivergenceSkuSet, openDivergences, settings]);
+  const dailyCyclePendingRows = dailyCycleRows.filter(row => !row.countedToday || row.needsRecount);
+  const dailyCycleRequired =
+    !isStockConsulta &&
+    (role === 'admin' || role === 'operacao') &&
+    authSession?.requiresDailyCycleInventory === true;
+  const dailyCycleGateBlocking = dailyCycleRequired && dailyCycleRows.length > 0 && dailyCyclePendingRows.length > 0;
 
   useEffect(() => {
     if (!authSession) return;
     const allowedTabs = isStockConsulta
       ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'inventory']
       : role === 'admin'
-        ? validTabs
+        ? canManageUsers
+          ? validTabs
+          : validTabs.filter(tab => tab !== 'users')
         : role === 'operacao'
-          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'inventory-operations', 'purchases']
+          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'inventory-operations', 'operation-log', 'purchases']
           : ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests'];
 
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab('dashboard');
+      return;
     }
-  }, [activeTab, authSession, isStockConsulta, role]);
+
+    if (dailyCycleGateBlocking && !isDailyCycleGateAllowedTab(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, authSession, canManageUsers, dailyCycleGateBlocking, isStockConsulta, role]);
   const setItemsGuarded: React.Dispatch<React.SetStateAction<InventoryItem[]>> = updater => {
     if (!canWriteItemsAndLogs) {
       showToast('Modo consulta: sem permissão para alterar o estoque.', 'info');
@@ -1375,6 +1525,23 @@ export default function App() {
     const nextTab = tab === 'search' || tab === 'update' ? 'inventory' : tab;
     if (!validTabs.includes(nextTab)) return;
 
+    if (nextTab === 'users' && !canManageUsers) {
+      showToast('Modulo Usuarios restrito ao administrador Dmitry Marcelo (matricula 24000).', 'info');
+      setActiveTabState('dashboard');
+      syncUrl('dashboard', selectedSku, null, inventoryFilter);
+      return;
+    }
+
+    if (dailyCycleGateBlocking && !isDailyCycleGateAllowedTab(nextTab)) {
+      showToast(
+        `Inventario ciclico obrigatorio: conte ${dailyCyclePendingRows.length} item(ns) pendente(s) de hoje antes de continuar.`,
+        'info'
+      );
+      setActiveTabState('dashboard');
+      syncUrl('dashboard', selectedSku, null, inventoryFilter);
+      return;
+    }
+
     if (divergenceGateBlocking && nextTab !== 'inventory' && nextTab !== 'inventory-operations') {
       const first = openDivergences[0];
       if (first) {
@@ -1472,6 +1639,7 @@ export default function App() {
         requests={requests}
         authRole={authSession.role}
         authMode={authSession.mode}
+        canManageUsers={canManageUsers}
         cloudStatus={cloudStatus}
         cloudUpdatePending={Boolean(cloudUpdatePending)}
         cloudUpdateAt={cloudUpdatePending?.updatedAt}
@@ -1497,6 +1665,19 @@ export default function App() {
             requests={requests}
             authRole={role}
             viewMode={isStockConsulta ? 'stock-consulta' : 'default'}
+            dailyCycle={
+              role === 'consulta'
+                ? undefined
+                : {
+                    dayKey: dailyCycleDayKey,
+                    required: dailyCycleRequired,
+                    rows: dailyCycleRows,
+                    pendingCount: dailyCyclePendingRows.length,
+                    completedCount: Math.max(0, dailyCycleRows.length - dailyCyclePendingRows.length),
+                    onOpenSku: handleSelectSku,
+                    onOpenInventoryOperations: () => setActiveTab('inventory-operations')
+                  }
+            }
             onSelectSku={handleSelectSku}
             onOpenSeparation={handleOpenSeparation}
             onOpenRequest={handleEditRequest}
@@ -1504,144 +1685,158 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'vehicle-parts' && (
-          <VehiclePartsBrowser
-            items={items}
-            onSelectSku={handleSelectSku}
-            presetType={vehiclePartsPresetType}
-            presetModel={vehiclePartsPresetModel}
-            presetVersion={vehiclePartsPresetVersion}
-          />
-        )}
+        <Suspense fallback={<ModuleLoading />}>
+          {activeTab === 'vehicle-parts' && (
+            <VehiclePartsBrowser
+              items={items}
+              onSelectSku={handleSelectSku}
+              presetType={vehiclePartsPresetType}
+              presetModel={vehiclePartsPresetModel}
+              presetVersion={vehiclePartsPresetVersion}
+            />
+          )}
 
-        {activeTab === 'preventive-kits' && (
-          <PreventiveKits
-            items={items}
-            onSelectSku={handleSelectSku}
-            settings={settings}
-            setSettings={setSettingsGuarded}
-            canManagePreventiveKits={role === 'admin'}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'preventive-kits' && (
+            <PreventiveKits
+              items={items}
+              onSelectSku={handleSelectSku}
+              settings={settings}
+              setSettings={setSettingsGuarded}
+              canManagePreventiveKits={role === 'admin'}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'users' && (
-          <UserManager
-            token={authSession.token || ''}
-            canManageUsers={canManageUsers}
-            showToast={showToast}
-            vehicles={vehicles}
-            setVehicles={setVehiclesGuarded}
-          />
-        )}
+          {activeTab === 'users' && (
+            <UserManager
+              token={authSession.token || ''}
+              canManageUsers={canManageUsers}
+              showToast={showToast}
+              vehicles={vehicles}
+              setVehicles={setVehiclesGuarded}
+            />
+          )}
 
-        {activeTab === 'purchases' && (
-          <AutomaticPurchases
-            items={items}
-            logs={logs}
-            settings={settings}
-            purchases={purchases}
-            vehicles={vehicles}
-            setPurchases={setPurchasesGuarded}
-            canManagePurchases={role === 'admin' || role === 'operacao'}
-            showToast={showToast}
-            onSelectSku={handleSelectSku}
-          />
-        )}
+          {activeTab === 'purchases' && (
+            <AutomaticPurchases
+              items={items}
+              logs={logs}
+              settings={settings}
+              purchases={purchases}
+              vehicles={vehicles}
+              setPurchases={setPurchasesGuarded}
+              canManagePurchases={role === 'admin' || role === 'operacao'}
+              showToast={showToast}
+              onSelectSku={handleSelectSku}
+            />
+          )}
 
-        {activeTab === 'requests' && (
-          <RequestManager
-            items={items}
-            logs={logs}
-            requests={requests}
-            vehicles={vehicles}
-            settings={settings}
-            setRequests={setRequestsGuarded}
-            authToken={authSession?.token}
-            externalRequestId={requestEditorRequestId}
-            onClearExternalRequest={handleClearRequestEditor}
-            canCreateRequests={canCreateRequests}
-            canEditExistingRequests={canEditExistingRequests}
-            canDeleteRequests={canDeleteRequests}
-            canOpenSeparation={canOperateSeparation}
-            auditActor={auditActor}
-            showToast={showToast}
-            onOpenSeparation={handleOpenSeparation}
-            onSelectSku={handleSelectSku}
-            onOpenPanel={() => setActiveTab('dashboard')}
-            onOpenVehicleParts={handleOpenVehicleParts}
-          />
-        )}
+          {activeTab === 'requests' && (
+            <RequestManager
+              items={items}
+              logs={logs}
+              requests={requests}
+              vehicles={vehicles}
+              settings={settings}
+              setRequests={setRequestsGuarded}
+              authToken={authSession?.token}
+              externalRequestId={requestEditorRequestId}
+              onClearExternalRequest={handleClearRequestEditor}
+              canCreateRequests={canCreateRequests}
+              canEditExistingRequests={canEditExistingRequests}
+              canDeleteRequests={canDeleteRequests}
+              canOpenSeparation={canOperateSeparation}
+              auditActor={auditActor}
+              showToast={showToast}
+              onOpenSeparation={handleOpenSeparation}
+              onSelectSku={handleSelectSku}
+              onOpenPanel={() => setActiveTab('dashboard')}
+              onOpenVehicleParts={handleOpenVehicleParts}
+            />
+          )}
 
-        {activeTab === 'request-history' && (
-          <RequestHistory
-            requests={requests}
-            logs={logs}
-            items={items}
-            setItems={setItemsGuarded}
-            setLogs={setLogsGuarded}
-            setRequests={setRequestsGuarded}
-            settings={settings}
-            auditActor={auditActor}
-            canReverseRequests={canReverseRequests}
-            onSelectSku={handleSelectSku}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'request-history' && (
+            <RequestHistory
+              requests={requests}
+              logs={logs}
+              items={items}
+              setItems={setItemsGuarded}
+              setLogs={setLogsGuarded}
+              setRequests={setRequestsGuarded}
+              settings={settings}
+              auditActor={auditActor}
+              canReverseRequests={canReverseRequests}
+              onSelectSku={handleSelectSku}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'separation' && (
-          <MaterialSeparation
-            items={items}
-            setItems={setItemsGuarded}
-            logs={logs}
-            setLogs={setLogsGuarded}
-            requests={requests}
-            setRequests={setRequestsGuarded}
-            canEdit={canOperateSeparation}
-            authToken={authSession?.token}
-            canDeleteRequests={canEditExistingRequests}
-            canReverseRequests={canReverseRequests}
-            auditActor={auditActor}
-            selectedRequestId={selectedRequestId}
-            setSelectedRequestId={handleSelectRequest}
-            onEditRequest={handleEditRequest}
-            settings={settings}
-            showToast={showToast}
-            ocrAliases={ocrAliases}
-            setOcrAliases={setOcrAliasesGuarded}
-            onSelectSku={handleSelectSku}
-          />
-        )}
+          {activeTab === 'separation' && (
+            <MaterialSeparation
+              items={items}
+              setItems={setItemsGuarded}
+              logs={logs}
+              setLogs={setLogsGuarded}
+              requests={requests}
+              setRequests={setRequestsGuarded}
+              canEdit={canOperateSeparation}
+              authToken={authSession?.token}
+              canDeleteRequests={canEditExistingRequests}
+              canReverseRequests={canReverseRequests}
+              auditActor={auditActor}
+              selectedRequestId={selectedRequestId}
+              setSelectedRequestId={handleSelectRequest}
+              onEditRequest={handleEditRequest}
+              settings={settings}
+              showToast={showToast}
+              ocrAliases={ocrAliases}
+              setOcrAliases={setOcrAliasesGuarded}
+              onSelectSku={handleSelectSku}
+            />
+          )}
 
-        {activeTab === 'inventory' && (
-          <StockWorkspace
-            showToast={showToast}
-            canAdjustStock={canAdjustStock}
-            canReceiveStock={canReceiveStock}
-            canEditAlertRules={canEditAlertRules}
-            items={items}
-            setItems={setItemsGuarded}
-            logs={logs}
-            setLogs={setLogsGuarded}
-            selectedSku={selectedSku}
-            onSelectSku={handleSelectSku}
-            settings={settings}
-            ocrAliases={ocrAliases}
-            setOcrAliases={setOcrAliasesGuarded}
-            externalSearchQuery={inventoryFilter}
-            onExternalSearchQueryChange={handleInventoryFilterChange}
-          />
-        )}
+          {activeTab === 'inventory' && (
+            <StockWorkspace
+              showToast={showToast}
+              canAdjustStock={canAdjustStock}
+              canReceiveStock={canReceiveStock}
+              canEditAlertRules={canEditAlertRules}
+              items={items}
+              setItems={setItemsGuarded}
+              logs={logs}
+              setLogs={setLogsGuarded}
+              selectedSku={selectedSku}
+              onSelectSku={handleSelectSku}
+              settings={settings}
+              ocrAliases={ocrAliases}
+              setOcrAliases={setOcrAliasesGuarded}
+              externalSearchQuery={inventoryFilter}
+              onExternalSearchQueryChange={handleInventoryFilterChange}
+            />
+          )}
 
-        {activeTab === 'inventory-operations' && (
-          <InventoryOperation
-            items={items}
-            logs={logs}
-            settings={settings}
-            onSelectSku={handleSelectSku}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'inventory-operations' && (
+            <InventoryOperation
+              items={items}
+              logs={logs}
+              settings={settings}
+              onSelectSku={handleSelectSku}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'operation-log' && (
+            <OperationLogPanel
+              syncEvents={syncEvents}
+              inventoryLogs={logs}
+              requests={requests}
+              cloudStatus={cloudStatus}
+              hasLocalPending={localPendingSync}
+              cloudUpdatePending={Boolean(cloudUpdatePending)}
+              onApplyCloudUpdate={() => void applyCloudUpdateNow()}
+            />
+          )}
+        </Suspense>
       </Layout>
 
       {divergenceGateBlocking && !mustChangePassword && (activeTab === 'inventory' || activeTab === 'inventory-operations') ? (

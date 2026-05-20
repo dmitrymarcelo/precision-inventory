@@ -14,8 +14,8 @@ import { getAbcAnalysisForSku, getAbcClassPriority, getAbcSortRank, getAdaptiveA
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
 import { formatDivergenceDelta, getOpenDivergenceMap, type OpenDivergence } from '../divergenceRules';
+import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, isOperationalInventoryLog, isSameCalendarDay } from '../cyclicInventory';
 
-const APP_TIME_ZONE = 'America/Manaus';
 const MAX_VISIBLE_OPERATION_ITEMS = 6;
 
 interface InventoryOperationProps {
@@ -206,21 +206,17 @@ export default function InventoryOperation({
   );
 
   const cyclicDayKey = getCalendarDayKey(new Date(), APP_TIME_ZONE);
-  const cyclicInventoryRows = useMemo(() => {
-    const sortedCandidates = cycleCandidateRows
-      .slice()
-      .sort((first, second) => String(first.item.sku).localeCompare(String(second.item.sku), 'pt-BR'));
-
-    const pending = sortedCandidates.filter(row => !row.countedToday);
-    const selected = pickDailyCycleRows(pending.length >= 5 ? pending : sortedCandidates, 5, cyclicDayKey);
-
-    if (selected.length >= 5) return selected;
-
-    const selectedSkus = new Set(selected.map(row => row.item.sku));
-    const remaining = sortedCandidates.filter(row => !selectedSkus.has(row.item.sku));
-    const fill = pickDailyCycleRows(remaining, 5 - selected.length, `${cyclicDayKey}/fill`);
-    return [...selected, ...fill];
-  }, [cycleCandidateRows, cyclicDayKey]);
+  const cyclicInventoryRows = useMemo(
+    () =>
+      buildDailyCycleRows(
+        cycleCandidateRows.map(row => ({
+          ...row,
+          cycleWeight: getAbcClassPriority(row.item.sku)
+        })),
+        { count: 5, dayKey: cyclicDayKey }
+      ),
+    [cycleCandidateRows, cyclicDayKey]
+  );
 
   const pendingQueue = useMemo(
     () =>
@@ -384,7 +380,7 @@ export default function InventoryOperation({
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Inventario ciclico</p>
-            <h3 className="text-lg font-headline font-extrabold text-on-surface">5 itens do dia</h3>
+            <h3 className="text-lg font-headline font-extrabold text-on-surface">Contagem diaria do armazem</h3>
             <p className="mt-1 text-sm text-on-surface-variant">
               Sorteio de {cyclicDayKey} baseado na Curva ABC. Use para manter contagem diaria sem precisar escolher SKU.
             </p>
@@ -697,33 +693,12 @@ function isNoLocation(value: unknown) {
   return normalized === 'sem localizacao';
 }
 
-function isSameCalendarDay(firstDate: string, secondDate: Date) {
-  const first = new Date(firstDate);
-  if (Number.isNaN(first.getTime())) return false;
-  return getCalendarDateKey(first) === getCalendarDateKey(secondDate);
-}
-
-function getCalendarDateKey(value: Date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(value);
-}
-
 function formatLogTime(date: string) {
   return new Intl.DateTimeFormat('pt-BR', {
     timeZone: APP_TIME_ZONE,
     hour: '2-digit',
     minute: '2-digit'
   }).format(new Date(date));
-}
-
-function isOperationalInventoryLog(log: InventoryLog) {
-  if (log.source === 'ajuste' || log.source === 'divergencia') return true;
-  if (log.source) return false;
-  return !log.referenceCode;
 }
 
 interface OperationRow {
@@ -737,47 +712,4 @@ interface OperationRow {
   needsRecount: boolean;
   countedToday: boolean;
   priorityScore: number;
-}
-
-function getCalendarDayKey(date: Date, timeZone: string) {
-  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-  return formatter.format(date);
-}
-
-function hashToSeed(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function mulberry32(seed: number) {
-  return () => {
-    let next = (seed += 0x6d2b79f5);
-    next = Math.imul(next ^ (next >>> 15), next | 1);
-    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
-    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pickDailyCycleRows(rows: OperationRow[], count: number, seedKey: string) {
-  if (count <= 0) return [];
-  if (rows.length <= count) return rows.slice(0, count);
-
-  const rng = mulberry32(hashToSeed(seedKey));
-  const scored = rows.map(row => {
-    const baseWeight = Math.max(1, Number(getAbcClassPriority(row.item.sku)) || 1);
-    const divergenceMultiplier = row.needsRecount ? 1.4 : 1;
-    const weight = Math.max(1, baseWeight * divergenceMultiplier);
-    const u = Math.min(0.999999, Math.max(0.000001, rng()));
-    const key = Math.pow(u, 1 / weight);
-    return { row, key };
-  });
-
-  return scored
-    .sort((first, second) => second.key - first.key)
-    .slice(0, count)
-    .map(entry => entry.row);
 }

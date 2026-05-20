@@ -1,6 +1,152 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-05
+Ultima atualizacao: 2026-05-20
+
+## Painel mais objetivo e memoria operacional em 2026-05-20
+
+- Pedido do usuario:
+  - remover do `Painel` os destaques `5 itens do dia` e `Memoria operacional`, deixando a tela inicial mais objetiva para a operacao do armazem
+  - esclarecer se o modulo de log/memoria ocupa muito espaco no servidor D1
+  - atualizar memorias persistentes antes de passar para outro chat
+- Implementado:
+  - o `Painel` nao mostra mais card de `Memoria operacional`
+  - o card de inventario ciclico aparece no `Painel` somente quando o usuario tem contagem obrigatoria pendente
+  - o titulo do bloqueio no `Painel` virou `Contagem obrigatoria do dia`
+  - a tela `Log do sistema` continua disponivel no menu, mas com titulo operacional: `Log operacional do armazem`
+  - textos de `Usuarios` e `Inventario Operacional` foram ajustados para `contagem obrigatoria/diaria`, sem chamar o card de `5 itens do dia`
+- Impacto no D1:
+  - o modulo `Log do sistema` nao cria tabela nova no D1
+  - ele agrega dados que ja existem no estado compartilhado: `InventoryLog` e auditoria das solicitacoes
+  - eventos de sincronizacao do aparelho ficam no `localStorage` do navegador e sao limitados, nao aumentam o banco D1
+  - se no futuro quiser log historico longo no servidor, precisa aprovar antes uma politica de retencao/limpeza
+- Validado:
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://e3f85370.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-DBXfTrXI.js`
+- Pendente nesta etapa:
+  - atualizar GitHub apos revisar o escopo do commit
+
+## Restricao do modulo Usuarios em 2026-05-20
+
+- Pedido do usuario:
+  - o modulo `Usuarios` deve ser acessivel somente por `Dmitry Marcelo`, matricula `24000`, usuario `admin`
+  - outros administradores devem ficar bloqueados para essa opcao
+- Implementado:
+  - frontend calcula `canManageUsers` somente quando `role === 'admin'` e `matricula === '24000'`
+  - menu do perfil so mostra `Usuarios` para a matricula `24000`
+  - tentativa de abrir `?tab=users` ou navegar para `users` por outro admin volta para o Painel com aviso
+  - `functions/api/users.js` tambem bloqueia GET/POST/PUT para qualquer admin diferente da matricula `24000`
+  - bootstrap inicial continua permitido quando ainda nao existem usuarios cadastrados
+- Teste criado:
+  - `scripts/test-users-primary-admin-access.mjs`
+  - valida que `24000` acessa `/api/users` e outro admin recebe `403`
+- Validado:
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://7437a684.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-BEA709Ep.js`
+
+## Melhoria operacional: logs, sync, inventario ciclico obrigatorio e performance em 2026-05-20
+
+- Pedido do usuario:
+  - melhorar processo/memoria do projeto
+  - criar area de log operacional
+  - avaliar e melhorar velocidade/responsividade visual
+  - tornar a contagem diaria do inventario ciclico obrigatoria para usuarios selecionados em `Usuarios`
+- Design registrado:
+  - `docs/superpowers/specs/2026-05-20-operacao-logs-inventario-ciclico-design.md`
+  - `docs/superpowers/plans/2026-05-20-operacao-logs-inventario-ciclico.md`
+- Implementado:
+  - `flushOutbox` agora nao limpa nem aplica retorno antigo se existir outbox mais novo pendente
+  - novo teste `scripts/test-sync-outbox.mjs`
+  - regra ciclica extraida para `src/cyclicInventory.ts`
+  - novo teste `scripts/test-cyclic-inventory.mjs`
+  - `Usuarios` ganhou campo `Inventario ciclico diario obrigatorio`
+  - backend adiciona `requires_daily_cycle_inventory` em `users`
+  - `consulta` nao pode receber obrigatoriedade; backend força `0` para evitar bloqueio sem permissao de estoque
+  - login, sessao `me` e listagem de usuarios retornam a nova preferencia
+  - Painel mostra a contagem diaria somente quando o usuario tem obrigatoriedade pendente
+  - usuarios obrigados ficam bloqueados em `Painel`, `Estoque` e `Inventario Operacional` ate concluir a contagem diaria
+  - nova tela `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
+  - modulos pesados passaram a carregar sob demanda com `React.lazy`
+- Performance medida:
+  - antes: asset principal `index-C72JfE5o.js` com cerca de `1.295 MB` minificado / `321.77 KB` gzip
+  - depois do code splitting: asset principal `index-BROzaJOH.js` com cerca de `518.85 KB` minificado / `124.42 KB` gzip
+  - modulos como Estoque, Compras, Usuarios, Separacao, Historico e Log viraram chunks separados
+- Validado localmente ate aqui:
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://acc98d79.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-BROzaJOH.js`
+- Observacao:
+  - ainda existe chunk grande de PDF/worker, mas ele fica sob demanda em fluxo de PDF/etiqueta, nao na tela inicial
+
+## Incidente: processos/solicitacoes nao salvos em 2026-05-19
+
+- Pedido do usuario:
+  - analisar o projeto em andamento
+  - investigar reclamacao de que os processos do dia nao foram salvos
+- Evidencia online em `2026-05-19` no fuso `America/Manaus`:
+  - `/api/state` respondeu `200`
+  - `app_state.updatedAt` online estava em `2026-05-19T12:40:00.167Z`
+  - havia `0` solicitacoes criadas/atualizadas/atendidas no dia
+  - havia `0` compras/processos criados/atualizados no dia
+  - havia `1` log de estoque no dia: SKU `06020` as `2026-05-19T12:39:41.549Z`
+- Causa encontrada:
+  - a tela permitia usuario `consulta` criar solicitacao
+  - a API `PUT /api/state` aceitava somente `admin` e `operacao`
+  - resultado: a tela podia mostrar `Solicitacao salva com sucesso` localmente, mas a API recusava o envio online com `403`
+- Correcao aplicada:
+  - `functions/api/state.js` agora permite usuario `consulta` enviar somente novas solicitacoes `Aberta`
+  - para `consulta`, o backend preserva estoque, logs, configuracoes, veiculos, compras e aliases do estado online
+  - `consulta` nao consegue alterar estoque pelo envio geral do estado
+- Teste criado:
+  - `scripts/test-state-consulta-save.mjs`
+  - reproduziu a falha antiga: `403 Sem permissao`
+  - depois da correcao, passou garantindo que nova solicitacao entra e estoque nao muda
+- Validado:
+  - `node scripts/test-state-consulta-save.mjs` passou
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://eeba0249.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-C72JfE5o.js`
+- Limitacao da investigacao:
+  - consulta direta ao D1 via Wrangler falhou por permissao da conta local Cloudflare (`code 7403`)
+  - se algum processo foi salvo somente em um celular, ele pode ainda estar no `localStorage`/outbox desse aparelho; nao clicar em `Atualizar` antes de tentar sincronizar/exportar
+- Risco tecnico tratado em 2026-05-20:
+  - `flushOutbox` nao limpa uma alteracao mais nova se uma gravacao antiga terminar enquanto outra alteracao ja entrou na fila
+  - teste de regressao: `scripts/test-sync-outbox.mjs`
 
 ## Solicitacao: prioridade por lock (evitar conflitos) em 2026-05-05
 
@@ -245,7 +391,7 @@ Ultima atualizacao: 2026-05-05
 - `Inventario Operacional` ganhou `Inventario ciclico`:
   - sorteia 5 itens por dia usando seed por data (mesmo dia = mesma lista)
   - pondera o sorteio pela Curva ABC (Classe A tem mais chance)
-  - mostra os 5 itens do dia e permite abrir o SKU com 1 toque
+  - mostra a contagem diaria e permite abrir o SKU com 1 toque
 - Arquivos alterados:
   - `src/App.tsx`
   - `src/components/InventoryOperation.tsx`

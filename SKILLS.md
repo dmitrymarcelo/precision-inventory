@@ -156,6 +156,44 @@ O estado online guarda:
 - veiculos
 - aliases OCR
 
+Permissoes de gravacao:
+
+- `admin` e `operacao` podem enviar o estado completo pelo `PUT /api/state`
+- `consulta` pode criar somente novas solicitacoes `Aberta`
+- quando `consulta` envia estado, o backend deve preservar estoque, logs, configuracoes, veiculos, compras e aliases do estado online
+- se mexer nessa regra, validar com `scripts/test-state-consulta-save.mjs`
+- se mexer em outbox/sync local, validar com `scripts/test-sync-outbox.mjs`
+- o `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
+- o `Log do sistema` nao deve criar tabela nova nem historico longo no D1 sem aprovacao explicita
+- eventos locais de sync devem continuar limitados no navegador; para historico servidor, definir retencao antes
+
+## Skill 8.1 - Inventario ciclico obrigatorio
+
+Objetivo:
+
+- permitir que administradores obriguem usuarios de `operacao` ou `admin` a finalizar a contagem diaria do armazem
+
+Regra:
+
+- configurar em `Usuarios` pelo campo `Inventario ciclico diario obrigatorio`
+- `consulta` nao pode receber essa obrigatoriedade, porque nao altera estoque
+- usuario obrigado fica limitado a `Painel`, `Estoque` e `Inventario Operacional` ate finalizar o ciclo diario
+- no `Painel`, a contagem diaria aparece somente quando houver obrigatoriedade pendente para o usuario
+- sem bloqueio obrigatorio, o `Painel` deve ficar objetivo, focado em alertas, solicitacoes e operacao do armazem
+- o ciclo diario usa `src/cyclicInventory.ts` e fuso `America/Manaus`
+- item conta como concluido quando existe log operacional do dia (`ajuste` ou `divergencia`) e nao existe divergencia aberta no SKU
+- validar com `scripts/test-cyclic-inventory.mjs` e `scripts/test-user-cycle-requirement.mjs`
+
+## Skill 8.2 - Gestao de usuarios
+
+Regra:
+
+- o modulo `Usuarios` e exclusivo do usuario `Dmitry Marcelo`, matricula `24000`, com papel `admin`
+- outros administradores nao podem acessar a opcao nem pela tela nem pela API `/api/users`
+- backend: `functions/api/users.js`
+- frontend: `src/App.tsx` e `src/components/Layout.tsx`
+- se mexer nessa permissao, validar com `scripts/test-users-primary-admin-access.mjs`
+
 ## Skill 9 - Deploy
 
 Fluxo nominal:

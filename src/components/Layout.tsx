@@ -28,6 +28,7 @@ interface LayoutProps {
   requests: MaterialRequest[];
   authRole: 'consulta' | 'operacao' | 'admin';
   authMode?: 'password' | 'stock-consulta';
+  canManageUsers?: boolean;
   onLogout: () => void;
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
   cloudUpdatePending?: boolean;
@@ -50,6 +51,7 @@ export default function Layout({
   requests,
   authRole,
   authMode,
+  canManageUsers = false,
   onLogout,
   cloudStatus,
   cloudUpdatePending,
@@ -273,7 +275,7 @@ export default function Layout({
                     </div>
 
                     <div className="p-2">
-                      {authRole === 'admin' && (
+                      {canManageUsers && (
                         <button
                           type="button"
                           onClick={() => {
@@ -284,6 +286,19 @@ export default function Layout({
                         >
                           <Users size={18} className="text-primary" />
                           Usuários
+                        </button>
+                      )}
+                      {authRole !== 'consulta' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            setActiveTab('operation-log');
+                          }}
+                          className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                        >
+                          <History size={18} className="text-primary" />
+                          Log do sistema
                         </button>
                       )}
                       <button

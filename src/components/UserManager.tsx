@@ -13,6 +13,7 @@ type UserRecord = {
   name: string;
   role: UserRole;
   active: number;
+  requiresDailyCycleInventory?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,6 +39,7 @@ export default function UserManager({
   const [newMatricula, setNewMatricula] = useState('');
   const [newNome, setNewNome] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('consulta');
+  const [newRequiresDailyCycleInventory, setNewRequiresDailyCycleInventory] = useState(false);
   const [newSenha, setNewSenha] = useState('');
   const [newSenhaConfirm, setNewSenhaConfirm] = useState('');
 
@@ -45,6 +47,7 @@ export default function UserManager({
   const [editNome, setEditNome] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('consulta');
   const [editActive, setEditActive] = useState(true);
+  const [editRequiresDailyCycleInventory, setEditRequiresDailyCycleInventory] = useState(false);
 
   const [resetUserId, setResetUserId] = useState<string | null>(null);
   const [resetSenha, setResetSenha] = useState('');
@@ -138,7 +141,13 @@ export default function UserManager({
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ matricula, nome, role: newRole, senha: newSenha })
+        body: JSON.stringify({
+          matricula,
+          nome,
+          role: newRole,
+          senha: newSenha,
+          requiresDailyCycleInventory: newRole !== 'consulta' && newRequiresDailyCycleInventory
+        })
       });
       const data = (await response.json()) as { ok: boolean; message?: string };
       if (!response.ok || !data.ok) {
@@ -149,6 +158,7 @@ export default function UserManager({
       setNewMatricula('');
       setNewNome('');
       setNewRole('consulta');
+      setNewRequiresDailyCycleInventory(false);
       setNewSenha('');
       setNewSenhaConfirm('');
       showToast('Usuário cadastrado.', 'success');
@@ -250,6 +260,7 @@ export default function UserManager({
     setEditNome(user.name || '');
     setEditRole(user.role);
     setEditActive(user.active === 1);
+    setEditRequiresDailyCycleInventory(Number(user.requiresDailyCycleInventory) === 1);
   };
 
   const handleSaveEdit = async () => {
@@ -266,7 +277,13 @@ export default function UserManager({
       const response = await fetch('/api/users', {
         method: 'PUT',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id: editTarget.id, nome, role: editRole, active: editActive })
+        body: JSON.stringify({
+          id: editTarget.id,
+          nome,
+          role: editRole,
+          active: editActive,
+          requiresDailyCycleInventory: editRole !== 'consulta' && editRequiresDailyCycleInventory
+        })
       });
       const data = (await response.json()) as { ok: boolean; message?: string };
       if (!response.ok || !data.ok) {
@@ -343,7 +360,11 @@ export default function UserManager({
             />
             <select
               value={newRole}
-              onChange={event => setNewRole(event.target.value as UserRole)}
+              onChange={event => {
+                const nextRole = event.target.value as UserRole;
+                setNewRole(nextRole);
+                if (nextRole === 'consulta') setNewRequiresDailyCycleInventory(false);
+              }}
               className="w-full h-12 rounded-xl px-4 bg-surface-container-lowest border border-outline-variant/20 focus:ring-2 focus:ring-primary/40 font-bold"
             >
               <option value="consulta">Consulta</option>
@@ -353,6 +374,25 @@ export default function UserManager({
             <div className="text-xs text-on-surface-variant flex items-center">
               Dica: admin é quem cadastra e reseta senhas.
             </div>
+            <label
+              className={`sm:col-span-2 rounded-xl border border-outline-variant/20 bg-surface-container-lowest px-4 py-3 text-sm font-bold flex items-start gap-3 ${
+                newRole === 'consulta' ? 'opacity-60' : ''
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={newRequiresDailyCycleInventory}
+                disabled={newRole === 'consulta'}
+                onChange={event => setNewRequiresDailyCycleInventory(event.target.checked)}
+                className="mt-0.5 h-5 w-5"
+              />
+              <span>
+                Inventario ciclico diario obrigatorio
+                <span className="block mt-1 text-xs font-medium text-on-surface-variant">
+                  Para Operacao/Admin: mostra a contagem obrigatoria no Painel e bloqueia o restante ate finalizar.
+                </span>
+              </span>
+            </label>
             <input
               value={newSenha}
               onChange={event => setNewSenha(event.target.value)}
@@ -457,6 +497,7 @@ export default function UserManager({
                   {normalizeUserFacingText(user.name)} <span className="text-on-surface-variant">• {user.matricula}</span>
                 </p>
                 <p className="text-xs text-on-surface-variant mt-1">
+                  {Number(user.requiresDailyCycleInventory) === 1 ? 'Ciclico obrigatorio / ' : ''}
                   {user.active === 1 ? 'Ativo' : 'Desativado'} • {user.role}
                 </p>
               </div>
@@ -584,7 +625,11 @@ export default function UserManager({
               />
               <select
                 value={editRole}
-                onChange={event => setEditRole(event.target.value as UserRole)}
+                onChange={event => {
+                  const nextRole = event.target.value as UserRole;
+                  setEditRole(nextRole);
+                  if (nextRole === 'consulta') setEditRequiresDailyCycleInventory(false);
+                }}
                 disabled={loading}
                 className="w-full h-12 px-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 font-bold disabled:opacity-60"
               >
@@ -592,6 +637,25 @@ export default function UserManager({
                 <option value="operacao">Operação</option>
                 <option value="admin">Admin</option>
               </select>
+              <label
+                className={`rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 text-sm font-bold flex items-start gap-3 ${
+                  editRole === 'consulta' ? 'opacity-60' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={editRequiresDailyCycleInventory}
+                  disabled={editRole === 'consulta'}
+                  onChange={event => setEditRequiresDailyCycleInventory(event.target.checked)}
+                  className="mt-0.5 h-5 w-5"
+                />
+                <span>
+                  Inventario ciclico diario obrigatorio
+                  <span className="block mt-1 text-xs font-medium text-on-surface-variant">
+                    Bloqueia o sistema para este usuario ate finalizar a contagem diaria obrigatoria.
+                  </span>
+                </span>
+              </label>
               <label className="flex items-center gap-3 text-sm font-bold text-on-surface">
                 <input
                   type="checkbox"
