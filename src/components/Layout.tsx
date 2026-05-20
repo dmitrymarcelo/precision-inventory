@@ -39,6 +39,7 @@ interface LayoutProps {
   onIgnoreCloudUpdate?: () => void;
   onForcePendingSync?: () => void;
   onExportPendingBackup?: () => void;
+  onUploadPendingBackup?: () => void;
   onDiscardLocalPending?: () => void;
 }
 
@@ -67,6 +68,7 @@ export default function Layout({
   pendingJournalCount = 0,
   onForcePendingSync,
   onExportPendingBackup,
+  onUploadPendingBackup,
   onDiscardLocalPending
 }: LayoutProps) {
   const [supportsFullscreen, setSupportsFullscreen] = useState(false);
@@ -372,6 +374,15 @@ export default function Layout({
                     className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
                   >
                     Exportar backup
+                  </button>
+                ) : null}
+                {onUploadPendingBackup ? (
+                  <button
+                    type="button"
+                    onClick={onUploadPendingBackup}
+                    className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
+                  >
+                    Enviar backup ao servidor
                   </button>
                 ) : null}
                 {onDiscardLocalPending ? (

@@ -29,10 +29,13 @@ import { getAbcAnalysisForSku, getAbcClassPriority } from './abcAnalysis';
 import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, getLatestOperationalLogBySku } from './cyclicInventory';
 import {
   createOperationJournalEntry,
+  createOperationJournalEntriesForBackup,
   enqueueOperationJournalEntry,
   flushOperationJournalQueue,
   getPendingOperationJournalQueue,
   markOperationJournalApplied,
+  postOperationJournalEntries,
+  replayOperationJournalEntries,
   removeOperationJournalEntries
 } from './operationJournal';
 
@@ -493,6 +496,8 @@ export default function App() {
   const outboxWriteTimerRef = useRef<number | null>(null);
   const flushInFlightRef = useRef(false);
   const lastFlushResultRef = useRef<{ ok: boolean; code: string; at: number } | null>(null);
+  const backupUploadInFlightRef = useRef(false);
+  const backupUploadInputRef = useRef<HTMLInputElement | null>(null);
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
@@ -1821,6 +1826,118 @@ export default function App() {
     showToast('Backup de emergencia gerado.', 'success');
   };
 
+  const handleUploadPendingBackup = () => {
+    if (backupUploadInFlightRef.current) {
+      showToast('Envio de backup já está em andamento.', 'info');
+      return;
+    }
+    if (!authSession?.token) {
+      showToast('Sessão expirada. Saia e entre novamente para enviar o backup.', 'info');
+      setAuthSession(null);
+      return;
+    }
+    backupUploadInputRef.current?.click();
+  };
+
+  const handleBackupUploadInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file) return;
+    if (!authSession?.token) {
+      showToast('Sessão expirada. Saia e entre novamente para enviar o backup.', 'info');
+      setAuthSession(null);
+      return;
+    }
+    if (backupUploadInFlightRef.current) return;
+
+    backupUploadInFlightRef.current = true;
+    setCloudStatus('saving');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text) as {
+        exportedAt?: string;
+        kind?: string;
+        outbox?: { state?: CloudInventoryState | null } | null;
+        operationJournalQueue?: unknown;
+      };
+
+      if (String(backup?.kind || '') !== 'precision-inventory-pending-operation-backup') {
+        showToast('Arquivo de backup inválido.', 'info');
+        return;
+      }
+
+      const queued = Array.isArray(backup?.operationJournalQueue) ? (backup.operationJournalQueue as unknown[]) : [];
+      const outboxState = backup?.outbox?.state && typeof backup.outbox.state === 'object' ? backup.outbox.state : null;
+      const createdAt = typeof backup?.exportedAt === 'string' && backup.exportedAt ? backup.exportedAt : new Date().toISOString();
+
+      const entries =
+        queued.length > 0
+          ? (queued as any[])
+          : outboxState
+            ? createOperationJournalEntriesForBackup({
+                previousState: latestCloudResultRef.current?.state,
+                nextState: outboxState,
+                createdAt
+              })
+            : [];
+
+      if (!entries.length) {
+        showToast('Backup não tem operações para enviar.', 'info');
+        return;
+      }
+
+      let applied = 0;
+      for (let i = 0; i < entries.length; i += 25) {
+        const batch = entries.slice(i, i + 25) as any[];
+        const posted = await postOperationJournalEntries(batch, authSession.token);
+        if (posted.acceptedIds.length === 0) continue;
+        const replay = await replayOperationJournalEntries(posted.acceptedIds, authSession.token);
+        applied += replay.applied;
+      }
+
+      clearOutbox();
+      localDirtyRef.current = false;
+      localStorage.removeItem(localDirtyStorageKey);
+      localUpdatedAtRef.current = '';
+      localStorage.removeItem(localUpdatedAtStorageKey);
+      const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+      if (pendingJournalIds.length > 0) {
+        removeOperationJournalEntries(pendingJournalIds);
+        setPendingJournalCount(0);
+      }
+      setLocalPendingSync(false);
+      appendSyncEvent('journal_flush_ok', `Backup enviado e aplicado (${applied} lote(s))`);
+
+      try {
+        const result = await loadCloudState();
+        latestCloudResultRef.current = result;
+        applyCloudStateIfNewer(result, 'backup_uploaded');
+        setCloudAvailable(true);
+        setCloudStatus('online');
+      } catch {
+        setCloudAvailable(false);
+        setCloudStatus('offline');
+      }
+
+      showToast('Backup enviado ao servidor e aparelho destravado.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'AUTH') {
+        showToast('Sessão expirada. Saia e entre novamente.', 'info');
+        setAuthSession(null);
+        return;
+      }
+      if (message.includes('journal-replay-413')) {
+        showToast('Estado grande demais para aplicar. Envie novamente ou use Exportar backup.', 'info');
+        return;
+      }
+      showToast('Nao foi possivel enviar o backup agora. Tente novamente.', 'info');
+    } finally {
+      backupUploadInFlightRef.current = false;
+      setCloudStatus(previous => (previous === 'saving' ? (cloudAvailable ? 'online' : 'offline') : previous));
+    }
+  };
+
   const handleDiscardLocalPending = async () => {
     if (isStockConsulta) return;
     const outboxExists = Boolean(outboxRef.current || localDirtyRef.current);
@@ -1893,6 +2010,7 @@ export default function App() {
         onIgnoreCloudUpdate={ignoreCloudUpdate}
         onForcePendingSync={handleForcePendingSync}
         onExportPendingBackup={handleExportPendingBackup}
+        onUploadPendingBackup={handleUploadPendingBackup}
         onDiscardLocalPending={() => void handleDiscardLocalPending()}
         onLogout={() => {
           if (hasPendingSafetySync) {
@@ -1912,6 +2030,13 @@ export default function App() {
           syncUrl('dashboard', null, null, '');
         }}
       >
+        <input
+          ref={backupUploadInputRef}
+          type="file"
+          accept="application/json"
+          onChange={event => void handleBackupUploadInputChange(event)}
+          className="hidden"
+        />
         {activeTab === 'dashboard' && (
           <Dashboard
             items={items}

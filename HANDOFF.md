@@ -19,6 +19,8 @@ Ultima atualizacao: 2026-05-20
   - `forceApplyCloudState` agora limpa tambem a fila local da ponte quando o usuario escolhe descartar local e aplicar online
   - `src/components/Layout.tsx` transforma o botao superior em `Sincronizar` quando existe pendencia local, chamando `onForcePendingSync` em vez de `Atualizar do online`
   - `src/components/Layout.tsx` ganhou botao `Continuar (descartar local)` para destravar operacao quando a sincronizacao falhar, com confirmacao dupla e orientacao para exportar backup antes
+  - `src/components/Layout.tsx` ganhou botao `Enviar backup ao servidor` que aceita o arquivo exportado e reprocessa por patches no D1, aplicando no estado online e destravando o aparelho
+  - `functions/api/operation-journal.js` ganhou `action=replay` para aplicar patches recebidos no `app_state`, marcando como `applied` e respeitando limite de tamanho do estado
   - `functions/api/state.js` passou a responder `413` quando o estado for grande demais (limite dobrado para reduzir falso-positivo), evitando erro generico de instabilidade
   - `src/operationLog.ts` registra `Ponte local descartada`
 - Validado:
