@@ -182,6 +182,10 @@ Permissoes de gravacao:
 - se `/api/state` voltar com `backend: "d1"` e cabecalho `x-precision-supabase-fallback`, investigar primeiro as secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Cloudflare
 - nunca registrar a chave `service_role` em Git, frontend, logs ou memorias persistentes
 - se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
+- se o botao `Sincronizar agora` mantiver `Ponte local`, conferir o estado online e limpar somente operacoes locais cujo patch ja conste igual no servidor
+- erros 401/403 da ponte segura devem virar `AUTH` para mostrar `Sessao expirada`, nao falha generica de internet
+- no Supabase, replay de `/api/operation-journal?action=replay` deve usar State V2 quando existir; se ainda nao existir, deve partir do State V1 migrado (`inventory`), nunca de estado vazio
+- previews de branch podem nao ter secrets Supabase e cair para fallback D1; a validacao final precisa ser na producao com `backend: "supabase"`
 - com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 
 ## Skill 8.1 - Inventario ciclico obrigatorio

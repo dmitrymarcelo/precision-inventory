@@ -34,6 +34,7 @@ import {
   enqueueOperationJournalEntries,
   enqueueOperationJournalEntry,
   flushOperationJournalQueue,
+  getAlreadyAppliedOperationJournalEntryIds,
   getPendingOperationJournalQueue,
   hasOperationJournalPatchChanges,
   markOperationJournalApplied,
@@ -755,17 +756,61 @@ export default function App() {
     setPendingJournalCount(getPendingOperationJournalQueue().length);
   };
 
+  const reconcileLocalJournalWithOnlineState = async (reason: string, preferredResult?: CloudStateResult | null) => {
+    const queue = getPendingOperationJournalQueue();
+    if (!queue.length) {
+      setPendingJournalCount(0);
+      return 0;
+    }
+
+    let result = preferredResult || latestCloudResultRef.current;
+    if (!result?.state) {
+      try {
+        result = await loadCloudState();
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
+        setCloudAvailable(true);
+        setCloudStatus('online');
+        setCloudStatusDetail('');
+      } catch (error) {
+        const detail = describeCloudError(error);
+        appendSyncEvent('journal_reconcile_fail', `${reason}: ${detail}`);
+        refreshPendingJournalCount();
+        return 0;
+      }
+    }
+
+    const alreadyAppliedIds = getAlreadyAppliedOperationJournalEntryIds(queue, result.state);
+    if (!alreadyAppliedIds.length) {
+      refreshPendingJournalCount();
+      return 0;
+    }
+
+    const remaining = removeOperationJournalEntries(alreadyAppliedIds);
+    setPendingJournalCount(remaining.length);
+    appendSyncEvent('journal_local_confirmed', `${alreadyAppliedIds.length} pendencia(s) ja constavam no servidor`);
+    if (remaining.length === 0 && !outboxRef.current && !localDirtyRef.current) {
+      setLocalPendingSync(false);
+    }
+    return alreadyAppliedIds.length;
+  };
+
   const flushJournalBridge = async (reason: string) => {
     try {
       const result = await flushOperationJournalQueue(authSession?.token);
       setPendingJournalCount(result.remaining);
       if (result.accepted > 0) {
-        appendSyncEvent('journal_flush_ok', `${result.accepted} operacao(oes) protegida(s) no D1`);
+        appendSyncEvent('journal_flush_ok', `${result.accepted} operacao(oes) protegida(s) no servidor`);
       }
-      return true;
-    } catch {
+      return result.remaining === 0 || result.accepted > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'AUTH') {
+        lastFlushResultRef.current = { ok: false, code: 'auth', at: Date.now() };
+        setAuthSession(null);
+      }
       refreshPendingJournalCount();
-      appendSyncEvent('journal_flush_fail', reason);
+      appendSyncEvent('journal_flush_fail', message ? `${reason}: ${message}` : reason);
       return false;
     }
   };
@@ -1959,14 +2004,31 @@ export default function App() {
       }
 
       const journalOk = await flushJournalBridge('manual_force_sync');
-      if (journalOk) {
+      const confirmedOnline = journalOk ? 0 : await reconcileLocalJournalWithOnlineState('manual_force_sync');
+      const remainingJournal = getPendingOperationJournalQueue().length;
+      if (journalOk || confirmedOnline > 0) {
         if (!localDirtyRef.current && !outboxRef.current && getPendingOperationJournalQueue().length === 0) {
           setLocalPendingSync(false);
           setPendingJournalCount(0);
         }
-        showToast('Ponte de seguranca sincronizada.', 'success');
+        if (remainingJournal === 0) {
+          showToast(
+            confirmedOnline > 0
+              ? 'Pendencias locais ja estavam confirmadas no servidor.'
+              : 'Ponte de seguranca sincronizada.',
+            'success'
+          );
+        } else {
+          showToast(`Sincronizacao parcial. Ainda restam ${remainingJournal} pendencia(s) locais.`, 'info');
+        }
       } else {
-        showToast('Nao foi possivel sincronizar a ponte agora.', 'info');
+        const code = lastFlushResultRef.current?.code || '';
+        showToast(
+          code === 'auth'
+            ? 'Sessao expirada. Saia e entre novamente para sincronizar.'
+            : 'Nao foi possivel sincronizar a ponte agora.',
+          'info'
+        );
       }
     })();
   };

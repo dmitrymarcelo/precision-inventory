@@ -9,7 +9,7 @@
       "source_file": "vite.config.ts",
       "source_location": "L1",
       "id": "vite_config_ts",
-      "community": 14,
+      "community": 15,
       "norm_label": "vite.config.ts"
     },
     {
@@ -18,7 +18,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L1",
       "id": "functions_api_auth_js",
-      "community": 6,
+      "community": 5,
       "norm_label": "auth.js"
     },
     {
@@ -27,7 +27,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L8",
       "id": "api_auth_onrequestget",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestget()"
     },
     {
@@ -36,7 +36,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L44",
       "id": "api_auth_onrequestpost",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestpost()"
     },
     {
@@ -45,7 +45,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L220",
       "id": "api_auth_onrequestoptions",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestoptions()"
     },
     {
@@ -54,7 +54,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L230",
       "id": "api_auth_ensureauthschema",
-      "community": 6,
+      "community": 5,
       "norm_label": "ensureauthschema()"
     },
     {
@@ -63,7 +63,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L274",
       "id": "api_auth_safejson",
-      "community": 6,
+      "community": 5,
       "norm_label": "safejson()"
     },
     {
@@ -72,7 +72,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L282",
       "id": "api_auth_normalizematricula",
-      "community": 6,
+      "community": 5,
       "norm_label": "normalizematricula()"
     },
     {
@@ -81,7 +81,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L287",
       "id": "api_auth_timingsafeequalstring",
-      "community": 6,
+      "community": 5,
       "norm_label": "timingsafeequalstring()"
     },
     {
@@ -90,7 +90,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L302",
       "id": "api_auth_bytestohex",
-      "community": 6,
+      "community": 5,
       "norm_label": "bytestohex()"
     },
     {
@@ -99,7 +99,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L310",
       "id": "api_auth_hextobytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "hextobytes()"
     },
     {
@@ -108,7 +108,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L322",
       "id": "api_auth_base64decode",
-      "community": 6,
+      "community": 5,
       "norm_label": "base64decode()"
     },
     {
@@ -117,7 +117,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L331",
       "id": "api_auth_decodesalt",
-      "community": 6,
+      "community": 5,
       "norm_label": "decodesalt()"
     },
     {
@@ -126,7 +126,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L337",
       "id": "api_auth_sha256",
-      "community": 6,
+      "community": 5,
       "norm_label": "sha256()"
     },
     {
@@ -135,7 +135,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L427",
       "id": "api_auth_getrandombytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "getrandombytes()"
     },
     {
@@ -144,7 +144,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L439",
       "id": "api_auth_generatetoken",
-      "community": 6,
+      "community": 5,
       "norm_label": "generatetoken()"
     },
     {
@@ -153,7 +153,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L443",
       "id": "api_auth_generateid",
-      "community": 6,
+      "community": 5,
       "norm_label": "generateid()"
     },
     {
@@ -162,7 +162,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L447",
       "id": "api_auth_concatbytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "concatbytes()"
     },
     {
@@ -171,7 +171,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L458",
       "id": "api_auth_hashpassword",
-      "community": 6,
+      "community": 5,
       "norm_label": "hashpassword()"
     },
     {
@@ -180,7 +180,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L478",
       "id": "api_auth_createuser",
-      "community": 6,
+      "community": 5,
       "norm_label": "createuser()"
     },
     {
@@ -189,7 +189,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L522",
       "id": "api_auth_getsessionfromrequest",
-      "community": 6,
+      "community": 5,
       "norm_label": "getsessionfromrequest()"
     },
     {
@@ -198,7 +198,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L562",
       "id": "api_auth_loaduserbymatriculasupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "loaduserbymatriculasupabase()"
     },
     {
@@ -207,7 +207,7 @@
       "source_file": "functions\\api\\auth.js",
       "source_location": "L578",
       "id": "api_auth_loadsessionsupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "loadsessionsupabase()"
     },
     {
@@ -319,10 +319,28 @@
       "norm_label": "replayentriessupabase()"
     },
     {
+      "label": "resolveSupabaseReplayBaseState()",
+      "file_type": "code",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L421",
+      "id": "api_operation_journal_resolvesupabasereplaybasestate",
+      "community": 7,
+      "norm_label": "resolvesupabasereplaybasestate()"
+    },
+    {
+      "label": "loadStateV1Supabase()",
+      "file_type": "code",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L427",
+      "id": "api_operation_journal_loadstatev1supabase",
+      "community": 7,
+      "norm_label": "loadstatev1supabase()"
+    },
+    {
       "label": "safeJsonParse()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L420",
+      "source_location": "L434",
       "id": "api_operation_journal_safejsonparse",
       "community": 7,
       "norm_label": "safejsonparse()"
@@ -331,7 +349,7 @@
       "label": "cleanupOldJournalRowsSupabase()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L428",
+      "source_location": "L442",
       "id": "api_operation_journal_cleanupoldjournalrowssupabase",
       "community": 7,
       "norm_label": "cleanupoldjournalrowssupabase()"
@@ -340,7 +358,7 @@
       "label": "applyPatchesToStateV2()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L435",
+      "source_location": "L449",
       "id": "api_operation_journal_applypatchestostatev2",
       "community": 7,
       "norm_label": "applypatchestostatev2()"
@@ -349,7 +367,7 @@
       "label": "normalizePatchList()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L489",
+      "source_location": "L503",
       "id": "api_operation_journal_normalizepatchlist",
       "community": 7,
       "norm_label": "normalizepatchlist()"
@@ -358,7 +376,7 @@
       "label": "saveChunkedArrayPart()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L518",
+      "source_location": "L532",
       "id": "api_operation_journal_savechunkedarraypart",
       "community": 7,
       "norm_label": "savechunkedarraypart()"
@@ -367,7 +385,7 @@
       "label": "upsertStateRow()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L527",
+      "source_location": "L541",
       "id": "api_operation_journal_upsertstaterow",
       "community": 7,
       "norm_label": "upsertstaterow()"
@@ -376,7 +394,7 @@
       "label": "loadStateV2()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L542",
+      "source_location": "L556",
       "id": "api_operation_journal_loadstatev2",
       "community": 7,
       "norm_label": "loadstatev2()"
@@ -385,7 +403,7 @@
       "label": "loadChunkedArray()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L577",
+      "source_location": "L591",
       "id": "api_operation_journal_loadchunkedarray",
       "community": 7,
       "norm_label": "loadchunkedarray()"
@@ -394,7 +412,7 @@
       "label": "saveStateV2()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L589",
+      "source_location": "L603",
       "id": "api_operation_journal_savestatev2",
       "community": 7,
       "norm_label": "savestatev2()"
@@ -403,7 +421,7 @@
       "label": "writeChunkedArray()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L678",
+      "source_location": "L692",
       "id": "api_operation_journal_writechunkedarray",
       "community": 7,
       "norm_label": "writechunkedarray()"
@@ -412,7 +430,7 @@
       "label": "chunkArray()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L684",
+      "source_location": "L698",
       "id": "api_operation_journal_chunkarray",
       "community": 7,
       "norm_label": "chunkarray()"
@@ -421,7 +439,7 @@
       "label": "byteLength()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L708",
+      "source_location": "L722",
       "id": "api_operation_journal_bytelength",
       "community": 7,
       "norm_label": "bytelength()"
@@ -430,7 +448,7 @@
       "label": "collectManifestKeysSafe()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L713",
+      "source_location": "L727",
       "id": "api_operation_journal_collectmanifestkeyssafe",
       "community": 7,
       "norm_label": "collectmanifestkeyssafe()"
@@ -439,7 +457,7 @@
       "label": "hasSafeManifestParts()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L738",
+      "source_location": "L752",
       "id": "api_operation_journal_hassafemanifestparts",
       "community": 7,
       "norm_label": "hassafemanifestparts()"
@@ -448,7 +466,7 @@
       "label": "normalizeState()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L746",
+      "source_location": "L760",
       "id": "api_operation_journal_normalizestate",
       "community": 7,
       "norm_label": "normalizestate()"
@@ -457,7 +475,7 @@
       "label": "applyPatchToState()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L758",
+      "source_location": "L772",
       "id": "api_operation_journal_applypatchtostate",
       "community": 7,
       "norm_label": "applypatchtostate()"
@@ -466,7 +484,7 @@
       "label": "mergeItemsBySku()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L780",
+      "source_location": "L794",
       "id": "api_operation_journal_mergeitemsbysku",
       "community": 7,
       "norm_label": "mergeitemsbysku()"
@@ -475,7 +493,7 @@
       "label": "mergeRequestsById()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L794",
+      "source_location": "L808",
       "id": "api_operation_journal_mergerequestsbyid",
       "community": 7,
       "norm_label": "mergerequestsbyid()"
@@ -484,7 +502,7 @@
       "label": "mergeMaterialRequest()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L808",
+      "source_location": "L822",
       "id": "api_operation_journal_mergematerialrequest",
       "community": 7,
       "norm_label": "mergematerialrequest()"
@@ -493,7 +511,7 @@
       "label": "mergeRequestStatus()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L840",
+      "source_location": "L854",
       "id": "api_operation_journal_mergerequeststatus",
       "community": 7,
       "norm_label": "mergerequeststatus()"
@@ -502,7 +520,7 @@
       "label": "requestStatusRank()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L852",
+      "source_location": "L866",
       "id": "api_operation_journal_requeststatusrank",
       "community": 7,
       "norm_label": "requeststatusrank()"
@@ -511,7 +529,7 @@
       "label": "mergeRequestItems()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L869",
+      "source_location": "L883",
       "id": "api_operation_journal_mergerequestitems",
       "community": 7,
       "norm_label": "mergerequestitems()"
@@ -520,7 +538,7 @@
       "label": "mergeAuditTrail()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L902",
+      "source_location": "L916",
       "id": "api_operation_journal_mergeaudittrail",
       "community": 7,
       "norm_label": "mergeaudittrail()"
@@ -529,7 +547,7 @@
       "label": "mergeVehiclesById()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L921",
+      "source_location": "L935",
       "id": "api_operation_journal_mergevehiclesbyid",
       "community": 7,
       "norm_label": "mergevehiclesbyid()"
@@ -538,7 +556,7 @@
       "label": "mergePurchasesById()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L933",
+      "source_location": "L947",
       "id": "api_operation_journal_mergepurchasesbyid",
       "community": 7,
       "norm_label": "mergepurchasesbyid()"
@@ -547,7 +565,7 @@
       "label": "mergeLogsById()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L947",
+      "source_location": "L961",
       "id": "api_operation_journal_mergelogsbyid",
       "community": 7,
       "norm_label": "mergelogsbyid()"
@@ -556,7 +574,7 @@
       "label": "mergeSettings()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L959",
+      "source_location": "L973",
       "id": "api_operation_journal_mergesettings",
       "community": 7,
       "norm_label": "mergesettings()"
@@ -565,7 +583,7 @@
       "label": "mergeAliases()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L966",
+      "source_location": "L980",
       "id": "api_operation_journal_mergealiases",
       "community": 7,
       "norm_label": "mergealiases()"
@@ -574,7 +592,7 @@
       "label": "chooseNewerRecord()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L973",
+      "source_location": "L987",
       "id": "api_operation_journal_choosenewerrecord",
       "community": 7,
       "norm_label": "choosenewerrecord()"
@@ -583,7 +601,7 @@
       "label": "parseUpdatedAt()",
       "file_type": "code",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L984",
+      "source_location": "L998",
       "id": "api_operation_journal_parseupdatedat",
       "community": 7,
       "norm_label": "parseupdatedat()"
@@ -594,7 +612,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L1",
       "id": "functions_api_request_lock_js",
-      "community": 6,
+      "community": 5,
       "norm_label": "request-lock.js"
     },
     {
@@ -603,7 +621,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L11",
       "id": "api_request_lock_onrequestget",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestget()"
     },
     {
@@ -612,7 +630,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L31",
       "id": "api_request_lock_onrequestpost",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestpost()"
     },
     {
@@ -621,7 +639,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L85",
       "id": "api_request_lock_onrequestoptions",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestoptions()"
     },
     {
@@ -630,7 +648,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L95",
       "id": "api_request_lock_ensureschema",
-      "community": 6,
+      "community": 5,
       "norm_label": "ensureschema()"
     },
     {
@@ -639,7 +657,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L115",
       "id": "api_request_lock_readlock",
-      "community": 6,
+      "community": 5,
       "norm_label": "readlock()"
     },
     {
@@ -648,7 +666,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L153",
       "id": "api_request_lock_acquirelock",
-      "community": 6,
+      "community": 5,
       "norm_label": "acquirelock()"
     },
     {
@@ -657,7 +675,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L229",
       "id": "api_request_lock_heartbeatlock",
-      "community": 6,
+      "community": 5,
       "norm_label": "heartbeatlock()"
     },
     {
@@ -666,7 +684,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L256",
       "id": "api_request_lock_releaselock",
-      "community": 6,
+      "community": 5,
       "norm_label": "releaselock()"
     },
     {
@@ -675,7 +693,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L263",
       "id": "api_request_lock_readlocksupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "readlocksupabase()"
     },
     {
@@ -684,7 +702,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L289",
       "id": "api_request_lock_acquirelocksupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "acquirelocksupabase()"
     },
     {
@@ -693,7 +711,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L323",
       "id": "api_request_lock_heartbeatlocksupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "heartbeatlocksupabase()"
     },
     {
@@ -702,7 +720,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L342",
       "id": "api_request_lock_releaselocksupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "releaselocksupabase()"
     },
     {
@@ -711,7 +729,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L347",
       "id": "api_request_lock_normalizeid",
-      "community": 6,
+      "community": 5,
       "norm_label": "normalizeid()"
     },
     {
@@ -720,7 +738,7 @@
       "source_file": "functions\\api\\request-lock.js",
       "source_location": "L355",
       "id": "api_request_lock_safejson",
-      "community": 6,
+      "community": 5,
       "norm_label": "safejson()"
     },
     {
@@ -729,7 +747,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L1",
       "id": "functions_api_state_js",
-      "community": 2,
+      "community": 3,
       "norm_label": "state.js"
     },
     {
@@ -738,7 +756,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L22",
       "id": "api_state_onrequestget",
-      "community": 2,
+      "community": 3,
       "norm_label": "onrequestget()"
     },
     {
@@ -747,7 +765,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L68",
       "id": "api_state_withsupabasefallbackheader",
-      "community": 2,
+      "community": 3,
       "norm_label": "withsupabasefallbackheader()"
     },
     {
@@ -756,7 +774,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L77",
       "id": "api_state_onrequestput",
-      "community": 2,
+      "community": 3,
       "norm_label": "onrequestput()"
     },
     {
@@ -765,7 +783,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L219",
       "id": "api_state_loadstatev1supabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev1supabase()"
     },
     {
@@ -774,7 +792,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L230",
       "id": "api_state_safeparsejson",
-      "community": 2,
+      "community": 3,
       "norm_label": "safeparsejson()"
     },
     {
@@ -783,7 +801,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L238",
       "id": "api_state_describesupabaseerror",
-      "community": 2,
+      "community": 3,
       "norm_label": "describesupabaseerror()"
     },
     {
@@ -792,7 +810,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L251",
       "id": "api_state_loadstatev1",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev1()"
     },
     {
@@ -801,7 +819,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L256",
       "id": "api_state_loadstatev2manifest",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2manifest()"
     },
     {
@@ -810,7 +828,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L271",
       "id": "api_state_loadstatev2",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2()"
     },
     {
@@ -819,7 +837,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L297",
       "id": "api_state_streamstatev2response",
-      "community": 2,
+      "community": 3,
       "norm_label": "streamstatev2response()"
     },
     {
@@ -828,7 +846,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L331",
       "id": "api_state_writechunkedarraytextstream",
-      "community": 2,
+      "community": 3,
       "norm_label": "writechunkedarraytextstream()"
     },
     {
@@ -837,7 +855,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L362",
       "id": "api_state_writechunkedarraytextstreamsafe",
-      "community": 2,
+      "community": 3,
       "norm_label": "writechunkedarraytextstreamsafe()"
     },
     {
@@ -846,7 +864,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L370",
       "id": "api_state_safefirst",
-      "community": 2,
+      "community": 3,
       "norm_label": "safefirst()"
     },
     {
@@ -855,7 +873,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L378",
       "id": "api_state_safeall",
-      "community": 2,
+      "community": 3,
       "norm_label": "safeall()"
     },
     {
@@ -864,7 +882,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L395",
       "id": "api_state_loadchunkedarray",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadchunkedarray()"
     },
     {
@@ -873,7 +891,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L407",
       "id": "api_state_savestatev2",
-      "community": 2,
+      "community": 3,
       "norm_label": "savestatev2()"
     },
     {
@@ -882,7 +900,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L497",
       "id": "api_state_writechunkedarray",
-      "community": 2,
+      "community": 3,
       "norm_label": "writechunkedarray()"
     },
     {
@@ -891,7 +909,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L503",
       "id": "api_state_chunkarray",
-      "community": 2,
+      "community": 3,
       "norm_label": "chunkarray()"
     },
     {
@@ -900,7 +918,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L527",
       "id": "api_state_bytelength",
-      "community": 2,
+      "community": 3,
       "norm_label": "bytelength()"
     },
     {
@@ -909,7 +927,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L532",
       "id": "api_state_isvalidjson",
-      "community": 2,
+      "community": 3,
       "norm_label": "isvalidjson()"
     },
     {
@@ -918,7 +936,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L541",
       "id": "api_state_collectmanifestkeyssafe",
-      "community": 2,
+      "community": 3,
       "norm_label": "collectmanifestkeyssafe()"
     },
     {
@@ -927,7 +945,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L569",
       "id": "api_state_hassafemanifestparts",
-      "community": 2,
+      "community": 3,
       "norm_label": "hassafemanifestparts()"
     },
     {
@@ -936,7 +954,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L577",
       "id": "api_state_onrequestoptions",
-      "community": 2,
+      "community": 3,
       "norm_label": "onrequestoptions()"
     },
     {
@@ -945,7 +963,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L587",
       "id": "api_state_ensureschema",
-      "community": 2,
+      "community": 3,
       "norm_label": "ensureschema()"
     },
     {
@@ -954,7 +972,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L641",
       "id": "api_state_normalizestate",
-      "community": 2,
+      "community": 3,
       "norm_label": "normalizestate()"
     },
     {
@@ -963,7 +981,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L653",
       "id": "api_state_mergestates",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergestates()"
     },
     {
@@ -972,7 +990,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L665",
       "id": "api_state_mergeconsultarequeststate",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergeconsultarequeststate()"
     },
     {
@@ -981,7 +999,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L672",
       "id": "api_state_filterconsultacreatedrequests",
-      "community": 2,
+      "community": 3,
       "norm_label": "filterconsultacreatedrequests()"
     },
     {
@@ -990,7 +1008,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L677",
       "id": "api_state_isconsultacreatedrequest",
-      "community": 2,
+      "community": 3,
       "norm_label": "isconsultacreatedrequest()"
     },
     {
@@ -999,7 +1017,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L692",
       "id": "api_state_mergeitemsbysku",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergeitemsbysku()"
     },
     {
@@ -1008,7 +1026,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L706",
       "id": "api_state_mergerequestsbyid",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergerequestsbyid()"
     },
     {
@@ -1017,7 +1035,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L720",
       "id": "api_state_mergematerialrequest",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergematerialrequest()"
     },
     {
@@ -1026,7 +1044,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L752",
       "id": "api_state_mergerequeststatus",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergerequeststatus()"
     },
     {
@@ -1035,7 +1053,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L764",
       "id": "api_state_requeststatusrank",
-      "community": 2,
+      "community": 3,
       "norm_label": "requeststatusrank()"
     },
     {
@@ -1044,7 +1062,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L781",
       "id": "api_state_mergerequestitems",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergerequestitems()"
     },
     {
@@ -1053,7 +1071,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L814",
       "id": "api_state_mergeaudittrail",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergeaudittrail()"
     },
     {
@@ -1062,7 +1080,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L833",
       "id": "api_state_mergevehiclesbyid",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergevehiclesbyid()"
     },
     {
@@ -1071,7 +1089,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L845",
       "id": "api_state_mergepurchasesbyid",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergepurchasesbyid()"
     },
     {
@@ -1080,7 +1098,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L859",
       "id": "api_state_mergelogsbyid",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergelogsbyid()"
     },
     {
@@ -1089,7 +1107,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L871",
       "id": "api_state_mergesettings",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergesettings()"
     },
     {
@@ -1098,7 +1116,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L878",
       "id": "api_state_mergealiases",
-      "community": 2,
+      "community": 3,
       "norm_label": "mergealiases()"
     },
     {
@@ -1107,7 +1125,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L885",
       "id": "api_state_choosenewerrecord",
-      "community": 2,
+      "community": 3,
       "norm_label": "choosenewerrecord()"
     },
     {
@@ -1116,7 +1134,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L896",
       "id": "api_state_parseupdatedat",
-      "community": 2,
+      "community": 3,
       "norm_label": "parseupdatedat()"
     },
     {
@@ -1125,7 +1143,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L902",
       "id": "api_state_collectnewdivergencelogs",
-      "community": 2,
+      "community": 3,
       "norm_label": "collectnewdivergencelogs()"
     },
     {
@@ -1134,7 +1152,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L914",
       "id": "api_state_senddivergencenotifications",
-      "community": 2,
+      "community": 3,
       "norm_label": "senddivergencenotifications()"
     },
     {
@@ -1143,7 +1161,7 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L944",
       "id": "api_state_postwebhook",
-      "community": 2,
+      "community": 3,
       "norm_label": "postwebhook()"
     },
     {
@@ -1152,7 +1170,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L1",
       "id": "functions_api_supabase_js",
-      "community": 2,
+      "community": 3,
       "norm_label": "supabase.js"
     },
     {
@@ -1161,7 +1179,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L10",
       "id": "api_supabase_issupabaseconfigured",
-      "community": 6,
+      "community": 5,
       "norm_label": "issupabaseconfigured()"
     },
     {
@@ -1170,7 +1188,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L18",
       "id": "api_supabase_getsupabaseadmin",
-      "community": 6,
+      "community": 5,
       "norm_label": "getsupabaseadmin()"
     },
     {
@@ -1188,7 +1206,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L52",
       "id": "api_supabase_splitintobatches",
-      "community": 2,
+      "community": 3,
       "norm_label": "splitintobatches()"
     },
     {
@@ -1197,7 +1215,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L62",
       "id": "api_supabase_d1all",
-      "community": 2,
+      "community": 3,
       "norm_label": "d1all()"
     },
     {
@@ -1206,7 +1224,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L73",
       "id": "api_supabase_d1first",
-      "community": 2,
+      "community": 3,
       "norm_label": "d1first()"
     },
     {
@@ -1215,7 +1233,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L84",
       "id": "api_supabase_ismissingd1table",
-      "community": 2,
+      "community": 3,
       "norm_label": "ismissingd1table()"
     },
     {
@@ -1224,7 +1242,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L89",
       "id": "api_supabase_ismigrationmarkercomplete",
-      "community": 2,
+      "community": 3,
       "norm_label": "ismigrationmarkercomplete()"
     },
     {
@@ -1233,7 +1251,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L96",
       "id": "api_supabase_getsupabaseappstatevalue",
-      "community": 2,
+      "community": 3,
       "norm_label": "getsupabaseappstatevalue()"
     },
     {
@@ -1242,7 +1260,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L102",
       "id": "api_supabase_setsupabaseappstatevalue",
-      "community": 2,
+      "community": 3,
       "norm_label": "setsupabaseappstatevalue()"
     },
     {
@@ -1251,7 +1269,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L108",
       "id": "api_supabase_migrated1tosupabaseifneeded",
-      "community": 2,
+      "community": 3,
       "norm_label": "migrated1tosupabaseifneeded()"
     },
     {
@@ -1260,7 +1278,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L263",
       "id": "api_supabase_bytelength",
-      "community": 2,
+      "community": 3,
       "norm_label": "bytelength()"
     },
     {
@@ -1269,7 +1287,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L268",
       "id": "api_supabase_safejsonparse",
-      "community": 2,
+      "community": 3,
       "norm_label": "safejsonparse()"
     },
     {
@@ -1278,7 +1296,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L276",
       "id": "api_supabase_hassafemanifestparts",
-      "community": 2,
+      "community": 3,
       "norm_label": "hassafemanifestparts()"
     },
     {
@@ -1287,7 +1305,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L285",
       "id": "api_supabase_chunkarray",
-      "community": 2,
+      "community": 3,
       "norm_label": "chunkarray()"
     },
     {
@@ -1296,7 +1314,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L308",
       "id": "api_supabase_collectmanifestkeyssafe",
-      "community": 2,
+      "community": 3,
       "norm_label": "collectmanifestkeyssafe()"
     },
     {
@@ -1305,7 +1323,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L326",
       "id": "api_supabase_loadstatev2manifestsupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2manifestsupabase()"
     },
     {
@@ -1314,7 +1332,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L336",
       "id": "api_supabase_loadchunkedarraysupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadchunkedarraysupabase()"
     },
     {
@@ -1323,7 +1341,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L361",
       "id": "api_supabase_getsupabaserawstatevalue",
-      "community": 2,
+      "community": 3,
       "norm_label": "getsupabaserawstatevalue()"
     },
     {
@@ -1332,7 +1350,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L367",
       "id": "api_supabase_writechunkedarraytextstreamsupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "writechunkedarraytextstreamsupabase()"
     },
     {
@@ -1341,7 +1359,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L401",
       "id": "api_supabase_streamstatev2responsefromsupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "streamstatev2responsefromsupabase()"
     },
     {
@@ -1350,7 +1368,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L437",
       "id": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2responsestreamfromsupabase()"
     },
     {
@@ -1359,7 +1377,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L443",
       "id": "api_supabase_loadstatev2fromsupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2fromsupabase()"
     },
     {
@@ -1368,7 +1386,7 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L473",
       "id": "api_supabase_savestatev2tosupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "savestatev2tosupabase()"
     },
     {
@@ -1377,7 +1395,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L1",
       "id": "functions_api_users_js",
-      "community": 6,
+      "community": 5,
       "norm_label": "users.js"
     },
     {
@@ -1386,7 +1404,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L11",
       "id": "api_users_onrequestget",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestget()"
     },
     {
@@ -1395,7 +1413,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L75",
       "id": "api_users_onrequestpost",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestpost()"
     },
     {
@@ -1404,7 +1422,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L157",
       "id": "api_users_onrequestput",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestput()"
     },
     {
@@ -1413,7 +1431,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L254",
       "id": "api_users_onrequestoptions",
-      "community": 6,
+      "community": 5,
       "norm_label": "onrequestoptions()"
     },
     {
@@ -1422,7 +1440,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L264",
       "id": "api_users_ensureauthschema",
-      "community": 6,
+      "community": 5,
       "norm_label": "ensureauthschema()"
     },
     {
@@ -1431,7 +1449,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L308",
       "id": "api_users_safejson",
-      "community": 6,
+      "community": 5,
       "norm_label": "safejson()"
     },
     {
@@ -1440,7 +1458,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L316",
       "id": "api_users_normalizematricula",
-      "community": 6,
+      "community": 5,
       "norm_label": "normalizematricula()"
     },
     {
@@ -1449,7 +1467,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L321",
       "id": "api_users_normalizerole",
-      "community": 6,
+      "community": 5,
       "norm_label": "normalizerole()"
     },
     {
@@ -1458,7 +1476,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L328",
       "id": "api_users_canmanageusers",
-      "community": 6,
+      "community": 5,
       "norm_label": "canmanageusers()"
     },
     {
@@ -1467,7 +1485,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L332",
       "id": "api_users_bootstrapupsertadmin",
-      "community": 6,
+      "community": 5,
       "norm_label": "bootstrapupsertadmin()"
     },
     {
@@ -1476,7 +1494,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L374",
       "id": "api_users_bytestohex",
-      "community": 6,
+      "community": 5,
       "norm_label": "bytestohex()"
     },
     {
@@ -1485,7 +1503,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L382",
       "id": "api_users_hextobytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "hextobytes()"
     },
     {
@@ -1494,7 +1512,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L394",
       "id": "api_users_base64decode",
-      "community": 6,
+      "community": 5,
       "norm_label": "base64decode()"
     },
     {
@@ -1503,7 +1521,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L403",
       "id": "api_users_decodesalt",
-      "community": 6,
+      "community": 5,
       "norm_label": "decodesalt()"
     },
     {
@@ -1512,7 +1530,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L409",
       "id": "api_users_sha256",
-      "community": 6,
+      "community": 5,
       "norm_label": "sha256()"
     },
     {
@@ -1521,7 +1539,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L499",
       "id": "api_users_getrandombytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "getrandombytes()"
     },
     {
@@ -1530,7 +1548,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L511",
       "id": "api_users_concatbytes",
-      "community": 6,
+      "community": 5,
       "norm_label": "concatbytes()"
     },
     {
@@ -1539,7 +1557,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L522",
       "id": "api_users_hashpassword",
-      "community": 6,
+      "community": 5,
       "norm_label": "hashpassword()"
     },
     {
@@ -1548,7 +1566,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L542",
       "id": "api_users_updatepassword",
-      "community": 6,
+      "community": 5,
       "norm_label": "updatepassword()"
     },
     {
@@ -1557,7 +1575,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L578",
       "id": "api_users_getuserscountsupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "getuserscountsupabase()"
     },
     {
@@ -1566,7 +1584,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L585",
       "id": "api_users_getadminactivecountsupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "getadminactivecountsupabase()"
     },
     {
@@ -1575,7 +1593,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L592",
       "id": "api_users_loaduserbyidsupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "loaduserbyidsupabase()"
     },
     {
@@ -1584,7 +1602,7 @@
       "source_file": "functions\\api\\users.js",
       "source_location": "L605",
       "id": "api_users_loaduserbymatriculasupabase",
-      "community": 6,
+      "community": 5,
       "norm_label": "loaduserbymatriculasupabase()"
     },
     {
@@ -1593,7 +1611,7 @@
       "source_file": "scripts\\test-auth-login-async-hash.mjs",
       "source_location": "L1",
       "id": "scripts_test_auth_login_async_hash_mjs",
-      "community": 6,
+      "community": 5,
       "norm_label": "test-auth-login-async-hash.mjs"
     },
     {
@@ -1602,7 +1620,7 @@
       "source_file": "scripts\\test-auth-login-async-hash.mjs",
       "source_location": "L5",
       "id": "scripts_test_auth_login_async_hash_normalizesql",
-      "community": 6,
+      "community": 5,
       "norm_label": "normalizesql()"
     },
     {
@@ -1611,7 +1629,7 @@
       "source_file": "scripts\\test-auth-login-async-hash.mjs",
       "source_location": "L9",
       "id": "scripts_test_auth_login_async_hash_createfakedb",
-      "community": 6,
+      "community": 5,
       "norm_label": "createfakedb()"
     },
     {
@@ -1620,7 +1638,7 @@
       "source_file": "scripts\\test-auth-login-async-hash.mjs",
       "source_location": "L51",
       "id": "scripts_test_auth_login_async_hash_loginrequest",
-      "community": 6,
+      "community": 5,
       "norm_label": "loginrequest()"
     },
     {
@@ -1629,7 +1647,7 @@
       "source_file": "scripts\\test-cyclic-inventory.mjs",
       "source_location": "L1",
       "id": "scripts_test_cyclic_inventory_mjs",
-      "community": 15,
+      "community": 16,
       "norm_label": "test-cyclic-inventory.mjs"
     },
     {
@@ -1651,12 +1669,66 @@
       "norm_label": "createfakedb()"
     },
     {
+      "label": "test-operation-journal-auth-errors.mjs",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L1",
+      "id": "scripts_test_operation_journal_auth_errors_mjs",
+      "community": 12,
+      "norm_label": "test-operation-journal-auth-errors.mjs"
+    },
+    {
+      "label": "getItem()",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L13",
+      "id": "scripts_test_operation_journal_auth_errors_getitem",
+      "community": 12,
+      "norm_label": "getitem()"
+    },
+    {
+      "label": "setItem()",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L16",
+      "id": "scripts_test_operation_journal_auth_errors_setitem",
+      "community": 12,
+      "norm_label": "setitem()"
+    },
+    {
+      "label": "removeItem()",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L19",
+      "id": "scripts_test_operation_journal_auth_errors_removeitem",
+      "community": 12,
+      "norm_label": "removeitem()"
+    },
+    {
+      "label": "test-operation-journal-local-reconcile.mjs",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-local-reconcile.mjs",
+      "source_location": "L1",
+      "id": "scripts_test_operation_journal_local_reconcile_mjs",
+      "community": 13,
+      "norm_label": "test-operation-journal-local-reconcile.mjs"
+    },
+    {
+      "label": "makePayload()",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-local-reconcile.mjs",
+      "source_location": "L31",
+      "id": "scripts_test_operation_journal_local_reconcile_makepayload",
+      "community": 13,
+      "norm_label": "makepayload()"
+    },
+    {
       "label": "test-operation-journal-patch.mjs",
       "file_type": "code",
       "source_file": "scripts\\test-operation-journal-patch.mjs",
       "source_location": "L1",
       "id": "scripts_test_operation_journal_patch_mjs",
-      "community": 16,
+      "community": 17,
       "norm_label": "test-operation-journal-patch.mjs"
     },
     {
@@ -1696,12 +1768,21 @@
       "norm_label": "createfakedb()"
     },
     {
+      "label": "test-operation-journal-supabase-replay-base.mjs",
+      "file_type": "code",
+      "source_file": "scripts\\test-operation-journal-supabase-replay-base.mjs",
+      "source_location": "L1",
+      "id": "scripts_test_operation_journal_supabase_replay_base_mjs",
+      "community": 7,
+      "norm_label": "test-operation-journal-supabase-replay-base.mjs"
+    },
+    {
       "label": "test-state-consulta-save.mjs",
       "file_type": "code",
       "source_file": "scripts\\test-state-consulta-save.mjs",
       "source_location": "L1",
       "id": "scripts_test_state_consulta_save_mjs",
-      "community": 2,
+      "community": 3,
       "norm_label": "test-state-consulta-save.mjs"
     },
     {
@@ -1710,7 +1791,7 @@
       "source_file": "scripts\\test-state-consulta-save.mjs",
       "source_location": "L76",
       "id": "scripts_test_state_consulta_save_createfakedb",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfakedb()"
     },
     {
@@ -1719,7 +1800,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L1",
       "id": "scripts_test_state_get_large_response_mjs",
-      "community": 2,
+      "community": 3,
       "norm_label": "test-state-get-large-response.mjs"
     },
     {
@@ -1728,7 +1809,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L32",
       "id": "scripts_test_state_get_large_response_createfakedb",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfakedb()"
     },
     {
@@ -1737,7 +1818,7 @@
       "source_file": "scripts\\test-state-get-large-response.mjs",
       "source_location": "L75",
       "id": "scripts_test_state_get_large_response_createfakedbwithunsafemanifest",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfakedbwithunsafemanifest()"
     },
     {
@@ -1746,7 +1827,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L1",
       "id": "scripts_test_supabase_migration_mjs",
-      "community": 2,
+      "community": 3,
       "norm_label": "test-supabase-migration.mjs"
     },
     {
@@ -1755,7 +1836,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L95",
       "id": "scripts_test_supabase_migration_createfaked1",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfaked1()"
     },
     {
@@ -1764,7 +1845,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L115",
       "id": "scripts_test_supabase_migration_createfailingd1",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfailingd1()"
     },
     {
@@ -1773,7 +1854,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L133",
       "id": "scripts_test_supabase_migration_rowsforsql",
-      "community": 2,
+      "community": 3,
       "norm_label": "rowsforsql()"
     },
     {
@@ -1782,7 +1863,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L143",
       "id": "scripts_test_supabase_migration_createfakesupabase",
-      "community": 2,
+      "community": 3,
       "norm_label": "createfakesupabase()"
     },
     {
@@ -1791,7 +1872,7 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L162",
       "id": "scripts_test_supabase_migration_createquery",
-      "community": 2,
+      "community": 3,
       "norm_label": "createquery()"
     },
     {
@@ -1800,7 +1881,7 @@
       "source_file": "scripts\\test-sync-outbox.mjs",
       "source_location": "L1",
       "id": "scripts_test_sync_outbox_mjs",
-      "community": 17,
+      "community": 18,
       "norm_label": "test-sync-outbox.mjs"
     },
     {
@@ -1809,7 +1890,7 @@
       "source_file": "scripts\\test-user-cycle-requirement.mjs",
       "source_location": "L1",
       "id": "scripts_test_user_cycle_requirement_mjs",
-      "community": 6,
+      "community": 5,
       "norm_label": "test-user-cycle-requirement.mjs"
     },
     {
@@ -1818,7 +1899,7 @@
       "source_file": "scripts\\test-user-cycle-requirement.mjs",
       "source_location": "L50",
       "id": "scripts_test_user_cycle_requirement_createfakeusersdb",
-      "community": 6,
+      "community": 5,
       "norm_label": "createfakeusersdb()"
     },
     {
@@ -1827,7 +1908,7 @@
       "source_file": "scripts\\test-users-primary-admin-access.mjs",
       "source_location": "L1",
       "id": "scripts_test_users_primary_admin_access_mjs",
-      "community": 6,
+      "community": 5,
       "norm_label": "test-users-primary-admin-access.mjs"
     },
     {
@@ -1836,7 +1917,7 @@
       "source_file": "scripts\\test-users-primary-admin-access.mjs",
       "source_location": "L38",
       "id": "scripts_test_users_primary_admin_access_createfakeusersdb",
-      "community": 6,
+      "community": 5,
       "norm_label": "createfakeusersdb()"
     },
     {
@@ -1845,7 +1926,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L1",
       "id": "src_abcanalysis_ts",
-      "community": 9,
+      "community": 8,
       "norm_label": "abcanalysis.ts"
     },
     {
@@ -1854,7 +1935,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L29",
       "id": "src_abcanalysis_getabcanalysisforsku",
-      "community": 9,
+      "community": 8,
       "norm_label": "getabcanalysisforsku()"
     },
     {
@@ -1863,7 +1944,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L38",
       "id": "src_abcanalysis_getabcstockpolicy",
-      "community": 9,
+      "community": 8,
       "norm_label": "getabcstockpolicy()"
     },
     {
@@ -1872,7 +1953,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L42",
       "id": "src_abcanalysis_getadaptiveabcstockpolicy",
-      "community": 9,
+      "community": 8,
       "norm_label": "getadaptiveabcstockpolicy()"
     },
     {
@@ -1881,7 +1962,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L83",
       "id": "src_abcanalysis_getabcsortrank",
-      "community": 9,
+      "community": 8,
       "norm_label": "getabcsortrank()"
     },
     {
@@ -1890,7 +1971,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L87",
       "id": "src_abcanalysis_getabcclasspriority",
-      "community": 9,
+      "community": 8,
       "norm_label": "getabcclasspriority()"
     },
     {
@@ -1899,7 +1980,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L95",
       "id": "src_abcanalysis_summarizerecentmovement",
-      "community": 9,
+      "community": 8,
       "norm_label": "summarizerecentmovement()"
     },
     {
@@ -1908,7 +1989,7 @@
       "source_file": "src\\abcAnalysis.ts",
       "source_location": "L128",
       "id": "src_abcanalysis_getskucandidates",
-      "community": 9,
+      "community": 8,
       "norm_label": "getskucandidates()"
     },
     {
@@ -1917,7 +1998,7 @@
       "source_file": "src\\abcAnalysisData.ts",
       "source_location": "L1",
       "id": "src_abcanalysisdata_ts",
-      "community": 18,
+      "community": 19,
       "norm_label": "abcanalysisdata.ts"
     },
     {
@@ -1933,7 +2014,7 @@
       "label": "getInitialTab()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L99",
+      "source_location": "L100",
       "id": "src_app_getinitialtab",
       "community": 1,
       "norm_label": "getinitialtab()"
@@ -1942,7 +2023,7 @@
       "label": "getInitialSku()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L105",
+      "source_location": "L106",
       "id": "src_app_getinitialsku",
       "community": 1,
       "norm_label": "getinitialsku()"
@@ -1951,7 +2032,7 @@
       "label": "getInitialRequestId()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L109",
+      "source_location": "L110",
       "id": "src_app_getinitialrequestid",
       "community": 1,
       "norm_label": "getinitialrequestid()"
@@ -1960,7 +2041,7 @@
       "label": "getInitialInventoryFilter()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L113",
+      "source_location": "L114",
       "id": "src_app_getinitialinventoryfilter",
       "community": 1,
       "norm_label": "getinitialinventoryfilter()"
@@ -1969,7 +2050,7 @@
       "label": "isDailyCycleGateAllowedTab()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L117",
+      "source_location": "L118",
       "id": "src_app_isdailycyclegateallowedtab",
       "community": 1,
       "norm_label": "isdailycyclegateallowedtab()"
@@ -1978,7 +2059,7 @@
       "label": "normalizeStoredItems()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L121",
+      "source_location": "L122",
       "id": "src_app_normalizestoreditems",
       "community": 1,
       "norm_label": "normalizestoreditems()"
@@ -1987,7 +2068,7 @@
       "label": "normalizeStoredLogs()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L128",
+      "source_location": "L129",
       "id": "src_app_normalizestoredlogs",
       "community": 1,
       "norm_label": "normalizestoredlogs()"
@@ -1996,34 +2077,34 @@
       "label": "normalizeInventoryItemRecord()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L151",
+      "source_location": "L152",
       "id": "src_app_normalizeinventoryitemrecord",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeinventoryitemrecord()"
     },
     {
       "label": "normalizeImportedLocation()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L176",
+      "source_location": "L177",
       "id": "src_app_normalizeimportedlocation",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeimportedlocation()"
     },
     {
       "label": "normalizeImageUrl()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L180",
+      "source_location": "L181",
       "id": "src_app_normalizeimageurl",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeimageurl()"
     },
     {
       "label": "loadMeta()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L217",
+      "source_location": "L218",
       "id": "src_app_loadmeta",
       "community": 1,
       "norm_label": "loadmeta()"
@@ -2032,7 +2113,7 @@
       "label": "handlePasswordLogin()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L236",
+      "source_location": "L237",
       "id": "src_app_handlepasswordlogin",
       "community": 1,
       "norm_label": "handlepasswordlogin()"
@@ -2041,7 +2122,7 @@
       "label": "handleBootstrap()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L276",
+      "source_location": "L277",
       "id": "src_app_handlebootstrap",
       "community": 1,
       "norm_label": "handlebootstrap()"
@@ -2050,25 +2131,25 @@
       "label": "showToast()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L628",
+      "source_location": "L629",
       "id": "src_app_showtoast",
-      "community": 4,
+      "community": 2,
       "norm_label": "showtoast()"
     },
     {
       "label": "handleForcePasswordChange()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L637",
+      "source_location": "L638",
       "id": "src_app_handleforcepasswordchange",
-      "community": 4,
+      "community": 2,
       "norm_label": "handleforcepasswordchange()"
     },
     {
       "label": "appendSyncEvent()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L709",
+      "source_location": "L710",
       "id": "src_app_appendsyncevent",
       "community": 1,
       "norm_label": "appendsyncevent()"
@@ -2077,7 +2158,7 @@
       "label": "reportBackendActive()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L719",
+      "source_location": "L720",
       "id": "src_app_reportbackendactive",
       "community": 1,
       "norm_label": "reportbackendactive()"
@@ -2086,7 +2167,7 @@
       "label": "describeCloudError()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L727",
+      "source_location": "L728",
       "id": "src_app_describeclouderror",
       "community": 1,
       "norm_label": "describeclouderror()"
@@ -2095,7 +2176,7 @@
       "label": "setOutbox()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L733",
+      "source_location": "L734",
       "id": "src_app_setoutbox",
       "community": 1,
       "norm_label": "setoutbox()"
@@ -2104,7 +2185,7 @@
       "label": "clearOutbox()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L742",
+      "source_location": "L743",
       "id": "src_app_clearoutbox",
       "community": 1,
       "norm_label": "clearoutbox()"
@@ -2113,16 +2194,25 @@
       "label": "refreshPendingJournalCount()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L754",
+      "source_location": "L755",
       "id": "src_app_refreshpendingjournalcount",
       "community": 1,
       "norm_label": "refreshpendingjournalcount()"
     },
     {
+      "label": "reconcileLocalJournalWithOnlineState()",
+      "file_type": "code",
+      "source_file": "src\\App.tsx",
+      "source_location": "L759",
+      "id": "src_app_reconcilelocaljournalwithonlinestate",
+      "community": 1,
+      "norm_label": "reconcilelocaljournalwithonlinestate()"
+    },
+    {
       "label": "flushJournalBridge()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L758",
+      "source_location": "L798",
       "id": "src_app_flushjournalbridge",
       "community": 1,
       "norm_label": "flushjournalbridge()"
@@ -2131,7 +2221,7 @@
       "label": "markJournalEntriesApplied()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L773",
+      "source_location": "L818",
       "id": "src_app_markjournalentriesapplied",
       "community": 1,
       "norm_label": "markjournalentriesapplied()"
@@ -2140,7 +2230,7 @@
       "label": "applyOutboxViaJournalReplay()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L785",
+      "source_location": "L830",
       "id": "src_app_applyoutboxviajournalreplay",
       "community": 1,
       "norm_label": "applyoutboxviajournalreplay()"
@@ -2149,7 +2239,7 @@
       "label": "queueCurrentStateForSync()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L861",
+      "source_location": "L906",
       "id": "src_app_queuecurrentstateforsync",
       "community": 1,
       "norm_label": "queuecurrentstateforsync()"
@@ -2158,7 +2248,7 @@
       "label": "applyCloudStateIfNewer()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L884",
+      "source_location": "L929",
       "id": "src_app_applycloudstateifnewer",
       "community": 1,
       "norm_label": "applycloudstateifnewer()"
@@ -2167,7 +2257,7 @@
       "label": "forceApplyCloudState()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L918",
+      "source_location": "L963",
       "id": "src_app_forceapplycloudstate",
       "community": 1,
       "norm_label": "forceapplycloudstate()"
@@ -2176,7 +2266,7 @@
       "label": "flushOutbox()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L960",
+      "source_location": "L1005",
       "id": "src_app_flushoutbox",
       "community": 1,
       "norm_label": "flushoutbox()"
@@ -2185,7 +2275,7 @@
       "label": "loadOnlineState()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1115",
+      "source_location": "L1160",
       "id": "src_app_loadonlinestate",
       "community": 1,
       "norm_label": "loadonlinestate()"
@@ -2194,7 +2284,7 @@
       "label": "handleOnline()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1171",
+      "source_location": "L1216",
       "id": "src_app_handleonline",
       "community": 1,
       "norm_label": "handleonline()"
@@ -2203,7 +2293,7 @@
       "label": "handleOffline()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1178",
+      "source_location": "L1223",
       "id": "src_app_handleoffline",
       "community": 1,
       "norm_label": "handleoffline()"
@@ -2212,7 +2302,7 @@
       "label": "handleBeforeUnload()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1197",
+      "source_location": "L1242",
       "id": "src_app_handlebeforeunload",
       "community": 1,
       "norm_label": "handlebeforeunload()"
@@ -2221,7 +2311,7 @@
       "label": "refreshSessionUser()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1217",
+      "source_location": "L1262",
       "id": "src_app_refreshsessionuser",
       "community": 1,
       "norm_label": "refreshsessionuser()"
@@ -2230,7 +2320,7 @@
       "label": "refreshCloudState()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1394",
+      "source_location": "L1439",
       "id": "src_app_refreshcloudstate",
       "community": 1,
       "norm_label": "refreshcloudstate()"
@@ -2239,7 +2329,7 @@
       "label": "handleFocusRefresh()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1450",
+      "source_location": "L1495",
       "id": "src_app_handlefocusrefresh",
       "community": 1,
       "norm_label": "handlefocusrefresh()"
@@ -2248,7 +2338,7 @@
       "label": "handleVisibilityChange()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1457",
+      "source_location": "L1502",
       "id": "src_app_handlevisibilitychange",
       "community": 1,
       "norm_label": "handlevisibilitychange()"
@@ -2257,7 +2347,7 @@
       "label": "applyCloudUpdateNow()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1474",
+      "source_location": "L1519",
       "id": "src_app_applycloudupdatenow",
       "community": 1,
       "norm_label": "applycloudupdatenow()"
@@ -2266,7 +2356,7 @@
       "label": "ignoreCloudUpdate()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1506",
+      "source_location": "L1551",
       "id": "src_app_ignorecloudupdate",
       "community": 1,
       "norm_label": "ignorecloudupdate()"
@@ -2275,7 +2365,7 @@
       "label": "markLocalDirty()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1513",
+      "source_location": "L1558",
       "id": "src_app_marklocaldirty",
       "community": 1,
       "norm_label": "marklocaldirty()"
@@ -2284,61 +2374,61 @@
       "label": "shouldBlockMutationForCloudUpdate()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1521",
+      "source_location": "L1566",
       "id": "src_app_shouldblockmutationforcloudupdate",
-      "community": 4,
+      "community": 2,
       "norm_label": "shouldblockmutationforcloudupdate()"
     },
     {
       "label": "setItemsGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1613",
+      "source_location": "L1658",
       "id": "src_app_setitemsguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setitemsguarded()"
     },
     {
       "label": "setLogsGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1632",
+      "source_location": "L1677",
       "id": "src_app_setlogsguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setlogsguarded()"
     },
     {
       "label": "setSettingsGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1651",
+      "source_location": "L1696",
       "id": "src_app_setsettingsguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setsettingsguarded()"
     },
     {
       "label": "setRequestsGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1670",
+      "source_location": "L1715",
       "id": "src_app_setrequestsguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setrequestsguarded()"
     },
     {
       "label": "setVehiclesGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1689",
+      "source_location": "L1734",
       "id": "src_app_setvehiclesguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setvehiclesguarded()"
     },
     {
       "label": "setOcrAliasesGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1708",
+      "source_location": "L1753",
       "id": "src_app_setocraliasesguarded",
       "community": 1,
       "norm_label": "setocraliasesguarded()"
@@ -2347,7 +2437,7 @@
       "label": "syncUrl()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1756",
+      "source_location": "L1801",
       "id": "src_app_syncurl",
       "community": 1,
       "norm_label": "syncurl()"
@@ -2356,16 +2446,16 @@
       "label": "setPurchasesGuarded()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1787",
+      "source_location": "L1832",
       "id": "src_app_setpurchasesguarded",
-      "community": 4,
+      "community": 2,
       "norm_label": "setpurchasesguarded()"
     },
     {
       "label": "navigateToSku()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1806",
+      "source_location": "L1851",
       "id": "src_app_navigatetosku",
       "community": 1,
       "norm_label": "navigatetosku()"
@@ -2374,7 +2464,7 @@
       "label": "setActiveTab()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1813",
+      "source_location": "L1858",
       "id": "src_app_setactivetab",
       "community": 1,
       "norm_label": "setactivetab()"
@@ -2383,7 +2473,7 @@
       "label": "handleSelectSku()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1857",
+      "source_location": "L1902",
       "id": "src_app_handleselectsku",
       "community": 1,
       "norm_label": "handleselectsku()"
@@ -2392,7 +2482,7 @@
       "label": "handleOpenSeparation()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1861",
+      "source_location": "L1906",
       "id": "src_app_handleopenseparation",
       "community": 1,
       "norm_label": "handleopenseparation()"
@@ -2401,7 +2491,7 @@
       "label": "handleEditRequest()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1868",
+      "source_location": "L1913",
       "id": "src_app_handleeditrequest",
       "community": 1,
       "norm_label": "handleeditrequest()"
@@ -2410,7 +2500,7 @@
       "label": "handleSelectRequest()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1877",
+      "source_location": "L1922",
       "id": "src_app_handleselectrequest",
       "community": 1,
       "norm_label": "handleselectrequest()"
@@ -2419,7 +2509,7 @@
       "label": "handleClearRequestEditor()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1882",
+      "source_location": "L1927",
       "id": "src_app_handleclearrequesteditor",
       "community": 1,
       "norm_label": "handleclearrequesteditor()"
@@ -2428,7 +2518,7 @@
       "label": "handleOpenInventoryFilter()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1889",
+      "source_location": "L1934",
       "id": "src_app_handleopeninventoryfilter",
       "community": 1,
       "norm_label": "handleopeninventoryfilter()"
@@ -2437,7 +2527,7 @@
       "label": "handleInventoryFilterChange()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1896",
+      "source_location": "L1941",
       "id": "src_app_handleinventoryfilterchange",
       "community": 1,
       "norm_label": "handleinventoryfilterchange()"
@@ -2446,7 +2536,7 @@
       "label": "handleOpenVehicleParts()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1906",
+      "source_location": "L1951",
       "id": "src_app_handleopenvehicleparts",
       "community": 1,
       "norm_label": "handleopenvehicleparts()"
@@ -2455,7 +2545,7 @@
       "label": "handleForcePendingSync()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1915",
+      "source_location": "L1960",
       "id": "src_app_handleforcependingsync",
       "community": 1,
       "norm_label": "handleforcependingsync()"
@@ -2464,7 +2554,7 @@
       "label": "handleExportPendingBackup()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1974",
+      "source_location": "L2036",
       "id": "src_app_handleexportpendingbackup",
       "community": 1,
       "norm_label": "handleexportpendingbackup()"
@@ -2473,16 +2563,16 @@
       "label": "handleUploadPendingBackup()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L1998",
+      "source_location": "L2060",
       "id": "src_app_handleuploadpendingbackup",
-      "community": 4,
+      "community": 2,
       "norm_label": "handleuploadpendingbackup()"
     },
     {
       "label": "handleBackupUploadInputChange()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L2011",
+      "source_location": "L2073",
       "id": "src_app_handlebackupuploadinputchange",
       "community": 1,
       "norm_label": "handlebackupuploadinputchange()"
@@ -2491,7 +2581,7 @@
       "label": "handleDiscardLocalPending()",
       "file_type": "code",
       "source_file": "src\\App.tsx",
-      "source_location": "L2113",
+      "source_location": "L2175",
       "id": "src_app_handlediscardlocalpending",
       "community": 1,
       "norm_label": "handlediscardlocalpending()"
@@ -2799,7 +2889,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L1",
       "id": "src_batterywarrantyrules_ts",
-      "community": 12,
+      "community": 2,
       "norm_label": "batterywarrantyrules.ts"
     },
     {
@@ -2808,7 +2898,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L23",
       "id": "src_batterywarrantyrules_isbatteryinventoryitem",
-      "community": 12,
+      "community": 2,
       "norm_label": "isbatteryinventoryitem()"
     },
     {
@@ -2817,7 +2907,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L27",
       "id": "src_batterywarrantyrules_isbatteryrequestitem",
-      "community": 12,
+      "community": 2,
       "norm_label": "isbatteryrequestitem()"
     },
     {
@@ -2826,7 +2916,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L31",
       "id": "src_batterywarrantyrules_findactivebatterywarrantyalert",
-      "community": 4,
+      "community": 2,
       "norm_label": "findactivebatterywarrantyalert()"
     },
     {
@@ -2835,7 +2925,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L81",
       "id": "src_batterywarrantyrules_formatbatterywarrantydate",
-      "community": 4,
+      "community": 2,
       "norm_label": "formatbatterywarrantydate()"
     },
     {
@@ -2844,7 +2934,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L92",
       "id": "src_batterywarrantyrules_buildbatterysearchtext",
-      "community": 12,
+      "community": 2,
       "norm_label": "buildbatterysearchtext()"
     },
     {
@@ -2853,7 +2943,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L99",
       "id": "src_batterywarrantyrules_isbatteryliketext",
-      "community": 12,
+      "community": 2,
       "norm_label": "isbatteryliketext()"
     },
     {
@@ -2862,7 +2952,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L120",
       "id": "src_batterywarrantyrules_normalizeforsearch",
-      "community": 12,
+      "community": 2,
       "norm_label": "normalizeforsearch()"
     },
     {
@@ -2871,7 +2961,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L129",
       "id": "src_batterywarrantyrules_getrequestfulfilleddate",
-      "community": 12,
+      "community": 2,
       "norm_label": "getrequestfulfilleddate()"
     },
     {
@@ -2880,7 +2970,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L133",
       "id": "src_batterywarrantyrules_getrequestitemquantity",
-      "community": 12,
+      "community": 2,
       "norm_label": "getrequestitemquantity()"
     },
     {
@@ -2889,7 +2979,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L140",
       "id": "src_batterywarrantyrules_getbatteryvaliditymonths",
-      "community": 12,
+      "community": 2,
       "norm_label": "getbatteryvaliditymonths()"
     },
     {
@@ -2898,7 +2988,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L146",
       "id": "src_batterywarrantyrules_addmonths",
-      "community": 12,
+      "community": 2,
       "norm_label": "addmonths()"
     },
     {
@@ -2907,7 +2997,7 @@
       "source_file": "src\\batteryWarrantyRules.ts",
       "source_location": "L152",
       "id": "src_batterywarrantyrules_normalizesku",
-      "community": 12,
+      "community": 2,
       "norm_label": "normalizesku()"
     },
     {
@@ -2916,7 +3006,7 @@
       "source_file": "src\\categoryCatalog.ts",
       "source_location": "L1",
       "id": "src_categorycatalog_ts",
-      "community": 5,
+      "community": 2,
       "norm_label": "categorycatalog.ts"
     },
     {
@@ -2925,7 +3015,7 @@
       "source_file": "src\\categoryCatalog.ts",
       "source_location": "L83",
       "id": "src_categorycatalog_classifyinventorycategory",
-      "community": 5,
+      "community": 2,
       "norm_label": "classifyinventorycategory()"
     },
     {
@@ -2934,7 +3024,7 @@
       "source_file": "src\\categoryCatalog.ts",
       "source_location": "L112",
       "id": "src_categorycatalog_normalizeformatch",
-      "community": 5,
+      "community": 2,
       "norm_label": "normalizeformatch()"
     },
     {
@@ -2979,7 +3069,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L1",
       "id": "src_cyclicinventory_ts",
-      "community": 9,
+      "community": 8,
       "norm_label": "cyclicinventory.ts"
     },
     {
@@ -2988,7 +3078,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L17",
       "id": "src_cyclicinventory_getcalendardaykey",
-      "community": 9,
+      "community": 8,
       "norm_label": "getcalendardaykey()"
     },
     {
@@ -2997,7 +3087,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L22",
       "id": "src_cyclicinventory_issamecalendarday",
-      "community": 9,
+      "community": 8,
       "norm_label": "issamecalendarday()"
     },
     {
@@ -3006,7 +3096,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L28",
       "id": "src_cyclicinventory_isoperationalinventorylog",
-      "community": 9,
+      "community": 8,
       "norm_label": "isoperationalinventorylog()"
     },
     {
@@ -3015,7 +3105,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L34",
       "id": "src_cyclicinventory_getlatestoperationallogbysku",
-      "community": 9,
+      "community": 8,
       "norm_label": "getlatestoperationallogbysku()"
     },
     {
@@ -3024,7 +3114,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L55",
       "id": "src_cyclicinventory_builddailycyclerows",
-      "community": 9,
+      "community": 8,
       "norm_label": "builddailycyclerows()"
     },
     {
@@ -3033,7 +3123,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L76",
       "id": "src_cyclicinventory_getcandidatesku",
-      "community": 9,
+      "community": 8,
       "norm_label": "getcandidatesku()"
     },
     {
@@ -3042,7 +3132,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L81",
       "id": "src_cyclicinventory_hashtoseed",
-      "community": 9,
+      "community": 8,
       "norm_label": "hashtoseed()"
     },
     {
@@ -3051,7 +3141,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L90",
       "id": "src_cyclicinventory_mulberry32",
-      "community": 9,
+      "community": 8,
       "norm_label": "mulberry32()"
     },
     {
@@ -3060,7 +3150,7 @@
       "source_file": "src\\cyclicInventory.ts",
       "source_location": "L99",
       "id": "src_cyclicinventory_pickdailycyclerows",
-      "community": 9,
+      "community": 8,
       "norm_label": "pickdailycyclerows()"
     },
     {
@@ -3087,7 +3177,7 @@
       "source_file": "src\\divergenceRules.ts",
       "source_location": "L46",
       "id": "src_divergencerules_getopendivergencemap",
-      "community": 9,
+      "community": 8,
       "norm_label": "getopendivergencemap()"
     },
     {
@@ -3186,7 +3276,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L1",
       "id": "src_inventoryrules_ts",
-      "community": 5,
+      "community": 8,
       "norm_label": "inventoryrules.ts"
     },
     {
@@ -3195,7 +3285,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L12",
       "id": "src_inventoryrules_calculateinventorystatus",
-      "community": 5,
+      "community": 8,
       "norm_label": "calculateinventorystatus()"
     },
     {
@@ -3204,7 +3294,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L21",
       "id": "src_inventoryrules_getitemalertsettings",
-      "community": 5,
+      "community": 8,
       "norm_label": "getitemalertsettings()"
     },
     {
@@ -3213,7 +3303,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L61",
       "id": "src_inventoryrules_calculateitemstatus",
-      "community": 5,
+      "community": 8,
       "norm_label": "calculateitemstatus()"
     },
     {
@@ -3222,7 +3312,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L69",
       "id": "src_inventoryrules_normalizelimit",
-      "community": 5,
+      "community": 8,
       "norm_label": "normalizelimit()"
     },
     {
@@ -3231,7 +3321,7 @@
       "source_file": "src\\inventoryRules.ts",
       "source_location": "L73",
       "id": "src_inventoryrules_isoverrideactive",
-      "community": 5,
+      "community": 8,
       "norm_label": "isoverrideactive()"
     },
     {
@@ -3310,7 +3400,7 @@
       "label": "replayOperationJournalEntries()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L217",
+      "source_location": "L220",
       "id": "src_operationjournal_replayoperationjournalentries",
       "community": 1,
       "norm_label": "replayoperationjournalentries()"
@@ -3319,7 +3409,7 @@
       "label": "getPendingOperationJournalQueue()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L249",
+      "source_location": "L252",
       "id": "src_operationjournal_getpendingoperationjournalqueue",
       "community": 1,
       "norm_label": "getpendingoperationjournalqueue()"
@@ -3328,7 +3418,7 @@
       "label": "enqueueOperationJournalEntry()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L260",
+      "source_location": "L263",
       "id": "src_operationjournal_enqueueoperationjournalentry",
       "community": 1,
       "norm_label": "enqueueoperationjournalentry()"
@@ -3337,7 +3427,7 @@
       "label": "enqueueOperationJournalEntries()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L268",
+      "source_location": "L271",
       "id": "src_operationjournal_enqueueoperationjournalentries",
       "community": 1,
       "norm_label": "enqueueoperationjournalentries()"
@@ -3346,7 +3436,7 @@
       "label": "removeOperationJournalEntries()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L294",
+      "source_location": "L297",
       "id": "src_operationjournal_removeoperationjournalentries",
       "community": 1,
       "norm_label": "removeoperationjournalentries()"
@@ -3355,7 +3445,7 @@
       "label": "flushOperationJournalQueue()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L302",
+      "source_location": "L305",
       "id": "src_operationjournal_flushoperationjournalqueue",
       "community": 1,
       "norm_label": "flushoperationjournalqueue()"
@@ -3364,16 +3454,25 @@
       "label": "markOperationJournalApplied()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L335",
+      "source_location": "L341",
       "id": "src_operationjournal_markoperationjournalapplied",
       "community": 1,
       "norm_label": "markoperationjournalapplied()"
     },
     {
+      "label": "getAlreadyAppliedOperationJournalEntryIds()",
+      "file_type": "code",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L372",
+      "id": "src_operationjournal_getalreadyappliedoperationjournalentryids",
+      "community": 1,
+      "norm_label": "getalreadyappliedoperationjournalentryids()"
+    },
+    {
       "label": "getOperationJournalDeviceId()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L363",
+      "source_location": "L383",
       "id": "src_operationjournal_getoperationjournaldeviceid",
       "community": 1,
       "norm_label": "getoperationjournaldeviceid()"
@@ -3382,16 +3481,34 @@
       "label": "collectChangedRecords()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L372",
+      "source_location": "L392",
       "id": "src_operationjournal_collectchangedrecords",
       "community": 1,
       "norm_label": "collectchangedrecords()"
     },
     {
+      "label": "isOperationJournalPatchAlreadyApplied()",
+      "file_type": "code",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L406",
+      "id": "src_operationjournal_isoperationjournalpatchalreadyapplied",
+      "community": 1,
+      "norm_label": "isoperationjournalpatchalreadyapplied()"
+    },
+    {
+      "label": "areRecordsAlreadyApplied()",
+      "file_type": "code",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L440",
+      "id": "src_operationjournal_arerecordsalreadyapplied",
+      "community": 1,
+      "norm_label": "arerecordsalreadyapplied()"
+    },
+    {
       "label": "getRecordKey()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L386",
+      "source_location": "L454",
       "id": "src_operationjournal_getrecordkey",
       "community": 1,
       "norm_label": "getrecordkey()"
@@ -3400,16 +3517,25 @@
       "label": "areJsonEqual()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L392",
+      "source_location": "L460",
       "id": "src_operationjournal_arejsonequal",
       "community": 1,
       "norm_label": "arejsonequal()"
     },
     {
+      "label": "isJsonSubset()",
+      "file_type": "code",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L464",
+      "id": "src_operationjournal_isjsonsubset",
+      "community": 1,
+      "norm_label": "isjsonsubset()"
+    },
+    {
       "label": "stableStringify()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L396",
+      "source_location": "L478",
       "id": "src_operationjournal_stablestringify",
       "community": 1,
       "norm_label": "stablestringify()"
@@ -3418,7 +3544,7 @@
       "label": "createRandomId()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L410",
+      "source_location": "L492",
       "id": "src_operationjournal_createrandomid",
       "community": 1,
       "norm_label": "createrandomid()"
@@ -3427,7 +3553,7 @@
       "label": "hasLocalStorage()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L416",
+      "source_location": "L498",
       "id": "src_operationjournal_haslocalstorage",
       "community": 1,
       "norm_label": "haslocalstorage()"
@@ -3436,7 +3562,7 @@
       "label": "isValidEntry()",
       "file_type": "code",
       "source_file": "src\\operationJournal.ts",
-      "source_location": "L420",
+      "source_location": "L502",
       "id": "src_operationjournal_isvalidentry",
       "community": 1,
       "norm_label": "isvalidentry()"
@@ -3499,7 +3625,7 @@
       "label": "getSyncTone()",
       "file_type": "code",
       "source_file": "src\\operationLog.ts",
-      "source_location": "L123",
+      "source_location": "L127",
       "id": "src_operationlog_getsynctone",
       "community": 10,
       "norm_label": "getsynctone()"
@@ -3508,7 +3634,7 @@
       "label": "formatRequestEvent()",
       "file_type": "code",
       "source_file": "src\\operationLog.ts",
-      "source_location": "L130",
+      "source_location": "L134",
       "id": "src_operationlog_formatrequestevent",
       "community": 10,
       "norm_label": "formatrequestevent()"
@@ -3519,7 +3645,7 @@
       "source_file": "src\\preventiveKitCatalog.ts",
       "source_location": "L1",
       "id": "src_preventivekitcatalog_ts",
-      "community": 4,
+      "community": 6,
       "norm_label": "preventivekitcatalog.ts"
     },
     {
@@ -3528,7 +3654,7 @@
       "source_file": "src\\preventiveKitCatalog.ts",
       "source_location": "L104",
       "id": "src_preventivekitcatalog_resolvepreventivekitcatalog",
-      "community": 4,
+      "community": 6,
       "norm_label": "resolvepreventivekitcatalog()"
     },
     {
@@ -3537,7 +3663,7 @@
       "source_file": "src\\productVisuals.tsx",
       "source_location": "L1",
       "id": "src_productvisuals_tsx",
-      "community": 5,
+      "community": 6,
       "norm_label": "productvisuals.tsx"
     },
     {
@@ -3546,7 +3672,7 @@
       "source_file": "src\\productVisuals.tsx",
       "source_location": "L111",
       "id": "src_productvisuals_productimage",
-      "community": 5,
+      "community": 6,
       "norm_label": "productimage()"
     },
     {
@@ -3555,7 +3681,7 @@
       "source_file": "src\\productVisuals.tsx",
       "source_location": "L141",
       "id": "src_productvisuals_getproductvisualprofile",
-      "community": 5,
+      "community": 6,
       "norm_label": "getproductvisualprofile()"
     },
     {
@@ -3564,7 +3690,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L1",
       "id": "src_requestutils_ts",
-      "community": 4,
+      "community": 2,
       "norm_label": "requestutils.ts"
     },
     {
@@ -3573,7 +3699,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L14",
       "id": "src_requestutils_createemptyrequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "createemptyrequest()"
     },
     {
@@ -3582,7 +3708,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L37",
       "id": "src_requestutils_createrequestitem",
-      "community": 5,
+      "community": 2,
       "norm_label": "createrequestitem()"
     },
     {
@@ -3591,7 +3717,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L51",
       "id": "src_requestutils_createrequestcode",
-      "community": 4,
+      "community": 2,
       "norm_label": "createrequestcode()"
     },
     {
@@ -3600,7 +3726,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L62",
       "id": "src_requestutils_recalculaterequeststatus",
-      "community": 4,
+      "community": 2,
       "norm_label": "recalculaterequeststatus()"
     },
     {
@@ -3609,7 +3735,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L75",
       "id": "src_requestutils_upsertrequeststate",
-      "community": 4,
+      "community": 2,
       "norm_label": "upsertrequeststate()"
     },
     {
@@ -3627,7 +3753,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L122",
       "id": "src_requestutils_materialrequestneedsstockattention",
-      "community": 4,
+      "community": 2,
       "norm_label": "materialrequestneedsstockattention()"
     },
     {
@@ -3636,7 +3762,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L138",
       "id": "src_requestutils_updaterequestitemquantity",
-      "community": 4,
+      "community": 2,
       "norm_label": "updaterequestitemquantity()"
     },
     {
@@ -3654,7 +3780,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L196",
       "id": "src_requestutils_fillpendingquantity",
-      "community": 4,
+      "community": 2,
       "norm_label": "fillpendingquantity()"
     },
     {
@@ -3672,7 +3798,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L219",
       "id": "src_requestutils_sanitizesinglerequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "sanitizesinglerequest()"
     },
     {
@@ -3681,7 +3807,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L268",
       "id": "src_requestutils_sanitizerequestaudittrail",
-      "community": 4,
+      "community": 2,
       "norm_label": "sanitizerequestaudittrail()"
     },
     {
@@ -3690,7 +3816,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L304",
       "id": "src_requestutils_ismaterialrequestauditevent",
-      "community": 4,
+      "community": 2,
       "norm_label": "ismaterialrequestauditevent()"
     },
     {
@@ -3699,7 +3825,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L314",
       "id": "src_requestutils_sanitizerequestitem",
-      "community": 4,
+      "community": 2,
       "norm_label": "sanitizerequestitem()"
     },
     {
@@ -3708,7 +3834,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L340",
       "id": "src_requestutils_normalizequantity",
-      "community": 4,
+      "community": 2,
       "norm_label": "normalizequantity()"
     },
     {
@@ -3717,7 +3843,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L345",
       "id": "src_requestutils_normalizepriority",
-      "community": 4,
+      "community": 2,
       "norm_label": "normalizepriority()"
     },
     {
@@ -3726,7 +3852,7 @@
       "source_file": "src\\requestUtils.ts",
       "source_location": "L353",
       "id": "src_requestutils_clamp",
-      "community": 4,
+      "community": 2,
       "norm_label": "clamp()"
     },
     {
@@ -3771,7 +3897,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L1",
       "id": "src_textutils_ts",
-      "community": 5,
+      "community": 6,
       "norm_label": "textutils.ts"
     },
     {
@@ -3780,7 +3906,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L64",
       "id": "src_textutils_normalizeuserfacingtext",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeuserfacingtext()"
     },
     {
@@ -3789,7 +3915,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L77",
       "id": "src_textutils_normalizelocationtext",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizelocationtext()"
     },
     {
@@ -3798,7 +3924,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L88",
       "id": "src_textutils_normalizeinventorystatus",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeinventorystatus()"
     },
     {
@@ -3807,7 +3933,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L102",
       "id": "src_textutils_decodeliteralunicode",
-      "community": 5,
+      "community": 6,
       "norm_label": "decodeliteralunicode()"
     },
     {
@@ -3816,7 +3942,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L120",
       "id": "src_textutils_fixcommonmojibake",
-      "community": 5,
+      "community": 6,
       "norm_label": "fixcommonmojibake()"
     },
     {
@@ -3825,7 +3951,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L132",
       "id": "src_textutils_lookslikemojibake",
-      "community": 5,
+      "community": 6,
       "norm_label": "lookslikemojibake()"
     },
     {
@@ -3834,7 +3960,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L136",
       "id": "src_textutils_suspiciousscore",
-      "community": 5,
+      "community": 6,
       "norm_label": "suspiciousscore()"
     },
     {
@@ -3843,7 +3969,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L144",
       "id": "src_textutils_applycommontextfixes",
-      "community": 5,
+      "community": 6,
       "norm_label": "applycommontextfixes()"
     },
     {
@@ -3852,7 +3978,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L164",
       "id": "src_textutils_mayberepairword",
-      "community": 5,
+      "community": 6,
       "norm_label": "mayberepairword()"
     },
     {
@@ -3861,7 +3987,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L185",
       "id": "src_textutils_canonicalizeword",
-      "community": 5,
+      "community": 6,
       "norm_label": "canonicalizeword()"
     },
     {
@@ -3870,7 +3996,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L194",
       "id": "src_textutils_issuspiciousword",
-      "community": 5,
+      "community": 6,
       "norm_label": "issuspiciousword()"
     },
     {
@@ -3879,7 +4005,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L198",
       "id": "src_textutils_findclosestrepair",
-      "community": 5,
+      "community": 6,
       "norm_label": "findclosestrepair()"
     },
     {
@@ -3888,7 +4014,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L218",
       "id": "src_textutils_levenshteindistance",
-      "community": 5,
+      "community": 6,
       "norm_label": "levenshteindistance()"
     },
     {
@@ -3897,7 +4023,7 @@
       "source_file": "src\\textUtils.ts",
       "source_location": "L247",
       "id": "src_textutils_applyreplacementcase",
-      "community": 5,
+      "community": 6,
       "norm_label": "applyreplacementcase()"
     },
     {
@@ -3906,7 +4032,7 @@
       "source_file": "src\\types.ts",
       "source_location": "L1",
       "id": "src_types_ts",
-      "community": 19,
+      "community": 20,
       "norm_label": "types.ts"
     },
     {
@@ -3915,7 +4041,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L1",
       "id": "src_vehiclebase_ts",
-      "community": 8,
+      "community": 9,
       "norm_label": "vehiclebase.ts"
     },
     {
@@ -3933,7 +4059,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L47",
       "id": "src_vehiclebase_normalizeplate",
-      "community": 8,
+      "community": 2,
       "norm_label": "normalizeplate()"
     },
     {
@@ -3942,7 +4068,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L53",
       "id": "src_vehiclebase_findvehiclebyplate",
-      "community": 8,
+      "community": 2,
       "norm_label": "findvehiclebyplate()"
     },
     {
@@ -3951,7 +4077,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L58",
       "id": "src_vehiclebase_getvehiclemodelname",
-      "community": 5,
+      "community": 6,
       "norm_label": "getvehiclemodelname()"
     },
     {
@@ -3960,7 +4086,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L70",
       "id": "src_vehiclebase_listvehiclemodels",
-      "community": 8,
+      "community": 9,
       "norm_label": "listvehiclemodels()"
     },
     {
@@ -3969,7 +4095,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L85",
       "id": "src_vehiclebase_parsevehiclerows",
-      "community": 8,
+      "community": 9,
       "norm_label": "parsevehiclerows()"
     },
     {
@@ -3978,7 +4104,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L142",
       "id": "src_vehiclebase_readcsvrows",
-      "community": 8,
+      "community": 9,
       "norm_label": "readcsvrows()"
     },
     {
@@ -3987,7 +4113,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L155",
       "id": "src_vehiclebase_sanitizevehiclerecord",
-      "community": 8,
+      "community": 2,
       "norm_label": "sanitizevehiclerecord()"
     },
     {
@@ -3996,7 +4122,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L178",
       "id": "src_vehiclebase_normalizeheader",
-      "community": 8,
+      "community": 9,
       "norm_label": "normalizeheader()"
     },
     {
@@ -4005,7 +4131,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L188",
       "id": "src_vehiclebase_humanizeheader",
-      "community": 8,
+      "community": 9,
       "norm_label": "humanizeheader()"
     },
     {
@@ -4014,7 +4140,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L196",
       "id": "src_vehiclebase_findcolumn",
-      "community": 8,
+      "community": 9,
       "norm_label": "findcolumn()"
     },
     {
@@ -4023,7 +4149,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L208",
       "id": "src_vehiclebase_findoptionalcolumn",
-      "community": 8,
+      "community": 9,
       "norm_label": "findoptionalcolumn()"
     },
     {
@@ -4032,7 +4158,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L215",
       "id": "src_vehiclebase_totext",
-      "community": 8,
+      "community": 9,
       "norm_label": "totext()"
     },
     {
@@ -4041,7 +4167,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L242",
       "id": "src_vehiclebase_detectdelimiter",
-      "community": 8,
+      "community": 9,
       "norm_label": "detectdelimiter()"
     },
     {
@@ -4050,7 +4176,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L262",
       "id": "src_vehiclebase_countdelimiter",
-      "community": 8,
+      "community": 9,
       "norm_label": "countdelimiter()"
     },
     {
@@ -4059,7 +4185,7 @@
       "source_file": "src\\vehicleBase.ts",
       "source_location": "L280",
       "id": "src_vehiclebase_parsedelimitedline",
-      "community": 8,
+      "community": 9,
       "norm_label": "parsedelimitedline()"
     },
     {
@@ -4068,7 +4194,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L1",
       "id": "src_vehiclecatalog_ts",
-      "community": 5,
+      "community": 6,
       "norm_label": "vehiclecatalog.ts"
     },
     {
@@ -4077,7 +4203,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L44",
       "id": "src_vehiclecatalog_normalizecomparablevehicletext",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizecomparablevehicletext()"
     },
     {
@@ -4086,7 +4212,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L54",
       "id": "src_vehiclecatalog_findvehiclecatalogentry",
-      "community": 5,
+      "community": 6,
       "norm_label": "findvehiclecatalogentry()"
     },
     {
@@ -4095,7 +4221,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L66",
       "id": "src_vehiclecatalog_normalizeofficialvehiclemodel",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeofficialvehiclemodel()"
     },
     {
@@ -4104,7 +4230,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L71",
       "id": "src_vehiclecatalog_getvehicletypefrommodel",
-      "community": 5,
+      "community": 6,
       "norm_label": "getvehicletypefrommodel()"
     },
     {
@@ -4113,7 +4239,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L75",
       "id": "src_vehiclecatalog_listofficialvehiclemodels",
-      "community": 8,
+      "community": 9,
       "norm_label": "listofficialvehiclemodels()"
     },
     {
@@ -4122,7 +4248,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L79",
       "id": "src_vehiclecatalog_listvehicletypes",
-      "community": 5,
+      "community": 6,
       "norm_label": "listvehicletypes()"
     },
     {
@@ -4131,7 +4257,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L90",
       "id": "src_vehiclecatalog_listvehiclecatalogbytype",
-      "community": 5,
+      "community": 6,
       "norm_label": "listvehiclecatalogbytype()"
     },
     {
@@ -4140,7 +4266,7 @@
       "source_file": "src\\vehicleCatalog.ts",
       "source_location": "L97",
       "id": "src_vehiclecatalog_normalizeoperationalvehicletype",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeoperationalvehicletype()"
     },
     {
@@ -4149,7 +4275,7 @@
       "source_file": "src\\vite-env.d.ts",
       "source_location": "L1",
       "id": "src_vite_env_d_ts",
-      "community": 20,
+      "community": 21,
       "norm_label": "vite-env.d.ts"
     },
     {
@@ -4158,7 +4284,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1",
       "id": "src_components_automaticpurchases_tsx",
-      "community": 3,
+      "community": 4,
       "norm_label": "automaticpurchases.tsx"
     },
     {
@@ -4167,7 +4293,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L103",
       "id": "components_automaticpurchases_normalizesku",
-      "community": 3,
+      "community": 4,
       "norm_label": "normalizesku()"
     },
     {
@@ -4176,7 +4302,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L107",
       "id": "components_automaticpurchases_getskucandidates",
-      "community": 3,
+      "community": 4,
       "norm_label": "getskucandidates()"
     },
     {
@@ -4185,7 +4311,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L120",
       "id": "components_automaticpurchases_finditembysku",
-      "community": 3,
+      "community": 4,
       "norm_label": "finditembysku()"
     },
     {
@@ -4194,7 +4320,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L131",
       "id": "components_automaticpurchases_builditemindex",
-      "community": 3,
+      "community": 4,
       "norm_label": "builditemindex()"
     },
     {
@@ -4203,7 +4329,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L141",
       "id": "components_automaticpurchases_finditembyskuindex",
-      "community": 3,
+      "community": 4,
       "norm_label": "finditembyskuindex()"
     },
     {
@@ -4212,7 +4338,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L149",
       "id": "components_automaticpurchases_hasmatchingsku",
-      "community": 3,
+      "community": 4,
       "norm_label": "hasmatchingsku()"
     },
     {
@@ -4221,7 +4347,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L157",
       "id": "components_automaticpurchases_normalizepurchasetype",
-      "community": 3,
+      "community": 4,
       "norm_label": "normalizepurchasetype()"
     },
     {
@@ -4230,7 +4356,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L176",
       "id": "components_automaticpurchases_geteffectivepurchasetype",
-      "community": 3,
+      "community": 4,
       "norm_label": "geteffectivepurchasetype()"
     },
     {
@@ -4239,7 +4365,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L186",
       "id": "components_automaticpurchases_getpurchaseclassification",
-      "community": 3,
+      "community": 4,
       "norm_label": "getpurchaseclassification()"
     },
     {
@@ -4248,7 +4374,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L193",
       "id": "components_automaticpurchases_getpurchaseclassificationmeta",
-      "community": 3,
+      "community": 4,
       "norm_label": "getpurchaseclassificationmeta()"
     },
     {
@@ -4257,7 +4383,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L229",
       "id": "components_automaticpurchases_getmatchconfidencelabel",
-      "community": 3,
+      "community": 4,
       "norm_label": "getmatchconfidencelabel()"
     },
     {
@@ -4266,7 +4392,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L235",
       "id": "components_automaticpurchases_gettodayinputdate",
-      "community": 3,
+      "community": 4,
       "norm_label": "gettodayinputdate()"
     },
     {
@@ -4275,7 +4401,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L239",
       "id": "components_automaticpurchases_getvehiclemodelfromrecord",
-      "community": 3,
+      "community": 4,
       "norm_label": "getvehiclemodelfromrecord()"
     },
     {
@@ -4284,7 +4410,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L250",
       "id": "components_automaticpurchases_createemptyquotationrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "createemptyquotationrow()"
     },
     {
@@ -4293,7 +4419,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L272",
       "id": "components_automaticpurchases_quotationtoformrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "quotationtoformrow()"
     },
     {
@@ -4302,7 +4428,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L294",
       "id": "components_automaticpurchases_buildinitialquotationrows",
-      "community": 3,
+      "community": 4,
       "norm_label": "buildinitialquotationrows()"
     },
     {
@@ -4311,7 +4437,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L302",
       "id": "components_automaticpurchases_parsepositivenumber",
-      "community": 3,
+      "community": 4,
       "norm_label": "parsepositivenumber()"
     },
     {
@@ -4320,7 +4446,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L308",
       "id": "components_automaticpurchases_parseoptionalpositivenumber",
-      "community": 3,
+      "community": 4,
       "norm_label": "parseoptionalpositivenumber()"
     },
     {
@@ -4329,7 +4455,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L313",
       "id": "components_automaticpurchases_clampscore",
-      "community": 3,
+      "community": 4,
       "norm_label": "clampscore()"
     },
     {
@@ -4338,7 +4464,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L319",
       "id": "components_automaticpurchases_iscompletequotationrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "iscompletequotationrow()"
     },
     {
@@ -4347,7 +4473,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L327",
       "id": "components_automaticpurchases_getquotationtotalfromrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "getquotationtotalfromrow()"
     },
     {
@@ -4356,7 +4482,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L331",
       "id": "components_automaticpurchases_getquotationtotal",
-      "community": 3,
+      "community": 4,
       "norm_label": "getquotationtotal()"
     },
     {
@@ -4365,7 +4491,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L335",
       "id": "components_automaticpurchases_buildquotationpayload",
-      "community": 3,
+      "community": 4,
       "norm_label": "buildquotationpayload()"
     },
     {
@@ -4374,7 +4500,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L365",
       "id": "components_automaticpurchases_countcompletequotationrows",
-      "community": 3,
+      "community": 4,
       "norm_label": "countcompletequotationrows()"
     },
     {
@@ -4383,7 +4509,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L369",
       "id": "components_automaticpurchases_hasminimumquotations",
-      "community": 3,
+      "community": 4,
       "norm_label": "hasminimumquotations()"
     },
     {
@@ -4392,7 +4518,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L377",
       "id": "components_automaticpurchases_getselectedquotation",
-      "community": 3,
+      "community": 4,
       "norm_label": "getselectedquotation()"
     },
     {
@@ -4401,7 +4527,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L381",
       "id": "components_automaticpurchases_calculatequotationscore",
-      "community": 3,
+      "community": 4,
       "norm_label": "calculatequotationscore()"
     },
     {
@@ -4410,7 +4536,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L400",
       "id": "components_automaticpurchases_getbestquotationrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "getbestquotationrow()"
     },
     {
@@ -4419,7 +4545,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L412",
       "id": "components_automaticpurchases_extractpdftextfromfile",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractpdftextfromfile()"
     },
     {
@@ -4428,7 +4554,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L437",
       "id": "components_automaticpurchases_normalizesearchtext",
-      "community": 3,
+      "community": 4,
       "norm_label": "normalizesearchtext()"
     },
     {
@@ -4437,7 +4563,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L447",
       "id": "components_automaticpurchases_buildlinkedquotationid",
-      "community": 3,
+      "community": 4,
       "norm_label": "buildlinkedquotationid()"
     },
     {
@@ -4446,7 +4572,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L454",
       "id": "components_automaticpurchases_getquotationprintgroupkey",
-      "community": 3,
+      "community": 4,
       "norm_label": "getquotationprintgroupkey()"
     },
     {
@@ -4455,7 +4581,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L466",
       "id": "components_automaticpurchases_createquotationbudgetitem",
-      "community": 3,
+      "community": 4,
       "norm_label": "createquotationbudgetitem()"
     },
     {
@@ -4464,7 +4590,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L494",
       "id": "components_automaticpurchases_mergequotationbudgetitems",
-      "community": 3,
+      "community": 4,
       "norm_label": "mergequotationbudgetitems()"
     },
     {
@@ -4473,7 +4599,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L518",
       "id": "components_automaticpurchases_findpurchaseforlinkeditem",
-      "community": 3,
+      "community": 4,
       "norm_label": "findpurchaseforlinkeditem()"
     },
     {
@@ -4482,7 +4608,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L534",
       "id": "components_automaticpurchases_getmatchedquotationforlinkeditem",
-      "community": 3,
+      "community": 4,
       "norm_label": "getmatchedquotationforlinkeditem()"
     },
     {
@@ -4491,7 +4617,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L560",
       "id": "components_automaticpurchases_enrichlinkedquotationitem",
-      "community": 3,
+      "community": 4,
       "norm_label": "enrichlinkedquotationitem()"
     },
     {
@@ -4500,7 +4626,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L588",
       "id": "components_automaticpurchases_buildquotationbudgetitems",
-      "community": 3,
+      "community": 4,
       "norm_label": "buildquotationbudgetitems()"
     },
     {
@@ -4509,7 +4635,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L608",
       "id": "components_automaticpurchases_upsertquotation",
-      "community": 3,
+      "community": 4,
       "norm_label": "upsertquotation()"
     },
     {
@@ -4518,7 +4644,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L632",
       "id": "components_automaticpurchases_parsebrazilianmoney",
-      "community": 3,
+      "community": 4,
       "norm_label": "parsebrazilianmoney()"
     },
     {
@@ -4527,7 +4653,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L642",
       "id": "components_automaticpurchases_extractmoneyvalues",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractmoneyvalues()"
     },
     {
@@ -4536,7 +4662,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L652",
       "id": "components_automaticpurchases_extractfirstdate",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractfirstdate()"
     },
     {
@@ -4545,7 +4671,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L662",
       "id": "components_automaticpurchases_extractdatebylabel",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractdatebylabel()"
     },
     {
@@ -4554,7 +4680,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L671",
       "id": "components_automaticpurchases_extractquotenumber",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractquotenumber()"
     },
     {
@@ -4563,7 +4689,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L677",
       "id": "components_automaticpurchases_extractcontact",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractcontact()"
     },
     {
@@ -4572,7 +4698,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L683",
       "id": "components_automaticpurchases_extractsuppliername",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractsuppliername()"
     },
     {
@@ -4581,7 +4707,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L693",
       "id": "components_automaticpurchases_extractdeliverydays",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractdeliverydays()"
     },
     {
@@ -4590,7 +4716,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L699",
       "id": "components_automaticpurchases_extractpaymentterms",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractpaymentterms()"
     },
     {
@@ -4599,7 +4725,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L704",
       "id": "components_automaticpurchases_getsignificantwords",
-      "community": 3,
+      "community": 4,
       "norm_label": "getsignificantwords()"
     },
     {
@@ -4608,7 +4734,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L711",
       "id": "components_automaticpurchases_findbestlineforpurchase",
-      "community": 3,
+      "community": 4,
       "norm_label": "findbestlineforpurchase()"
     },
     {
@@ -4617,7 +4743,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L729",
       "id": "components_automaticpurchases_extractquantityfromline",
-      "community": 3,
+      "community": 4,
       "norm_label": "extractquantityfromline()"
     },
     {
@@ -4626,7 +4752,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L737",
       "id": "components_automaticpurchases_detectquotationlinkeditems",
-      "community": 3,
+      "community": 4,
       "norm_label": "detectquotationlinkeditems()"
     },
     {
@@ -4635,7 +4761,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L778",
       "id": "components_automaticpurchases_parsequotationpdftext",
-      "community": 3,
+      "community": 4,
       "norm_label": "parsequotationpdftext()"
     },
     {
@@ -4644,7 +4770,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L825",
       "id": "components_automaticpurchases_escapehtml",
-      "community": 3,
+      "community": 4,
       "norm_label": "escapehtml()"
     },
     {
@@ -4653,7 +4779,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L834",
       "id": "components_automaticpurchases_formatcurrency",
-      "community": 3,
+      "community": 4,
       "norm_label": "formatcurrency()"
     },
     {
@@ -4662,7 +4788,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L838",
       "id": "components_automaticpurchases_formatpurchasedatetime",
-      "community": 3,
+      "community": 4,
       "norm_label": "formatpurchasedatetime()"
     },
     {
@@ -4671,7 +4797,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L849",
       "id": "components_automaticpurchases_buildsuggestionreason",
-      "community": 9,
+      "community": 8,
       "norm_label": "buildsuggestionreason()"
     },
     {
@@ -4680,7 +4806,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L871",
       "id": "components_automaticpurchases_comparepurchases",
-      "community": 3,
+      "community": 4,
       "norm_label": "comparepurchases()"
     },
     {
@@ -4689,7 +4815,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L891",
       "id": "components_automaticpurchases_getmanualbatchid",
-      "community": 3,
+      "community": 4,
       "norm_label": "getmanualbatchid()"
     },
     {
@@ -4698,7 +4824,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L895",
       "id": "components_automaticpurchases_caneditmanualpurchase",
-      "community": 3,
+      "community": 4,
       "norm_label": "caneditmanualpurchase()"
     },
     {
@@ -4707,7 +4833,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L950",
       "id": "components_automaticpurchases_blockpaymentprogressifhasdivergences",
-      "community": 3,
+      "community": 4,
       "norm_label": "blockpaymentprogressifhasdivergences()"
     },
     {
@@ -4716,7 +4842,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1033",
       "id": "components_automaticpurchases_resetmanualform",
-      "community": 3,
+      "community": 4,
       "norm_label": "resetmanualform()"
     },
     {
@@ -4725,7 +4851,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1045",
       "id": "components_automaticpurchases_openmanualcreator",
-      "community": 3,
+      "community": 4,
       "norm_label": "openmanualcreator()"
     },
     {
@@ -4734,7 +4860,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1050",
       "id": "components_automaticpurchases_closemanualmodal",
-      "community": 3,
+      "community": 4,
       "norm_label": "closemanualmodal()"
     },
     {
@@ -4743,7 +4869,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1055",
       "id": "components_automaticpurchases_handleselectmanualsku",
-      "community": 3,
+      "community": 4,
       "norm_label": "handleselectmanualsku()"
     },
     {
@@ -4752,7 +4878,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1060",
       "id": "components_automaticpurchases_handleaddmanualdraftitem",
-      "community": 4,
+      "community": 2,
       "norm_label": "handleaddmanualdraftitem()"
     },
     {
@@ -4761,7 +4887,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1099",
       "id": "components_automaticpurchases_updatemanualdraftquantity",
-      "community": 3,
+      "community": 4,
       "norm_label": "updatemanualdraftquantity()"
     },
     {
@@ -4770,7 +4896,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1105",
       "id": "components_automaticpurchases_removemanualdraftitem",
-      "community": 3,
+      "community": 4,
       "norm_label": "removemanualdraftitem()"
     },
     {
@@ -4779,7 +4905,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1321",
       "id": "components_automaticpurchases_openquotationform",
-      "community": 3,
+      "community": 4,
       "norm_label": "openquotationform()"
     },
     {
@@ -4788,7 +4914,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1346",
       "id": "components_automaticpurchases_updatequotationrow",
-      "community": 3,
+      "community": 4,
       "norm_label": "updatequotationrow()"
     },
     {
@@ -4797,7 +4923,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1358",
       "id": "components_automaticpurchases_savequotationform",
-      "community": 3,
+      "community": 4,
       "norm_label": "savequotationform()"
     },
     {
@@ -4806,7 +4932,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1444",
       "id": "components_automaticpurchases_handlequotationpdfimport",
-      "community": 3,
+      "community": 4,
       "norm_label": "handlequotationpdfimport()"
     },
     {
@@ -4815,7 +4941,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1472",
       "id": "components_automaticpurchases_togglelinkeditem",
-      "community": 3,
+      "community": 4,
       "norm_label": "togglelinkeditem()"
     },
     {
@@ -4824,7 +4950,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1487",
       "id": "components_automaticpurchases_addmanuallinkeditem",
-      "community": 3,
+      "community": 4,
       "norm_label": "addmanuallinkeditem()"
     },
     {
@@ -4833,7 +4959,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1518",
       "id": "components_automaticpurchases_printquotationmap",
-      "community": 3,
+      "community": 4,
       "norm_label": "printquotationmap()"
     },
     {
@@ -4842,7 +4968,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1915",
       "id": "components_automaticpurchases_handlestatuschange",
-      "community": 3,
+      "community": 4,
       "norm_label": "handlestatuschange()"
     },
     {
@@ -4851,7 +4977,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1945",
       "id": "components_automaticpurchases_handlepackagestatuschange",
-      "community": 3,
+      "community": 4,
       "norm_label": "handlepackagestatuschange()"
     },
     {
@@ -4860,7 +4986,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1982",
       "id": "components_automaticpurchases_geteditablemanualbatch",
-      "community": 3,
+      "community": 4,
       "norm_label": "geteditablemanualbatch()"
     },
     {
@@ -4869,7 +4995,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L1991",
       "id": "components_automaticpurchases_openmanualeditor",
-      "community": 3,
+      "community": 4,
       "norm_label": "openmanualeditor()"
     },
     {
@@ -4878,7 +5004,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L2025",
       "id": "components_automaticpurchases_removemanualpurchase",
-      "community": 3,
+      "community": 4,
       "norm_label": "removemanualpurchase()"
     },
     {
@@ -4887,7 +5013,7 @@
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L2057",
       "id": "components_automaticpurchases_handlecreatemanual",
-      "community": 3,
+      "community": 4,
       "norm_label": "handlecreatemanual()"
     },
     {
@@ -4896,7 +5022,7 @@
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L1",
       "id": "src_components_dashboard_tsx",
-      "community": 5,
+      "community": 8,
       "norm_label": "dashboard.tsx"
     },
     {
@@ -4905,7 +5031,7 @@
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L80",
       "id": "components_dashboard_geteffectivevehicletype",
-      "community": 5,
+      "community": 6,
       "norm_label": "geteffectivevehicletype()"
     },
     {
@@ -4914,7 +5040,7 @@
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L82",
       "id": "components_dashboard_openrequest",
-      "community": 5,
+      "community": 8,
       "norm_label": "openrequest()"
     },
     {
@@ -4923,7 +5049,7 @@
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L211",
       "id": "components_dashboard_handlealertlistchange",
-      "community": 5,
+      "community": 8,
       "norm_label": "handlealertlistchange()"
     },
     {
@@ -4932,7 +5058,7 @@
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L889",
       "id": "components_dashboard_formatnumber",
-      "community": 5,
+      "community": 8,
       "norm_label": "formatnumber()"
     },
     {
@@ -4941,7 +5067,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L1",
       "id": "src_components_inventorylist_tsx",
-      "community": 5,
+      "community": 6,
       "norm_label": "inventorylist.tsx"
     },
     {
@@ -4950,7 +5076,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L51",
       "id": "components_inventorylist_geteffectivevehicletype",
-      "community": 5,
+      "community": 6,
       "norm_label": "geteffectivevehicletype()"
     },
     {
@@ -4959,7 +5085,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L136",
       "id": "components_inventorylist_handlefilterclick",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlefilterclick()"
     },
     {
@@ -4968,7 +5094,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L140",
       "id": "components_inventorylist_handlefileupload",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlefileupload()"
     },
     {
@@ -4977,7 +5103,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L200",
       "id": "components_inventorylist_handleexportcsv",
-      "community": 5,
+      "community": 6,
       "norm_label": "handleexportcsv()"
     },
     {
@@ -4986,7 +5112,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L250",
       "id": "components_inventorylist_handleopenlabels",
-      "community": 5,
+      "community": 6,
       "norm_label": "handleopenlabels()"
     },
     {
@@ -5004,7 +5130,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L290",
       "id": "components_inventorylist_togglelabelselection",
-      "community": 5,
+      "community": 6,
       "norm_label": "togglelabelselection()"
     },
     {
@@ -5013,7 +5139,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L296",
       "id": "components_inventorylist_selectcurrentpagelabels",
-      "community": 5,
+      "community": 6,
       "norm_label": "selectcurrentpagelabels()"
     },
     {
@@ -5022,7 +5148,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L301",
       "id": "components_inventorylist_selectallfilteredlabels",
-      "community": 5,
+      "community": 6,
       "norm_label": "selectallfilteredlabels()"
     },
     {
@@ -5031,7 +5157,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L305",
       "id": "components_inventorylist_clearselectedlabels",
-      "community": 5,
+      "community": 6,
       "norm_label": "clearselectedlabels()"
     },
     {
@@ -5040,7 +5166,7 @@
       "source_file": "src\\components\\InventoryList.tsx",
       "source_location": "L309",
       "id": "components_inventorylist_selectvisiblelabelresults",
-      "community": 5,
+      "community": 6,
       "norm_label": "selectvisiblelabelresults()"
     },
     {
@@ -5049,7 +5175,7 @@
       "source_file": "src\\components\\InventoryOperation.tsx",
       "source_location": "L1",
       "id": "src_components_inventoryoperation_tsx",
-      "community": 9,
+      "community": 8,
       "norm_label": "inventoryoperation.tsx"
     },
     {
@@ -5058,7 +5184,7 @@
       "source_file": "src\\components\\InventoryOperation.tsx",
       "source_location": "L275",
       "id": "components_inventoryoperation_opennextpending",
-      "community": 9,
+      "community": 8,
       "norm_label": "opennextpending()"
     },
     {
@@ -5067,7 +5193,7 @@
       "source_file": "src\\components\\InventoryOperation.tsx",
       "source_location": "L286",
       "id": "components_inventoryoperation_opennextrecount",
-      "community": 9,
+      "community": 8,
       "norm_label": "opennextrecount()"
     },
     {
@@ -5076,7 +5202,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L1",
       "id": "src_components_layout_tsx",
-      "community": 5,
+      "community": 6,
       "norm_label": "layout.tsx"
     },
     {
@@ -5085,7 +5211,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L111",
       "id": "components_layout_handlechange",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlechange()"
     },
     {
@@ -5094,7 +5220,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L120",
       "id": "components_layout_handlepointerdown",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlepointerdown()"
     },
     {
@@ -5103,7 +5229,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L125",
       "id": "components_layout_handlekeydown",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlekeydown()"
     },
     {
@@ -5112,7 +5238,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L139",
       "id": "components_layout_togglefullscreen",
-      "community": 5,
+      "community": 6,
       "norm_label": "togglefullscreen()"
     },
     {
@@ -5121,7 +5247,7 @@
       "source_file": "src\\components\\Layout.tsx",
       "source_location": "L372",
       "id": "components_layout_onforcependingsync",
-      "community": 5,
+      "community": 6,
       "norm_label": "onforcependingsync()"
     },
     {
@@ -5418,7 +5544,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L1",
       "id": "src_components_preventivekits_tsx",
-      "community": 4,
+      "community": 6,
       "norm_label": "preventivekits.tsx"
     },
     {
@@ -5427,7 +5553,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L16",
       "id": "components_preventivekits_normalizesku",
-      "community": 4,
+      "community": 6,
       "norm_label": "normalizesku()"
     },
     {
@@ -5436,7 +5562,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L50",
       "id": "components_preventivekits_ensureeditablecatalog",
-      "community": 4,
+      "community": 6,
       "norm_label": "ensureeditablecatalog()"
     },
     {
@@ -5445,7 +5571,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L65",
       "id": "components_preventivekits_startedit",
-      "community": 4,
+      "community": 6,
       "norm_label": "startedit()"
     },
     {
@@ -5454,7 +5580,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L72",
       "id": "components_preventivekits_commitedit",
-      "community": 4,
+      "community": 6,
       "norm_label": "commitedit()"
     },
     {
@@ -5463,7 +5589,7 @@
       "source_file": "src\\components\\PreventiveKits.tsx",
       "source_location": "L133",
       "id": "components_preventivekits_removeitem",
-      "community": 4,
+      "community": 6,
       "norm_label": "removeitem()"
     },
     {
@@ -5634,7 +5760,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1",
       "id": "src_components_requestmanager_tsx",
-      "community": 4,
+      "community": 2,
       "norm_label": "requestmanager.tsx"
     },
     {
@@ -5643,7 +5769,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L120",
       "id": "components_requestmanager_geteffectivevehicletype",
-      "community": 5,
+      "community": 6,
       "norm_label": "geteffectivevehicletype()"
     },
     {
@@ -5652,7 +5778,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L122",
       "id": "components_requestmanager_geteffectivevehiclemodel",
-      "community": 4,
+      "community": 2,
       "norm_label": "geteffectivevehiclemodel()"
     },
     {
@@ -5661,7 +5787,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L186",
       "id": "components_requestmanager_stopskuscannersession",
-      "community": 4,
+      "community": 2,
       "norm_label": "stopskuscannersession()"
     },
     {
@@ -5670,7 +5796,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L197",
       "id": "components_requestmanager_closeskuscanner",
-      "community": 4,
+      "community": 2,
       "norm_label": "closeskuscanner()"
     },
     {
@@ -5679,7 +5805,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L206",
       "id": "components_requestmanager_toggleskuscannerfullscreen",
-      "community": 4,
+      "community": 2,
       "norm_label": "toggleskuscannerfullscreen()"
     },
     {
@@ -5688,7 +5814,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L226",
       "id": "components_requestmanager_applydetectedsku",
-      "community": 4,
+      "community": 2,
       "norm_label": "applydetectedsku()"
     },
     {
@@ -5697,7 +5823,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L277",
       "id": "components_requestmanager_startskuscanner",
-      "community": 4,
+      "community": 2,
       "norm_label": "startskuscanner()"
     },
     {
@@ -5706,7 +5832,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L290",
       "id": "components_requestmanager_readskufromphoto",
-      "community": 4,
+      "community": 2,
       "norm_label": "readskufromphoto()"
     },
     {
@@ -5724,7 +5850,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L417",
       "id": "components_requestmanager_onchange",
-      "community": 4,
+      "community": 2,
       "norm_label": "onchange()"
     },
     {
@@ -5733,7 +5859,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L615",
       "id": "components_requestmanager_describeeditinglockholder",
-      "community": 4,
+      "community": 2,
       "norm_label": "describeeditinglockholder()"
     },
     {
@@ -5742,7 +5868,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L635",
       "id": "components_requestmanager_makeauthheaders",
-      "community": 4,
+      "community": 2,
       "norm_label": "makeauthheaders()"
     },
     {
@@ -5751,7 +5877,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L641",
       "id": "components_requestmanager_readlock",
-      "community": 4,
+      "community": 2,
       "norm_label": "readlock()"
     },
     {
@@ -5760,7 +5886,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L651",
       "id": "components_requestmanager_postlock",
-      "community": 4,
+      "community": 2,
       "norm_label": "postlock()"
     },
     {
@@ -5769,7 +5895,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L672",
       "id": "components_requestmanager_heartbeat",
-      "community": 4,
+      "community": 2,
       "norm_label": "heartbeat()"
     },
     {
@@ -5778,7 +5904,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L698",
       "id": "components_requestmanager_startpolling",
-      "community": 4,
+      "community": 2,
       "norm_label": "startpolling()"
     },
     {
@@ -5787,7 +5913,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L735",
       "id": "components_requestmanager_acquireorload",
-      "community": 4,
+      "community": 2,
       "norm_label": "acquireorload()"
     },
     {
@@ -5796,7 +5922,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L776",
       "id": "components_requestmanager_handlevisibilitychange",
-      "community": 4,
+      "community": 2,
       "norm_label": "handlevisibilitychange()"
     },
     {
@@ -5805,7 +5931,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L785",
       "id": "components_requestmanager_handlebeforeunload",
-      "community": 4,
+      "community": 2,
       "norm_label": "handlebeforeunload()"
     },
     {
@@ -5814,7 +5940,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L807",
       "id": "components_requestmanager_confirmbatterywarrantybeforeadd",
-      "community": 4,
+      "community": 2,
       "norm_label": "confirmbatterywarrantybeforeadd()"
     },
     {
@@ -5823,7 +5949,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L835",
       "id": "components_requestmanager_appendauditentry",
-      "community": 4,
+      "community": 2,
       "norm_label": "appendauditentry()"
     },
     {
@@ -5832,7 +5958,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L860",
       "id": "components_requestmanager_formatauditevent",
-      "community": 4,
+      "community": 2,
       "norm_label": "formatauditevent()"
     },
     {
@@ -5841,7 +5967,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L877",
       "id": "components_requestmanager_formataudittimestamp",
-      "community": 4,
+      "community": 2,
       "norm_label": "formataudittimestamp()"
     },
     {
@@ -5850,7 +5976,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L889",
       "id": "components_requestmanager_normalizeskuforkit",
-      "community": 4,
+      "community": 2,
       "norm_label": "normalizeskuforkit()"
     },
     {
@@ -5859,7 +5985,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L965",
       "id": "components_requestmanager_opentypemodelpicker",
-      "community": 5,
+      "community": 6,
       "norm_label": "opentypemodelpicker()"
     },
     {
@@ -5868,7 +5994,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L984",
       "id": "components_requestmanager_closetypemodelpicker",
-      "community": 4,
+      "community": 2,
       "norm_label": "closetypemodelpicker()"
     },
     {
@@ -5877,7 +6003,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L993",
       "id": "components_requestmanager_togglepickersku",
-      "community": 4,
+      "community": 2,
       "norm_label": "togglepickersku()"
     },
     {
@@ -5886,7 +6012,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L999",
       "id": "components_requestmanager_addselectedpickeritems",
-      "community": 4,
+      "community": 2,
       "norm_label": "addselectedpickeritems()"
     },
     {
@@ -5895,7 +6021,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1067",
       "id": "components_requestmanager_addkittodraft",
-      "community": 4,
+      "community": 2,
       "norm_label": "addkittodraft()"
     },
     {
@@ -5904,7 +6030,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1156",
       "id": "components_requestmanager_cleardraftfornextrequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "cleardraftfornextrequest()"
     },
     {
@@ -5913,7 +6039,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1166",
       "id": "components_requestmanager_startnewrequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "startnewrequest()"
     },
     {
@@ -5922,7 +6048,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1174",
       "id": "components_requestmanager_loadrequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "loadrequest()"
     },
     {
@@ -5931,7 +6057,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1203",
       "id": "components_requestmanager_savedraft",
-      "community": 4,
+      "community": 2,
       "norm_label": "savedraft()"
     },
     {
@@ -5940,7 +6066,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1302",
       "id": "components_requestmanager_additemtodraft",
-      "community": 4,
+      "community": 2,
       "norm_label": "additemtodraft()"
     },
     {
@@ -5949,7 +6075,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1338",
       "id": "components_requestmanager_removeitemfromdraft",
-      "community": 4,
+      "community": 2,
       "norm_label": "removeitemfromdraft()"
     },
     {
@@ -5958,7 +6084,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1351",
       "id": "components_requestmanager_deleterequest",
-      "community": 4,
+      "community": 2,
       "norm_label": "deleterequest()"
     },
     {
@@ -5967,7 +6093,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1382",
       "id": "components_requestmanager_duplicaterequestasnew",
-      "community": 4,
+      "community": 2,
       "norm_label": "duplicaterequestasnew()"
     },
     {
@@ -5976,7 +6102,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1555",
       "id": "components_requestmanager_normalizeuserfacingtext",
-      "community": 4,
+      "community": 2,
       "norm_label": "normalizeuserfacingtext()"
     },
     {
@@ -5985,7 +6111,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L1934",
       "id": "components_requestmanager_normalizelocationtext",
-      "community": 4,
+      "community": 2,
       "norm_label": "normalizelocationtext()"
     },
     {
@@ -5994,7 +6120,7 @@
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L2372",
       "id": "components_requestmanager_switch",
-      "community": 4,
+      "community": 2,
       "norm_label": "switch()"
     },
     {
@@ -6102,7 +6228,7 @@
       "source_file": "src\\components\\StockUpdate.tsx",
       "source_location": "L557",
       "id": "components_stockupdate_handlecreateitem",
-      "community": 5,
+      "community": 6,
       "norm_label": "handlecreateitem()"
     },
     {
@@ -6111,7 +6237,7 @@
       "source_file": "src\\components\\StockWorkspace.tsx",
       "source_location": "L1",
       "id": "src_components_stockworkspace_tsx",
-      "community": 13,
+      "community": 14,
       "norm_label": "stockworkspace.tsx"
     },
     {
@@ -6120,7 +6246,7 @@
       "source_file": "src\\components\\StockWorkspace.tsx",
       "source_location": "L24",
       "id": "components_stockworkspace_stockworkspace",
-      "community": 13,
+      "community": 14,
       "norm_label": "stockworkspace()"
     },
     {
@@ -6129,7 +6255,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L1",
       "id": "src_components_usermanager_tsx",
-      "community": 8,
+      "community": 9,
       "norm_label": "usermanager.tsx"
     },
     {
@@ -6138,7 +6264,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L59",
       "id": "components_usermanager_loadusers",
-      "community": 8,
+      "community": 9,
       "norm_label": "loadusers()"
     },
     {
@@ -6147,7 +6273,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L82",
       "id": "components_usermanager_handlevehicleimport",
-      "community": 8,
+      "community": 9,
       "norm_label": "handlevehicleimport()"
     },
     {
@@ -6156,7 +6282,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L121",
       "id": "components_usermanager_handlecreate",
-      "community": 8,
+      "community": 9,
       "norm_label": "handlecreate()"
     },
     {
@@ -6165,7 +6291,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L173",
       "id": "components_usermanager_handletoggleactive",
-      "community": 8,
+      "community": 9,
       "norm_label": "handletoggleactive()"
     },
     {
@@ -6174,7 +6300,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L195",
       "id": "components_usermanager_handlechangerole",
-      "community": 8,
+      "community": 9,
       "norm_label": "handlechangerole()"
     },
     {
@@ -6183,7 +6309,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L217",
       "id": "components_usermanager_handleresetpassword",
-      "community": 8,
+      "community": 9,
       "norm_label": "handleresetpassword()"
     },
     {
@@ -6192,7 +6318,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L257",
       "id": "components_usermanager_openedit",
-      "community": 8,
+      "community": 9,
       "norm_label": "openedit()"
     },
     {
@@ -6201,7 +6327,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L266",
       "id": "components_usermanager_handlesaveedit",
-      "community": 8,
+      "community": 9,
       "norm_label": "handlesaveedit()"
     },
     {
@@ -6210,7 +6336,7 @@
       "source_file": "src\\components\\UserManager.tsx",
       "source_location": "L471",
       "id": "components_usermanager_normalizeuserfacingtext",
-      "community": 8,
+      "community": 9,
       "norm_label": "normalizeuserfacingtext()"
     },
     {
@@ -6219,7 +6345,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L1",
       "id": "src_components_vehiclepartsbrowser_tsx",
-      "community": 5,
+      "community": 6,
       "norm_label": "vehiclepartsbrowser.tsx"
     },
     {
@@ -6228,7 +6354,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L23",
       "id": "components_vehiclepartsbrowser_geteffectivevehicletype",
-      "community": 5,
+      "community": 6,
       "norm_label": "geteffectivevehicletype()"
     },
     {
@@ -6237,7 +6363,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L25",
       "id": "components_vehiclepartsbrowser_geteffectivevehiclemodel",
-      "community": 5,
+      "community": 6,
       "norm_label": "geteffectivevehiclemodel()"
     },
     {
@@ -6246,7 +6372,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L131",
       "id": "components_vehiclepartsbrowser_opentype",
-      "community": 5,
+      "community": 6,
       "norm_label": "opentype()"
     },
     {
@@ -6255,7 +6381,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L137",
       "id": "components_vehiclepartsbrowser_openmodel",
-      "community": 5,
+      "community": 6,
       "norm_label": "openmodel()"
     },
     {
@@ -6264,7 +6390,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L142",
       "id": "components_vehiclepartsbrowser_resettotypes",
-      "community": 5,
+      "community": 6,
       "norm_label": "resettotypes()"
     },
     {
@@ -6273,7 +6399,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L148",
       "id": "components_vehiclepartsbrowser_resettomodels",
-      "community": 5,
+      "community": 6,
       "norm_label": "resettomodels()"
     },
     {
@@ -6282,7 +6408,7 @@
       "source_file": "src\\components\\VehiclePartsBrowser.tsx",
       "source_location": "L313",
       "id": "components_vehiclepartsbrowser_normalizeuserfacingtext",
-      "community": 5,
+      "community": 6,
       "norm_label": "normalizeuserfacingtext()"
     },
     {
@@ -6290,7 +6416,7 @@
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
       "source_location": "L148",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadstatev2responsetext()",
       "id": "api_state_loadstatev2responsetext"
     },
@@ -6299,7 +6425,7 @@
       "file_type": "code",
       "source_file": "functions\\api\\state.js",
       "source_location": "L176",
-      "community": 2,
+      "community": 3,
       "norm_label": "loadchunkedarraytext()",
       "id": "api_state_loadchunkedarraytext"
     },
@@ -6308,7 +6434,7 @@
       "file_type": "code",
       "source_file": "src\\components\\Dashboard.tsx",
       "source_location": "L634",
-      "community": 5,
+      "community": 8,
       "norm_label": "formatcloudstatus()",
       "id": "components_dashboard_formatcloudstatus"
     },
@@ -6317,7 +6443,7 @@
       "file_type": "code",
       "source_file": "src\\components\\InventoryOperation.tsx",
       "source_location": "L757",
-      "community": 9,
+      "community": 8,
       "norm_label": "return()",
       "id": "components_inventoryoperation_return"
     },
@@ -6326,7 +6452,7 @@
       "file_type": "code",
       "source_file": "src\\components\\RequestManager.tsx",
       "source_location": "L569",
-      "community": 4,
+      "community": 2,
       "norm_label": "notifybatterywarrantyifneeded()",
       "id": "components_requestmanager_notifybatterywarrantyifneeded"
     },
@@ -6335,7 +6461,7 @@
       "file_type": "code",
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L869",
-      "community": 3,
+      "community": 4,
       "norm_label": "automaticpurchases()",
       "id": "components_automaticpurchases_automaticpurchases"
     },
@@ -6344,7 +6470,7 @@
       "file_type": "code",
       "source_file": "src\\components\\AutomaticPurchases.tsx",
       "source_location": "L2206",
-      "community": 3,
+      "community": 4,
       "norm_label": "normalizeuserfacingtext()",
       "id": "components_automaticpurchases_normalizeuserfacingtext"
     }
@@ -7216,9 +7342,9 @@
       "source_file": "functions\\api\\operation-journal.js",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_operation_journal_js",
-      "target": "api_supabase_issupabaseusable",
-      "confidence_score": 1.0
+      "target": "api_supabase_issupabaseusable"
     },
     {
       "relation": "imports",
@@ -7362,6 +7488,26 @@
       "confidence_score": 1.0,
       "source": "functions_api_operation_journal_js",
       "target": "api_operation_journal_replayentriessupabase"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L421",
+      "weight": 1.0,
+      "source": "functions_api_operation_journal_js",
+      "target": "api_operation_journal_resolvesupabasereplaybasestate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L427",
+      "weight": 1.0,
+      "source": "functions_api_operation_journal_js",
+      "target": "api_operation_journal_loadstatev1supabase",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -8031,11 +8177,22 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "functions\\api\\operation-journal.js",
-      "source_location": "L392",
+      "source_location": "L397",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "api_operation_journal_replayentriessupabase",
-      "target": "api_operation_journal_normalizestate"
+      "target": "api_operation_journal_loadstatev1supabase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L398",
+      "weight": 1.0,
+      "source": "api_operation_journal_replayentriessupabase",
+      "target": "api_operation_journal_resolvesupabasereplaybasestate",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -8102,6 +8259,50 @@
       "weight": 1.0,
       "source": "api_operation_journal_replayentriessupabase",
       "target": "api_supabase_savestatev2tosupabase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L392",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "api_operation_journal_replayentriessupabase",
+      "target": "api_operation_journal_normalizestate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L422",
+      "weight": 1.0,
+      "source": "api_operation_journal_resolvesupabasereplaybasestate",
+      "target": "api_operation_journal_normalizestate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts\\test-operation-journal-supabase-replay-base.mjs",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "scripts_test_operation_journal_supabase_replay_base_mjs",
+      "target": "api_operation_journal_resolvesupabasereplaybasestate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "functions\\api\\operation-journal.js",
+      "source_location": "L430",
+      "weight": 1.0,
+      "source": "api_operation_journal_loadstatev1supabase",
+      "target": "api_operation_journal_safejsonparse",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -8965,9 +9166,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_supabase_issupabaseusable",
-      "confidence_score": 1.0
+      "target": "api_supabase_issupabaseusable"
     },
     {
       "relation": "imports",
@@ -8976,9 +9177,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_loadstatev2responsestreamfromsupabase"
     },
     {
       "relation": "imports",
@@ -9029,9 +9230,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L68",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_state_withsupabasefallbackheader",
-      "confidence_score": 1.0
+      "target": "api_state_withsupabasefallbackheader"
     },
     {
       "relation": "contains",
@@ -9069,9 +9270,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L238",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_state_describesupabaseerror",
-      "confidence_score": 1.0
+      "target": "api_state_describesupabaseerror"
     },
     {
       "relation": "contains",
@@ -9149,9 +9350,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L378",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_state_js",
-      "target": "api_state_safeall",
-      "confidence_score": 1.0
+      "target": "api_state_safeall"
     },
     {
       "relation": "contains",
@@ -9511,9 +9712,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L39",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_state_onrequestget",
-      "target": "api_state_describesupabaseerror",
-      "confidence_score": 1.0
+      "target": "api_state_describesupabaseerror"
     },
     {
       "relation": "calls",
@@ -9533,9 +9734,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_state_onrequestget",
-      "target": "api_state_withsupabasefallbackheader",
-      "confidence_score": 1.0
+      "target": "api_state_withsupabasefallbackheader"
     },
     {
       "relation": "calls",
@@ -9940,9 +10141,9 @@
       "source_file": "functions\\api\\state.js",
       "source_location": "L339",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_state_writechunkedarraytextstream",
-      "target": "api_state_safeall",
-      "confidence_score": 1.0
+      "target": "api_state_safeall"
     },
     {
       "relation": "calls",
@@ -10267,9 +10468,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L33",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_issupabaseusable",
-      "confidence_score": 1.0
+      "target": "api_supabase_issupabaseusable"
     },
     {
       "relation": "contains",
@@ -10307,9 +10508,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L84",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_ismissingd1table",
-      "confidence_score": 1.0
+      "target": "api_supabase_ismissingd1table"
     },
     {
       "relation": "contains",
@@ -10317,9 +10518,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L89",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_ismigrationmarkercomplete",
-      "confidence_score": 1.0
+      "target": "api_supabase_ismigrationmarkercomplete"
     },
     {
       "relation": "contains",
@@ -10427,9 +10628,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L361",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_getsupabaserawstatevalue",
-      "confidence_score": 1.0
+      "target": "api_supabase_getsupabaserawstatevalue"
     },
     {
       "relation": "contains",
@@ -10437,9 +10638,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L367",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_writechunkedarraytextstreamsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_writechunkedarraytextstreamsupabase"
     },
     {
       "relation": "contains",
@@ -10447,9 +10648,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L401",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_streamstatev2responsefromsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_streamstatev2responsefromsupabase"
     },
     {
       "relation": "contains",
@@ -10457,9 +10658,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L437",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "functions_api_supabase_js",
-      "target": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_loadstatev2responsestreamfromsupabase"
     },
     {
       "relation": "contains",
@@ -10499,9 +10700,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L34",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_issupabaseusable",
-      "target": "api_supabase_issupabaseconfigured",
-      "confidence_score": 1.0
+      "target": "api_supabase_issupabaseconfigured"
     },
     {
       "relation": "imports",
@@ -10576,9 +10777,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L41",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_issupabaseusable",
-      "target": "api_supabase_getsupabaseadmin",
-      "confidence_score": 1.0
+      "target": "api_supabase_getsupabaseadmin"
     },
     {
       "relation": "imports",
@@ -10708,9 +10909,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L379",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_writechunkedarraytextstreamsupabase",
-      "target": "api_supabase_splitintobatches",
-      "confidence_score": 1.0
+      "target": "api_supabase_splitintobatches"
     },
     {
       "relation": "calls",
@@ -10752,9 +10953,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L139",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_migrated1tosupabaseifneeded",
-      "target": "api_supabase_ismissingd1table",
-      "confidence_score": 1.0
+      "target": "api_supabase_ismissingd1table"
     },
     {
       "relation": "calls",
@@ -10763,9 +10964,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L92",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_ismigrationmarkercomplete",
-      "target": "api_supabase_safejsonparse",
-      "confidence_score": 1.0
+      "target": "api_supabase_safejsonparse"
     },
     {
       "relation": "calls",
@@ -10774,9 +10975,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L113",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_migrated1tosupabaseifneeded",
-      "target": "api_supabase_ismigrationmarkercomplete",
-      "confidence_score": 1.0
+      "target": "api_supabase_ismigrationmarkercomplete"
     },
     {
       "relation": "calls",
@@ -10818,9 +11019,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "api_supabase_migrated1tosupabaseifneeded",
-      "confidence_score": 1.0
+      "target": "api_supabase_migrated1tosupabaseifneeded"
     },
     {
       "relation": "calls",
@@ -10939,9 +11140,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L438",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "target": "api_supabase_loadstatev2manifestsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_loadstatev2manifestsupabase"
     },
     {
       "relation": "calls",
@@ -10972,9 +11173,9 @@
       "source_file": "functions\\api\\supabase.js",
       "source_location": "L440",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "target": "api_supabase_streamstatev2responsefromsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_streamstatev2responsefromsupabase"
     },
     {
       "relation": "imports",
@@ -10983,9 +11184,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "api_supabase_loadstatev2responsestreamfromsupabase",
-      "confidence_score": 1.0
+      "target": "api_supabase_loadstatev2responsestreamfromsupabase"
     },
     {
       "relation": "contains",
@@ -11612,6 +11813,46 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "scripts_test_operation_journal_auth_errors_mjs",
+      "target": "scripts_test_operation_journal_auth_errors_getitem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "scripts_test_operation_journal_auth_errors_mjs",
+      "target": "scripts_test_operation_journal_auth_errors_setitem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts\\test-operation-journal-auth-errors.mjs",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "scripts_test_operation_journal_auth_errors_mjs",
+      "target": "scripts_test_operation_journal_auth_errors_removeitem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts\\test-operation-journal-local-reconcile.mjs",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "scripts_test_operation_journal_local_reconcile_mjs",
+      "target": "scripts_test_operation_journal_local_reconcile_makepayload",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "scripts\\test-operation-journal-replay-patches-v2-direct.mjs",
       "source_location": "L38",
       "weight": 1.0,
@@ -11665,9 +11906,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L95",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "scripts_test_supabase_migration_createfaked1",
-      "confidence_score": 1.0
+      "target": "scripts_test_supabase_migration_createfaked1"
     },
     {
       "relation": "contains",
@@ -11675,9 +11916,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L115",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "scripts_test_supabase_migration_createfailingd1",
-      "confidence_score": 1.0
+      "target": "scripts_test_supabase_migration_createfailingd1"
     },
     {
       "relation": "contains",
@@ -11685,9 +11926,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L133",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "scripts_test_supabase_migration_rowsforsql",
-      "confidence_score": 1.0
+      "target": "scripts_test_supabase_migration_rowsforsql"
     },
     {
       "relation": "contains",
@@ -11695,9 +11936,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L143",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "scripts_test_supabase_migration_createfakesupabase",
-      "confidence_score": 1.0
+      "target": "scripts_test_supabase_migration_createfakesupabase"
     },
     {
       "relation": "contains",
@@ -11705,9 +11946,9 @@
       "source_file": "scripts\\test-supabase-migration.mjs",
       "source_location": "L162",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_supabase_migration_mjs",
-      "target": "scripts_test_supabase_migration_createquery",
-      "confidence_score": 1.0
+      "target": "scripts_test_supabase_migration_createquery"
     },
     {
       "relation": "contains",
@@ -12345,6 +12586,17 @@
       "source_file": "src\\App.tsx",
       "source_location": "L30",
       "weight": 1.0,
+      "source": "src_app_tsx",
+      "target": "src_operationjournal_getalreadyappliedoperationjournalentryids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
+      "source_location": "L30",
+      "weight": 1.0,
       "confidence_score": 1.0,
       "source": "src_app_tsx",
       "target": "src_operationjournal_getpendingoperationjournalqueue"
@@ -12570,9 +12822,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L719",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_tsx",
-      "target": "src_app_reportbackendactive",
-      "confidence_score": 1.0
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "contains",
@@ -12613,6 +12865,16 @@
       "confidence_score": 1.0,
       "source": "src_app_tsx",
       "target": "src_app_refreshpendingjournalcount"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
+      "source_location": "L759",
+      "weight": 1.0,
+      "source": "src_app_tsx",
+      "target": "src_app_reconcilelocaljournalwithonlinestate",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -14064,7 +14326,18 @@
       "source_file": "src\\App.tsx",
       "source_location": "L724",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_reportbackendactive",
+      "target": "src_app_appendsyncevent"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
+      "source_location": "L777",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
       "target": "src_app_appendsyncevent",
       "confidence_score": 1.0
     },
@@ -14227,11 +14500,22 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src\\App.tsx",
-      "source_location": "L1024",
+      "source_location": "L770",
       "weight": 1.0,
-      "source": "src_app_flushoutbox",
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
       "target": "src_app_reportbackendactive",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
+      "source_location": "L1024",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "src_app_flushoutbox",
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "calls",
@@ -14240,9 +14524,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1123",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_loadonlinestate",
-      "target": "src_app_reportbackendactive",
-      "confidence_score": 1.0
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "calls",
@@ -14251,9 +14535,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1403",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_refreshcloudstate",
-      "target": "src_app_reportbackendactive",
-      "confidence_score": 1.0
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "calls",
@@ -14262,9 +14546,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L1486",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_applycloudupdatenow",
-      "target": "src_app_reportbackendactive",
-      "confidence_score": 1.0
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "calls",
@@ -14273,9 +14557,9 @@
       "source_file": "src\\App.tsx",
       "source_location": "L2082",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_handlebackupuploadinputchange",
-      "target": "src_app_reportbackendactive",
-      "confidence_score": 1.0
+      "target": "src_app_reportbackendactive"
     },
     {
       "relation": "calls",
@@ -14284,8 +14568,19 @@
       "source_file": "src\\App.tsx",
       "source_location": "L2150",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_app_handlediscardlocalpending",
-      "target": "src_app_reportbackendactive",
+      "target": "src_app_reportbackendactive"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
+      "source_location": "L776",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_app_describeclouderror",
       "confidence_score": 1.0
     },
     {
@@ -14436,6 +14731,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src\\App.tsx",
+      "source_location": "L778",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_app_refreshpendingjournalcount",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\App.tsx",
       "source_location": "L742",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -14485,6 +14791,50 @@
       "weight": 1.0,
       "source": "src_app_refreshpendingjournalcount",
       "target": "src_operationjournal_getpendingoperationjournalqueue"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "src\\App.tsx",
+      "source_location": "L760",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_operationjournal_getpendingoperationjournalqueue"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "src\\App.tsx",
+      "source_location": "L769",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_cloudstate_loadcloudstate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "src\\App.tsx",
+      "source_location": "L783",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_operationjournal_getalreadyappliedoperationjournalentryids"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "src\\App.tsx",
+      "source_location": "L789",
+      "weight": 1.0,
+      "source": "src_app_reconcilelocaljournalwithonlinestate",
+      "target": "src_operationjournal_removeoperationjournalentries"
     },
     {
       "relation": "calls",
@@ -16955,9 +17305,9 @@
       "source_file": "src\\cloudState.ts",
       "source_location": "L26",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cloudstate_ts",
-      "target": "src_cloudstate_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_cloudstate_fetchwithretry"
     },
     {
       "relation": "contains",
@@ -16986,9 +17336,9 @@
       "source_file": "src\\cloudState.ts",
       "source_location": "L48",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cloudstate_loadcloudstate",
-      "target": "src_cloudstate_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_cloudstate_fetchwithretry"
     },
     {
       "relation": "calls",
@@ -16997,9 +17347,9 @@
       "source_file": "src\\cloudState.ts",
       "source_location": "L71",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cloudstate_savecloudstate",
-      "target": "src_cloudstate_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_cloudstate_fetchwithretry"
     },
     {
       "relation": "contains",
@@ -17795,9 +18145,9 @@
       "source_file": "src\\operationJournal.ts",
       "source_location": "L29",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_operationjournal_ts",
-      "target": "src_operationjournal_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_operationjournal_fetchwithretry"
     },
     {
       "relation": "contains",
@@ -17923,6 +18273,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src\\operationJournal.ts",
+      "source_location": "L372",
+      "weight": 1.0,
+      "source": "src_operationjournal_ts",
+      "target": "src_operationjournal_getalreadyappliedoperationjournalentryids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
       "source_location": "L168",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -17943,6 +18303,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src\\operationJournal.ts",
+      "source_location": "L406",
+      "weight": 1.0,
+      "source": "src_operationjournal_ts",
+      "target": "src_operationjournal_isoperationjournalpatchalreadyapplied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L440",
+      "weight": 1.0,
+      "source": "src_operationjournal_ts",
+      "target": "src_operationjournal_arerecordsalreadyapplied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
       "source_location": "L191",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -17958,6 +18338,16 @@
       "confidence_score": 1.0,
       "source": "src_operationjournal_ts",
       "target": "src_operationjournal_arejsonequal"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L464",
+      "weight": 1.0,
+      "source": "src_operationjournal_ts",
+      "target": "src_operationjournal_isjsonsubset",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -18006,9 +18396,9 @@
       "source_file": "src\\operationJournal.ts",
       "source_location": "L191",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_operationjournal_postoperationjournalentries",
-      "target": "src_operationjournal_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_operationjournal_fetchwithretry"
     },
     {
       "relation": "calls",
@@ -18017,9 +18407,9 @@
       "source_file": "src\\operationJournal.ts",
       "source_location": "L221",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_operationjournal_replayoperationjournalentries",
-      "target": "src_operationjournal_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_operationjournal_fetchwithretry"
     },
     {
       "relation": "calls",
@@ -18028,9 +18418,9 @@
       "source_file": "src\\operationJournal.ts",
       "source_location": "L306",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_operationjournal_flushoperationjournalqueue",
-      "target": "src_operationjournal_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_operationjournal_fetchwithretry"
     },
     {
       "relation": "calls",
@@ -18039,9 +18429,9 @@
       "source_file": "src\\operationJournal.ts",
       "source_location": "L339",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_operationjournal_markoperationjournalapplied",
-      "target": "src_operationjournal_fetchwithretry",
-      "confidence_score": 1.0
+      "target": "src_operationjournal_fetchwithretry"
     },
     {
       "relation": "calls",
@@ -18279,11 +18669,55 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "src\\operationJournal.ts",
+      "source_location": "L422",
+      "weight": 1.0,
+      "source": "src_operationjournal_isoperationjournalpatchalreadyapplied",
+      "target": "src_operationjournal_arerecordsalreadyapplied",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L429",
+      "weight": 1.0,
+      "source": "src_operationjournal_isoperationjournalpatchalreadyapplied",
+      "target": "src_operationjournal_isjsonsubset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L443",
+      "weight": 1.0,
+      "source": "src_operationjournal_arerecordsalreadyapplied",
+      "target": "src_operationjournal_getrecordkey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
       "source_location": "L198",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "src_operationjournal_arejsonequal",
       "target": "src_operationjournal_stablestringify"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src\\operationJournal.ts",
+      "source_location": "L475",
+      "weight": 1.0,
+      "source": "src_operationjournal_isjsonsubset",
+      "target": "src_operationjournal_stablestringify",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",

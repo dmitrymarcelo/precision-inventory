@@ -96,13 +96,17 @@ function formatSyncEvent(event: string) {
     case 'journal_queued':
       return 'Operacao entrou na ponte segura';
     case 'journal_flush_ok':
-      return 'Ponte segura gravada no D1';
+      return 'Ponte segura gravada no servidor';
     case 'journal_flush_fail':
       return 'Falha ao gravar ponte segura';
     case 'journal_applied':
       return 'Operacao confirmada no estado online';
     case 'journal_apply_mark_fail':
       return 'Falha ao marcar ponte como aplicada';
+    case 'journal_local_confirmed':
+      return 'Ponte local ja confirmada no online';
+    case 'journal_reconcile_fail':
+      return 'Falha ao conferir ponte local';
     case 'journal_discarded':
       return 'Ponte local descartada';
     case 'backup_exported':

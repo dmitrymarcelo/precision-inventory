@@ -364,7 +364,7 @@ export default function Layout({
                   Nao limpe dados do navegador, nao troque de aparelho e nao formate antes de sincronizar.
                 </p>
                 <p className="mt-1 text-xs text-red-800">
-                  A ponte de seguranca guarda a operacao por ate 7 dias no D1 quando consegue chegar ao servidor.
+                  A ponte de seguranca guarda a operacao por ate 7 dias no servidor quando consegue sincronizar.
                   {pendingJournalCount > 0 ? ` Pendencias locais da ponte: ${pendingJournalCount}.` : ''}
                 </p>
               </div>

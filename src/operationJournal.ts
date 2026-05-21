@@ -202,6 +202,9 @@ export async function postOperationJournalEntries(entries: OperationJournalEntry
   );
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('AUTH');
+    }
     throw new Error(`journal-post-${response.status}`);
   }
 
@@ -317,6 +320,9 @@ export async function flushOperationJournalQueue(token?: string) {
   );
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('AUTH');
+    }
     throw new Error(`journal-post-${response.status}`);
   }
 
@@ -350,6 +356,9 @@ export async function markOperationJournalApplied(ids: string[], token?: string)
   );
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('AUTH');
+    }
     throw new Error(`journal-put-${response.status}`);
   }
 
@@ -358,6 +367,17 @@ export async function markOperationJournalApplied(ids: string[], token?: string)
     throw new Error('journal-put-rejected');
   }
   return { ok: true, updated: Number(data.updated) || 0 };
+}
+
+export function getAlreadyAppliedOperationJournalEntryIds(
+  entries: OperationJournalEntry[],
+  onlineState: CloudInventoryState | null | undefined
+) {
+  if (!onlineState) return [];
+  const safeEntries = Array.isArray(entries) ? entries.filter(isValidEntry) : [];
+  return safeEntries
+    .filter(entry => isOperationJournalPatchAlreadyApplied(entry.payload, onlineState))
+    .map(entry => entry.id);
 }
 
 export function getOperationJournalDeviceId() {
@@ -383,6 +403,54 @@ function collectChangedRecords(previousRecords: unknown[], nextRecords: unknown[
   });
 }
 
+function isOperationJournalPatchAlreadyApplied(payload: OperationJournalPatch, onlineState: CloudInventoryState) {
+  if (!payload || typeof payload !== 'object') return false;
+  let hasContent = false;
+
+  const checks: Array<[keyof Pick<OperationJournalPatch, 'items' | 'logs' | 'requests' | 'vehicles' | 'purchases'>, keyof CloudInventoryState, string]> = [
+    ['items', 'items', 'sku'],
+    ['logs', 'logs', 'id'],
+    ['requests', 'requests', 'id'],
+    ['vehicles', 'vehicles', 'id'],
+    ['purchases', 'purchases', 'id']
+  ];
+
+  for (const [payloadKey, stateKey, recordKey] of checks) {
+    const records = Array.isArray(payload[payloadKey]) ? payload[payloadKey] : [];
+    if (!records.length) continue;
+    hasContent = true;
+    if (!areRecordsAlreadyApplied(records, (onlineState[stateKey] as unknown[]) || [], recordKey)) {
+      return false;
+    }
+  }
+
+  if (payload.settings && typeof payload.settings === 'object') {
+    hasContent = true;
+    if (!isJsonSubset(payload.settings, onlineState.settings || {})) return false;
+  }
+
+  if (payload.ocrAliases && typeof payload.ocrAliases === 'object') {
+    hasContent = true;
+    if (!isJsonSubset(payload.ocrAliases, onlineState.ocrAliases || {})) return false;
+  }
+
+  return hasContent;
+}
+
+function areRecordsAlreadyApplied(records: unknown[], onlineRecords: unknown[], key: string) {
+  const onlineByKey = new Map<string, unknown>();
+  for (const record of onlineRecords) {
+    const recordKey = getRecordKey(record, key);
+    if (recordKey) onlineByKey.set(recordKey, record);
+  }
+
+  return records.every(record => {
+    const recordKey = getRecordKey(record, key);
+    if (!recordKey) return false;
+    return areJsonEqual(onlineByKey.get(recordKey), record);
+  });
+}
+
 function getRecordKey(record: unknown, key: string) {
   if (!record || typeof record !== 'object') return '';
   const value = (record as Record<string, unknown>)[key];
@@ -391,6 +459,20 @@ function getRecordKey(record: unknown, key: string) {
 
 function areJsonEqual(left: unknown, right: unknown) {
   return stableStringify(left) === stableStringify(right);
+}
+
+function isJsonSubset(expected: unknown, actual: unknown): boolean {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || expected.length > actual.length) return false;
+    return expected.every((value, index) => isJsonSubset(value, actual[index]));
+  }
+  if (expected && typeof expected === 'object') {
+    if (!actual || typeof actual !== 'object' || Array.isArray(actual)) return false;
+    const expectedRecord = expected as Record<string, unknown>;
+    const actualRecord = actual as Record<string, unknown>;
+    return Object.keys(expectedRecord).every(key => isJsonSubset(expectedRecord[key], actualRecord[key]));
+  }
+  return stableStringify(expected) === stableStringify(actual);
 }
 
 function stableStringify(value: unknown): string {

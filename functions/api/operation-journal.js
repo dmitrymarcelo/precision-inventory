@@ -394,7 +394,8 @@ async function replayEntriesSupabase({ request, env }) {
   list.sort((a, b) => parseUpdatedAt(a?.created_at) - parseUpdatedAt(b?.created_at));
 
   const existingV2 = await loadStateV2FromSupabase(sb);
-  let state = existingV2?.state ? normalizeState(existingV2.state) : normalizeState({});
+  const existingV1 = existingV2?.state ? null : await loadStateV1Supabase(sb);
+  let state = resolveSupabaseReplayBaseState(existingV2, existingV1);
 
   for (const row of list) {
     const patch = safeJsonParse(row?.payload);
@@ -415,6 +416,19 @@ async function replayEntriesSupabase({ request, env }) {
   await sb.from('operation_journal').update({ status: 'applied', applied_at: appliedAt }).in('id', ids);
   const cleanupDeleted = await cleanupOldJournalRowsSupabase(sb, appliedAt);
   return Response.json({ ok: true, updatedAt, applied: list.length, cleanupDeleted }, { headers: jsonHeaders });
+}
+
+export function resolveSupabaseReplayBaseState(existingV2, existingV1) {
+  if (existingV2?.state) return normalizeState(existingV2.state);
+  if (existingV1) return normalizeState(existingV1);
+  return normalizeState({});
+}
+
+async function loadStateV1Supabase(sb) {
+  const { data, error } = await sb.from('app_state').select('value').eq('key', STATE_KEY).maybeSingle();
+  if (error || !data?.value) return null;
+  const parsed = safeJsonParse(data.value);
+  return parsed && typeof parsed === 'object' ? parsed : null;
 }
 
 function safeJsonParse(raw) {

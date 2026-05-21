@@ -1,6 +1,54 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-20
+Ultima atualizacao: 2026-05-21
+
+## Hotfix: Sincronizar limpa pendencia local segura no Supabase em 2026-05-21
+
+- Problema:
+  - usuario relatou que, mesmo tocando em `Sincronizar`, o banner `Salvamento pendente neste aparelho` continuava aparecendo
+  - tela mostrava `Ponte local: 10`, `Sistema: Salvando` e eventos recentes de Supabase ativo
+  - havia duvida se o app estava realmente apontado para Supabase ou se ainda gravava no D1
+- Confirmado em producao antes/depois:
+  - `https://precision-inventory.pages.dev/api/state` respondeu `200`
+  - `backend=supabase`, sem cabecalho de fallback `x-precision-supabase-fallback`
+  - estado manteve `1710` itens, `3401` logs e `384` solicitacoes
+  - Cloudflare Pages/Functions continua hospedando o app/API; Supabase e o banco principal
+  - D1 permanece no codigo apenas como fallback historico enquanto a arquitetura dual existir
+- Causa encontrada:
+  - a fila local da ponte podia ficar presa no navegador quando a operacao ja constava no estado online, mas o aparelho nao recebia confirmacao para limpar o `localStorage`
+  - erros 401/403 da ponte (`/api/operation-journal`) eram tratados como falha generica em alguns caminhos, em vez de `Sessao expirada`
+  - no replay Supabase, se ainda nao existisse State V2, o codigo podia partir de estado vazio em vez do estado V1 migrado (`inventory`)
+- Implementado:
+  - `src/operationJournal.ts` ganhou reconciliacao segura: remove IDs locais somente quando o patch local ja aparece igual no estado online
+  - `src/App.tsx` passou a tentar essa reconciliacao ao clicar `Sincronizar agora` quando o envio da ponte falha
+  - erros 401/403 da ponte agora viram `AUTH`, permitindo mensagem clara de sessao expirada
+  - `functions/api/operation-journal.js` agora usa State V2 quando existir e, se nao existir, usa o State V1 migrado como base do replay Supabase
+  - textos de UI/log foram atualizados de `D1` para `servidor`, para nao confundir a operacao
+- Validado local:
+  - `scripts/test-operation-journal-local-reconcile.mjs` passou
+  - `scripts/test-operation-journal-supabase-replay-base.mjs` passou
+  - `scripts/test-operation-journal-auth-errors.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-supabase-migration.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `node node_modules/typescript/bin/tsc --noEmit` passou com Node portatil
+  - `node node_modules/vite/bin/vite.js build` passou com Node portatil
+  - `npm run lint` foi tentado, mas `npm` nao esta no PATH desta sessao; usado equivalente direto com Node portatil
+- Deploy:
+  - primeiro deploy sem `--branch main` subiu preview `https://e9658612.precision-inventory.pages.dev`; esse preview nao tinha secrets Supabase e caiu para fallback D1
+  - deploy correto em producao foi feito com `--branch main --commit-dirty=true`
+  - producao passou a servir `assets/index-BxFZurQS.js`
+  - producao validada: `/api/state` respondeu `backend=supabase`, sem fallback, e `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina nos aparelhos
+  - tocar em `Sincronizar agora`
+  - se a pendencia ja estiver no Supabase, o banner deve sumir
+  - se aparecer `Sessao expirada`, sair e entrar novamente antes de sincronizar
 
 ## Migracao D1 para Supabase concluida em 2026-05-20
 
