@@ -1,4 +1,12 @@
 import { getSessionFromRequest } from './auth.js';
+import {
+  getSupabaseAdmin,
+  isSupabaseConfigured,
+  isSupabaseUsable,
+  loadStateV2FromSupabase,
+  migrateD1ToSupabaseIfNeeded,
+  saveStateV2ToSupabase
+} from './supabase.js';
 
 const RETENTION_DAYS = 7;
 const MAX_PAYLOAD_CHARS = 220000;
@@ -13,11 +21,14 @@ const jsonHeaders = {
 };
 
 export async function onRequestPost({ request, env }) {
-  await ensureSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env) && (await isSupabaseUsable(env));
+  if (!supabaseEnabled) {
+    await ensureSchema(env.DB);
+  }
   const url = new URL(request.url);
   const action = (url.searchParams.get('action') || '').toLowerCase();
 
-  const session = await getSessionFromRequest(request, env.DB);
+  const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
   if (!session) {
     return Response.json({ ok: false, message: 'Sessao invalida.' }, { status: 401, headers: jsonHeaders });
   }
@@ -27,7 +38,7 @@ export async function onRequestPost({ request, env }) {
     if (role !== 'admin' && role !== 'operacao') {
       return Response.json({ ok: false, message: 'Sem permissao.' }, { status: 403, headers: jsonHeaders });
     }
-    return replayEntries({ request, env });
+    return supabaseEnabled ? replayEntriesSupabase({ request, env }) : replayEntries({ request, env });
   }
 
   const body = await safeJson(request);
@@ -39,6 +50,45 @@ export async function onRequestPost({ request, env }) {
   const receivedAt = new Date().toISOString();
   let accepted = 0;
   const acceptedIds = [];
+
+  if (supabaseEnabled) {
+    try {
+      const sb = getSupabaseAdmin(env);
+      await migrateD1ToSupabaseIfNeeded(env, sb);
+      const rows = [];
+      for (const rawEntry of entries.slice(0, 25)) {
+        const entry = sanitizeEntry(rawEntry, session, receivedAt);
+        if (!entry) continue;
+        rows.push({
+          id: entry.id,
+          device_id: entry.deviceId,
+          actor_matricula: entry.actorMatricula || null,
+          actor_name: entry.actorName || null,
+          actor_role: entry.actorRole || null,
+          operation_type: entry.operationType,
+          entity: entry.entity,
+          payload: entry.payload,
+          status: 'received',
+          created_at: entry.createdAt,
+          received_at: receivedAt,
+          applied_at: null
+        });
+        accepted += 1;
+        acceptedIds.push(entry.id);
+      }
+      if (rows.length > 0) {
+        const { error } = await sb.from('operation_journal').upsert(rows, { onConflict: 'id' });
+        if (error) throw error;
+      }
+      const cleanupDeleted = await cleanupOldJournalRowsSupabase(sb, receivedAt);
+      return Response.json({ ok: true, accepted, acceptedIds, cleanupDeleted }, { headers: jsonHeaders });
+    } catch {
+      // fallback to D1 below
+      await ensureSchema(env.DB);
+      accepted = 0;
+      acceptedIds.length = 0;
+    }
+  }
 
   for (const rawEntry of entries.slice(0, 25)) {
     const entry = sanitizeEntry(rawEntry, session, receivedAt);
@@ -77,8 +127,11 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestPut({ request, env }) {
-  await ensureSchema(env.DB);
-  const session = await getSessionFromRequest(request, env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env) && (await isSupabaseUsable(env));
+  if (!supabaseEnabled) {
+    await ensureSchema(env.DB);
+  }
+  const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
   if (!session) {
     return Response.json({ ok: false, message: 'Sessao invalida.' }, { status: 401, headers: jsonHeaders });
   }
@@ -94,6 +147,20 @@ export async function onRequestPut({ request, env }) {
 
   const appliedAt = new Date().toISOString();
   const placeholders = ids.map(() => '?').join(', ');
+  if (supabaseEnabled) {
+    try {
+      const sb = getSupabaseAdmin(env);
+      await migrateD1ToSupabaseIfNeeded(env, sb);
+      const { error } = await sb.from('operation_journal').update({ status, applied_at: appliedAt }).in('id', ids);
+      if (error) throw error;
+      const cleanupDeleted = await cleanupOldJournalRowsSupabase(sb, appliedAt);
+      return Response.json({ ok: true, updated: ids.length, cleanupDeleted }, { headers: jsonHeaders });
+    } catch {
+      // fallback to D1 below
+      await ensureSchema(env.DB);
+    }
+  }
+
   const result = await env.DB
     .prepare(
       `
@@ -297,6 +364,72 @@ async function replayEntries({ request, env }) {
     { ok: true, updatedAt, applied: Number(updateResult?.meta?.changes) || 0, cleanupDeleted },
     { headers: jsonHeaders }
   );
+}
+
+async function replayEntriesSupabase({ request, env }) {
+  const sb = getSupabaseAdmin(env);
+  const body = await safeJson(request);
+  const ids = Array.isArray(body?.ids) ? body.ids.map(value => String(value || '').trim()).filter(Boolean).slice(0, 25) : [];
+  if (ids.length === 0) {
+    return Response.json({ ok: false, message: 'Informe IDs para reprocessar.' }, { status: 400, headers: jsonHeaders });
+  }
+
+  const { data: rows, error } = await sb
+    .from('operation_journal')
+    .select('id, payload, created_at')
+    .in('id', ids)
+    .eq('status', 'received')
+    .eq('entity', 'inventory_state')
+    .eq('operation_type', 'state_patch');
+
+  if (error) {
+    return Response.json({ ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' }, { status: 500, headers: jsonHeaders });
+  }
+
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) {
+    return Response.json({ ok: true, applied: 0 }, { headers: jsonHeaders });
+  }
+
+  list.sort((a, b) => parseUpdatedAt(a?.created_at) - parseUpdatedAt(b?.created_at));
+
+  const existingV2 = await loadStateV2FromSupabase(sb);
+  let state = existingV2?.state ? normalizeState(existingV2.state) : normalizeState({});
+
+  for (const row of list) {
+    const patch = safeJsonParse(row?.payload);
+    if (!patch || typeof patch !== 'object') continue;
+    state = applyPatchToState(state, patch);
+  }
+
+  const updatedAt = new Date().toISOString();
+  const saved = await saveStateV2ToSupabase(sb, state, updatedAt);
+  if (!saved.ok) {
+    return Response.json(
+      { ok: false, message: 'Estado grande demais para aplicar agora. Aplique em lotes menores.' },
+      { status: 413, headers: jsonHeaders }
+    );
+  }
+
+  const appliedAt = updatedAt;
+  await sb.from('operation_journal').update({ status: 'applied', applied_at: appliedAt }).in('id', ids);
+  const cleanupDeleted = await cleanupOldJournalRowsSupabase(sb, appliedAt);
+  return Response.json({ ok: true, updatedAt, applied: list.length, cleanupDeleted }, { headers: jsonHeaders });
+}
+
+function safeJsonParse(raw) {
+  try {
+    return JSON.parse(String(raw ?? ''));
+  } catch {
+    return null;
+  }
+}
+
+async function cleanupOldJournalRowsSupabase(sb, nowIso) {
+  const cutoff = new Date(new Date(nowIso).getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await sb.from('operation_journal').delete().lt('created_at', cutoff);
+  if (error) return 0;
+  return 0;
 }
 
 async function applyPatchesToStateV2(db, patches, updatedAt) {

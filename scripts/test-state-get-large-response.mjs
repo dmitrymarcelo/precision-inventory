@@ -49,12 +49,23 @@ function createFakeDb() {
   return {
     prepare(sql) {
       return {
-        bind(key) {
+        bind(...keys) {
           return {
             async first() {
+              const key = keys[0];
               return rows.has(String(key)) ? { value: rows.get(String(key)) } : null;
+            },
+            async all() {
+              return {
+                results: keys
+                  .filter(key => rows.has(String(key)))
+                  .map(key => ({ key: String(key), value: rows.get(String(key)) }))
+              };
             }
           };
+        },
+        async run() {
+          return { meta: { changes: 0 } };
         }
       };
     }
@@ -86,9 +97,10 @@ function createFakeDbWithUnsafeManifest() {
   return {
     prepare(sql) {
       return {
-        bind(key) {
+        bind(...keys) {
           return {
             async first() {
+              const key = keys[0];
               const text = String(sql);
               if (text.includes('inventory_v2:items:')) {
                 throw new Error('unsafe v2 chunk lookup should not happen');
@@ -97,8 +109,18 @@ function createFakeDbWithUnsafeManifest() {
                 return { value: rows.get('inventory'), updated_at: '2026-05-20T11:00:00.000Z' };
               }
               return rows.has(String(key)) ? { value: rows.get(String(key)) } : null;
+            },
+            async all() {
+              return {
+                results: keys
+                  .filter(key => rows.has(String(key)))
+                  .map(key => ({ key: String(key), value: rows.get(String(key)) }))
+              };
             }
           };
+        },
+        async run() {
+          return { meta: { changes: 0 } };
         }
       };
     }

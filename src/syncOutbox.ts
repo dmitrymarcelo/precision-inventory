@@ -32,7 +32,6 @@ export function shouldUseJournalReplayForSync({
 }) {
   return (
     journalIdCount > 0 ||
-    serializedStateLength > largeStateReplayThreshold ||
-    String(reason || '').includes('manual_force_sync')
+    serializedStateLength > largeStateReplayThreshold
   );
 }

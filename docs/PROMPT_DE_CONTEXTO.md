@@ -19,9 +19,10 @@ Tecnologias:
 - PDF de cotacoes: pdfjs-dist, carregado sob demanda somente ao clicar em Importar PDF.
 - Importacao Excel: read-excel-file.
 - OCR/foto: tesseract.js.
-- Online: Cloudflare Pages + Pages Functions + Cloudflare D1.
+- Online: Cloudflare Pages + Pages Functions + Supabase, com D1 historico/fallback.
 - API principal: functions/api/state.js.
-- Banco D1: precision-inventory-db.
+- Banco principal atual: Supabase `Armazem28` (`wpvagfjiqifvitdlzjue`).
+- Banco D1 historico/fallback: `precision-inventory-db`.
 - GitHub: https://github.com/dmitrymarcelo/precision-inventory
 - Producao: https://precision-inventory.pages.dev/
 
@@ -58,7 +59,7 @@ Estrutura principal:
 - src/components/AutomaticPurchases.tsx: Compras Automaticas, pacotes, cotacoes, PDF e mapa de cotacao.
 - src/abcAnalysis.ts e src/abcAnalysisData.ts: Curva ABC, minimo/maximo automaticos.
 - src/inventoryRules.ts: status e limites por item.
-- functions/api/state.js: fonte de verdade online via D1.
+- functions/api/state.js: fonte de verdade online via Supabase, com fallback D1 enquanto o backend dual existir.
 - docs/COMPRAS_AUTOMATICAS.md: regra tecnica do modulo Compras.
 
 Regras de negocio que nao podem quebrar:
@@ -72,11 +73,13 @@ Regras de negocio que nao podem quebrar:
 - Nao adicionar item sem saldo na solicitacao; bloquear visualmente.
 - Bateria por placa: se a mesma placa ja recebeu bateria em solicitacao Atendida ainda dentro da validade, abrir popup de confirmacao antes de incluir outra bateria; bateria geral vale 12 meses e SKU 12047 vale 6 meses; regra em src/batteryWarrantyRules.ts.
 - Persistencia online: admin/operacao gravam estado completo; consulta so pode criar novas solicitacoes Aberta via backend, sem alterar estoque/logs/configuracoes.
+- Persistencia online atual: producao deve responder `/api/state` com `backend: "supabase"`; se voltar `backend: "d1"`, investigar secrets Supabase no Cloudflare antes de assumir perda de dados.
+- Nunca registrar a chave Supabase `service_role` em Git, frontend, logs ou memorias persistentes.
 - Modulo Usuarios: acesso exclusivo para Dmitry Marcelo, matricula 24000, admin; outros admins devem ser bloqueados tambem pela API /api/users.
 - Painel: manter objetivo para o armazem; nao destacar `Memoria operacional`; mostrar contagem diaria no Painel somente quando houver obrigatoriedade pendente para o usuario.
 - Inventario ciclico obrigatorio: configurado em Usuarios para Operacao/Admin; Consulta nao pode ser marcada; usuario marcado fica limitado a Painel, Estoque e Inventario Operacional ate finalizar a contagem diaria; regra central em src/cyclicInventory.ts.
-- Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no D1 sem aprovacao e politica de retencao.
-- Ponte segura de operacoes: `/api/operation-journal`, tabela D1 `operation_journal`, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
+- Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no servidor/Supabase sem aprovacao e politica de retencao.
+- Ponte segura de operacoes: `/api/operation-journal`, tabela Supabase `operation_journal` apos a migracao, com D1 como fallback historico, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
 - Hotfix de sync pendente em 2026-05-20: quando houver pendencia local, o botao superior deve virar/agir como `Sincronizar`; nao chamar `Atualizar do online` antes de tentar enviar. Clique manual deve reconstruir outbox se existir `dirty` antigo sem outbox. Se o usuario confirmar descarte pelo online, limpar dirty, outbox e fila local da ponte.
 - Hotfix de leitura online em 2026-05-20: se o menu mostrar `Sistema Local` ou `Falha online`, validar primeiro `/api/state`, asset publicado e detalhe HTTP; o D1 pode ter os dados, mas a leitura do estado grande pode falhar. O front deve mostrar detalhe curto abaixo de `Sistema`. No State V2, `GET /api/state` responde em streaming para reduzir risco de Cloudflare `1102`.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.

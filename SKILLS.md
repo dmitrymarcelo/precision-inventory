@@ -146,6 +146,8 @@ Arquivos mais sensiveis:
 Ponto central:
 
 - `functions/api/state.js`
+- persistencia principal atual: Supabase `Armazem28` (`wpvagfjiqifvitdlzjue`)
+- D1 `precision-inventory-db` permanece como fallback historico enquanto o backend dual existir
 
 O estado online guarda:
 
@@ -164,9 +166,9 @@ Permissoes de gravacao:
 - se mexer nessa regra, validar com `scripts/test-state-consulta-save.mjs`
 - se mexer em outbox/sync local, validar com `scripts/test-sync-outbox.mjs`
 - o `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
-- o `Log do sistema` nao deve criar tabela nova nem historico longo no D1 sem aprovacao explicita
+- o `Log do sistema` nao deve criar tabela nova nem historico longo no servidor/Supabase sem aprovacao explicita
 - eventos locais de sync devem continuar limitados no navegador; para historico servidor, definir retencao antes
-- a ponte segura de operacoes usa `/api/operation-journal` e tabela D1 `operation_journal`
+- a ponte segura de operacoes usa `/api/operation-journal` e tabela Supabase `operation_journal`, com D1 como fallback historico
 - a retencao da ponte e 7 dias; ela e transicao/confirmacao, nao historico permanente
 - o front deve enviar patch compacto por SKU/id, nunca snapshot gigante do estado inteiro
 - quando existir pendencia local, o botao superior deve agir como `Sincronizar`, nao como `Atualizar do online`
@@ -176,6 +178,9 @@ Permissoes de gravacao:
 - quando `GET /api/state` falhar, o front deve mostrar o motivo curto em `Sistema`, porque o dado pode existir no servidor mas a leitura do estado grande pode ter falhado
 - para estado grande, manter a leitura otimizada/State V2 em `functions/api/state.js` e evitar parsing/deserializacao desnecessaria no Worker
 - no State V2, `GET /api/state` deve responder em streaming para nao montar uma string gigante antes de enviar; isso reduz risco de Cloudflare `1102`
+- migracao D1 -> Supabase foi concluida em 2026-05-20; `/api/state` deve retornar `backend: "supabase"` em producao
+- se `/api/state` voltar com `backend: "d1"` e cabecalho `x-precision-supabase-fallback`, investigar primeiro as secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Cloudflare
+- nunca registrar a chave `service_role` em Git, frontend, logs ou memorias persistentes
 - se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
 - com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
 

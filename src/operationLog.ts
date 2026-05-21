@@ -81,6 +81,8 @@ function toRequestEntry(request: MaterialRequest, entry: MaterialRequestAuditEnt
 
 function formatSyncEvent(event: string) {
   switch (event) {
+    case 'backend_active':
+      return 'Banco online ativo';
     case 'flush_start':
       return 'Sincronizacao iniciada';
     case 'flush_ok':

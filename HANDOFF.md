@@ -2,6 +2,34 @@
 
 Ultima atualizacao: 2026-05-20
 
+## Migracao D1 para Supabase concluida em 2026-05-20
+
+- Contexto:
+  - usuario informou que o espaco da Cloudflare acabou e que outra IDE iniciou a transferencia do D1 para Supabase, mas nao finalizou
+  - projeto Supabase confirmado pelo plugin: `Armazem28`, ref `wpvagfjiqifvitdlzjue`, status `ACTIVE_HEALTHY`
+- Implementado/confirmado nesta etapa:
+  - schema principal do Supabase ja existe para `app_state`, `users`, `sessions`, `operation_journal` e `request_locks`
+  - Pages production possui secrets criptografadas `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_URL` foi regravada com `https://wpvagfjiqifvitdlzjue.supabase.co`
+  - a secret `SUPABASE_SERVICE_ROLE_KEY` foi regravada com a chave `service_role` correta do projeto
+  - primeiro deploy apos corrigir URL: `https://be792d99.precision-inventory.pages.dev`
+  - deploy final apos corrigir a chave: `https://e26cebcf.precision-inventory.pages.dev`
+- Resultado:
+  - producao `https://precision-inventory.pages.dev/api/state` respondeu `200` com `backend=supabase` em 6 repeticoes seguidas
+  - estado retornado pelo Supabase manteve `1710` itens, `3401` logs e `384` solicitacoes
+  - marcador `__migrated_from_d1_v1` foi gravado em `app_state`
+  - marcador registrou: `appStateRows=1`, `usersRows=6`, `sessionsRows=17`, `journalRows=29`, `lockRows=98`, `lockReadSkipped=false`
+  - contagem direta no Supabase apos migracao: `app_state=2`, `users=6`, `sessions=17`, `operation_journal=29`, `request_locks=98`
+  - `/api/users?meta=1` respondeu `200`
+  - `/api/auth?action=login` com senha invalida respondeu `401` em 3 repeticoes, sem `500/503`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Fonte de verdade atual:
+  - Supabase `Armazem28` passou a ser a persistencia online principal
+  - Cloudflare D1 `precision-inventory-db` fica como origem historica migrada/fallback de seguranca enquanto o codigo dual existir
+- Cuidado de seguranca:
+  - a chave `service_role` nao deve ir para Git, frontend, logs ou memoria textual
+  - como a chave foi compartilhada durante a operacao, considerar rotacionar a chave do Supabase depois que a operacao estiver estabilizada e regravar a nova secret no Cloudflare
+
 ## Hotfix de producao: front ficava em Local/Conectando sem feedback em 2026-05-20
 
 - Problema:
@@ -208,6 +236,13 @@ Ultima atualizacao: 2026-05-20
   - `functions/api/state.js` salva o estado em formato V2 (chunked) no `app_state`, permitindo estado total > 2MB
   - escrita V2 ficou mais segura: grava novos chunks + manifest e so depois remove chunks antigos (reduz risco de estado incompleto)
   - `functions/api/operation-journal.js` (action=replay) agora tambem le/salva em V2, evitando 413 ao aplicar patches quando o online ja e grande
+- Hotfix extra (producao) em 2026-05-20:
+  - `/api/state` passou a responder `503 error code: 1102` (crash do Worker) em alguns cenarios
+  - `functions/api/state.js` foi endurecido no GET:
+    - garante `ensureSchema` antes de ler
+    - valida JSON salvo (settings/aliases/chunks) para nao quebrar a resposta
+    - streaming ficou tolerante a falhas do D1/chunks: em erro, devolve arrays vazios em vez de derrubar o Worker
+    - retorna `503` em JSON quando o D1 estiver instavel, em vez de travar o Worker
 - Validado:
   - `npm run lint` passou
   - `npm run build` passou
@@ -263,6 +298,18 @@ Ultima atualizacao: 2026-05-20
   - se aparecer aviso vermelho, tocar em `Sincronizar agora`
   - se o navegador perguntar se deseja recarregar antes de sincronizar, escolher `Cancelar`
   - se ainda nao sincronizar, tocar em `Exportar backup` e guardar o JSON antes de limpar dados do navegador
+
+## Opcao: migrar D1 para Supabase (backend dual + migracao automatica) em 2026-05-20
+
+- Motivacao:
+  - reduzir risco de limite/instabilidade do D1 em estados grandes
+- Implementado:
+  - Pages Functions passam a usar Supabase quando variaveis estiverem configuradas:
+    - `SUPABASE_URL`
+    - `SUPABASE_SERVICE_ROLE_KEY` (secret)
+  - fallback para D1 continua ativo quando Supabase nao estiver configurado
+  - primeira requisicao com Supabase habilitado tenta migrar automaticamente tabelas do D1:
+    - `app_state`, `users`, `sessions`, `operation_journal`, `request_locks`
 
 ## Ponte segura de operacoes com retencao de 7 dias em 2026-05-20
 

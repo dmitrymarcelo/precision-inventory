@@ -1,4 +1,13 @@
 import { getSessionFromRequest } from './auth.js';
+import {
+  getSupabaseAdmin,
+  isSupabaseConfigured,
+  isSupabaseUsable,
+  loadStateV2ResponseStreamFromSupabase,
+  loadStateV2FromSupabase,
+  migrateD1ToSupabaseIfNeeded,
+  saveStateV2ToSupabase
+} from './supabase.js';
 
 const STATE_KEY = 'inventory';
 const STATE_V2_MANIFEST_KEY = 'inventory_v2_manifest';
@@ -11,20 +20,122 @@ const jsonHeaders = {
 };
 
 export async function onRequestGet({ env }) {
-  const v2Manifest = await loadStateV2Manifest(env.DB);
-  if (v2Manifest) {
-    return new Response(streamStateV2Response(env.DB, v2Manifest), { headers: jsonHeaders });
+  const supabaseConfigured = isSupabaseConfigured(env);
+  let supabaseFallbackDetail = supabaseConfigured ? '' : 'supabase_not_configured';
+
+  if (supabaseConfigured) {
+    try {
+      const sb = getSupabaseAdmin(env);
+      await migrateD1ToSupabaseIfNeeded(env, sb);
+      const v2Stream = await loadStateV2ResponseStreamFromSupabase(sb);
+      if (v2Stream) {
+        return new Response(v2Stream, { headers: jsonHeaders });
+      }
+      const row = await sb.from('app_state').select('value, updated_at').eq('key', STATE_KEY).maybeSingle();
+      if (!row.error) {
+        const state = row.data?.value ? safeParseJson(row.data.value, null) : null;
+        return Response.json({ state, updatedAt: row.data?.updated_at ?? null, backend: 'supabase' }, { headers: jsonHeaders });
+      }
+      supabaseFallbackDetail = describeSupabaseError(row.error) || 'supabase_app_state_error';
+    } catch (error) {
+      supabaseFallbackDetail = describeSupabaseError(error) || 'supabase_exception';
+    }
   }
 
-  const row = await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
-  const stateText = row?.value ? String(row.value) : 'null';
-  return new Response(`{"state":${stateText},"updatedAt":${JSON.stringify(row?.updated_at ?? null)}}`, {
-    headers: jsonHeaders
-  });
+  try {
+    await ensureSchema(env.DB);
+    const fallbackHeaders = withSupabaseFallbackHeader(supabaseFallbackDetail);
+
+    const v2Manifest = await loadStateV2Manifest(env.DB);
+    if (v2Manifest) {
+      return new Response(streamStateV2Response(env.DB, v2Manifest), { headers: fallbackHeaders });
+    }
+
+    const row = await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+    const rawStateText = row?.value ? String(row.value) : '';
+    const stateText = rawStateText && isValidJson(rawStateText) ? rawStateText : 'null';
+    return new Response(`{"state":${stateText},"updatedAt":${JSON.stringify(row?.updated_at ?? null)},"backend":"d1"}`, {
+      headers: fallbackHeaders
+    });
+  } catch {
+    return Response.json(
+      { ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' },
+      { status: 503, headers: jsonHeaders }
+    );
+  }
+}
+
+function withSupabaseFallbackHeader(detail) {
+  const clean = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  if (!clean) return jsonHeaders;
+  return {
+    ...jsonHeaders,
+    'x-precision-supabase-fallback': clean
+  };
 }
 
 export async function onRequestPut({ request, env, context }) {
   try {
+    if (isSupabaseConfigured(env) && (await isSupabaseUsable(env))) {
+      try {
+        const sb = getSupabaseAdmin(env);
+        await migrateD1ToSupabaseIfNeeded(env, sb);
+
+        const { count: userCount, error: userCountError } = await sb.from('users').select('id', { count: 'exact', head: true });
+        const hasUsers = !userCountError && (Number(userCount) || 0) > 0;
+        let sessionRole = '';
+        if (hasUsers) {
+          const session = await getSessionFromRequest(request, env);
+          if (!session) {
+            return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
+          }
+          sessionRole = String(session.role || '');
+          if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
+            return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+          }
+        }
+
+        const body = await request.json();
+        const incomingState = normalizeState(body);
+        const updatedAt = new Date().toISOString();
+
+        const existingV2 = await loadStateV2FromSupabase(sb);
+        const existingState = existingV2 ? normalizeState(existingV2.state) : await loadStateV1Supabase(sb);
+        const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
+        const state = canWriteFullState
+          ? existingState
+            ? mergeStates(existingState, incomingState)
+            : incomingState
+          : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
+
+        const saved = await saveStateV2ToSupabase(sb, state, updatedAt);
+        if (!saved.ok) {
+          return Response.json(
+            {
+              ok: false,
+              message:
+                'Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup e Enviar backup ao servidor.'
+            },
+            { status: 413, headers: jsonHeaders }
+          );
+        }
+
+        const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+        if (newDivergenceLogs.length > 0) {
+          const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+          if (context?.waitUntil) {
+            context.waitUntil(task);
+          } else {
+            void task;
+          }
+        }
+
+        return Response.json({ ok: true, updatedAt, state, backend: 'supabase' }, { headers: jsonHeaders });
+      } catch {
+        // fallback to D1 below
+      }
+    }
+
     await ensureSchema(env.DB);
 
     const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
@@ -76,7 +187,7 @@ export async function onRequestPut({ request, env, context }) {
       }
     }
 
-    return Response.json({ ok: true, updatedAt, state }, { headers: jsonHeaders });
+    return Response.json({ ok: true, updatedAt, state, backend: 'd1' }, { headers: jsonHeaders });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     const lowered = String(message || '').toLowerCase();
@@ -103,6 +214,38 @@ export async function onRequestPut({ request, env, context }) {
       { status: 500, headers: jsonHeaders }
     );
   }
+}
+
+async function loadStateV1Supabase(sb) {
+  try {
+    const { data, error } = await sb.from('app_state').select('value').eq('key', STATE_KEY).maybeSingle();
+    if (error || !data?.value) return null;
+    const parsed = safeParseJson(data.value, null);
+    return parsed ? normalizeState(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeParseJson(raw, fallback) {
+  try {
+    return JSON.parse(String(raw ?? ''));
+  } catch {
+    return fallback;
+  }
+}
+
+function describeSupabaseError(error) {
+  const message = error instanceof Error ? error.message : '';
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code || '') : '';
+  const details = error && typeof error === 'object' && 'details' in error ? String(error.details || '') : '';
+  const hint = error && typeof error === 'object' && 'hint' in error ? String(error.hint || '') : '';
+  const status = error && typeof error === 'object' && 'status' in error ? String(error.status || '') : '';
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  const parts = [code ? `code=${clean(code)}` : '', status ? `status=${clean(status)}` : '', clean(message), clean(details), clean(hint)]
+    .filter(Boolean)
+    .slice(0, 4);
+  return parts.join(' | ');
 }
 
 async function loadStateV1(db) {
@@ -159,30 +302,28 @@ function streamStateV2Response(db, manifest) {
     async start(controller) {
       const write = text => controller.enqueue(encoder.encode(text));
 
-      try {
-        write('{"state":{"items":');
-        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
-        write(',"logs":');
-        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+      write('{"state":{"items":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+      write(',"logs":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
 
-        const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
-        const settings = settingsRow?.value ? String(settingsRow.value) : '{}';
-        write(`,"settings":${settings}`);
+      const settingsRow = await safeFirst(db, `${STATE_V2_PREFIX}:settings`);
+      const rawSettings = settingsRow?.value ? String(settingsRow.value) : '';
+      const settings = rawSettings && isValidJson(rawSettings) ? rawSettings : '{}';
+      write(`,"settings":${settings}`);
 
-        write(',"requests":');
-        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
-        write(',"vehicles":');
-        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
-        write(',"purchases":');
-        await writeChunkedArrayTextStream(write, db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+      write(',"requests":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+      write(',"vehicles":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+      write(',"purchases":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
 
-        const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
-        const ocrAliases = aliasesRow?.value ? String(aliasesRow.value) : '{}';
-        write(`,"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)}}`);
-        controller.close();
-      } catch (error) {
-        controller.error(error);
-      }
+      const aliasesRow = await safeFirst(db, `${STATE_V2_PREFIX}:ocrAliases`);
+      const rawAliases = aliasesRow?.value ? String(aliasesRow.value) : '';
+      const ocrAliases = rawAliases && isValidJson(rawAliases) ? rawAliases : '{}';
+      write(`,"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)},"backend":"d1"}`);
+      controller.close();
     }
   });
 }
@@ -190,18 +331,65 @@ function streamStateV2Response(db, manifest) {
 async function writeChunkedArrayTextStream(write, db, prefix, count) {
   write('[');
   let hasContent = false;
+
+  const keys = [];
   for (let i = 0; i < count; i += 1) {
-    const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${prefix}${i}`).first();
-    const value = row?.value ? String(row.value).trim() : '';
+    keys.push(`${prefix}${i}`);
+  }
+  const rows = await safeAll(db, keys);
+  const byKey = new Map(rows.map(row => [String(row.key), String(row.value || '').trim()]));
+
+  for (let i = 0; i < count; i += 1) {
+    const value = byKey.get(`${prefix}${i}`) || '';
     if (!value || value === '[]') continue;
     if (!value.startsWith('[') || !value.endsWith(']')) continue;
+    try {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed) || parsed.length === 0) continue;
+    } catch {
+      continue;
+    }
     const inner = value.slice(1, -1).trim();
     if (!inner) continue;
     if (hasContent) write(',');
     write(inner);
     hasContent = true;
   }
+
   write(']');
+}
+
+async function writeChunkedArrayTextStreamSafe(write, db, prefix, count) {
+  try {
+    await writeChunkedArrayTextStream(write, db, prefix, count);
+  } catch {
+    write('[]');
+  }
+}
+
+async function safeFirst(db, key) {
+  try {
+    return await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(key).first();
+  } catch {
+    return null;
+  }
+}
+
+async function safeAll(db, keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return [];
+  try {
+    const placeholders = keys.map(() => '?').join(', ');
+    const result = await db
+      .prepare(`SELECT key, value FROM app_state WHERE key IN (${placeholders})`)
+      .bind(...keys)
+      .all();
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    return rows
+      .map(row => ({ key: row?.key, value: row?.value }))
+      .filter(row => typeof row.key === 'string');
+  } catch {
+    return [];
+  }
 }
 
 async function loadChunkedArray(db, prefix, count) {
@@ -339,6 +527,15 @@ function chunkArray(records) {
 function byteLength(text) {
   const encoder = new TextEncoder();
   return encoder.encode(text).length;
+}
+
+function isValidJson(raw) {
+  try {
+    JSON.parse(String(raw ?? ''));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function collectManifestKeysSafe(raw) {

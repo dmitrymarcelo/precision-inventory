@@ -24,6 +24,28 @@ const operationJournalDeviceKey = 'precisionInventory.operationJournal.deviceId.
 const maxPayloadChars = 220000;
 const maxBatchEntries = 25;
 const maxQueueEntries = 600;
+const retryableStatuses = new Set([429, 500, 502, 503, 504]);
+
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  options: { retries: number; baseDelayMs: number }
+) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= options.retries; attempt += 1) {
+    try {
+      const response = await fetch(input, init);
+      const retryable = retryableStatuses.has(response.status);
+      if (!retryable || attempt === options.retries) return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === options.retries) throw error;
+    }
+    const delay = options.baseDelayMs * (attempt + 1);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  throw lastError || new Error('FETCH_RETRY_FAILED');
+}
 
 export function buildOperationJournalPatch(
   previousState: CloudInventoryState | null | undefined,
@@ -166,14 +188,18 @@ export async function postOperationJournalEntries(entries: OperationJournalEntry
   const safeEntries = Array.isArray(entries) ? entries.slice(0, maxBatchEntries) : [];
   if (safeEntries.length === 0) return { ok: true, accepted: 0, acceptedIds: [] as string[] };
 
-  const response = await fetch('/api/operation-journal', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+  const response = await fetchWithRetry(
+    '/api/operation-journal',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ entries: safeEntries })
     },
-    body: JSON.stringify({ entries: safeEntries })
-  });
+    { retries: 2, baseDelayMs: 450 }
+  );
 
   if (!response.ok) {
     throw new Error(`journal-post-${response.status}`);
@@ -192,14 +218,18 @@ export async function replayOperationJournalEntries(ids: string[], token?: strin
   const cleanIds = Array.isArray(ids) ? ids.map(String).filter(Boolean).slice(0, maxBatchEntries) : [];
   if (cleanIds.length === 0) return { ok: true, applied: 0 };
 
-  const response = await fetch('/api/operation-journal?action=replay', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+  const response = await fetchWithRetry(
+    '/api/operation-journal?action=replay',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ ids: cleanIds })
     },
-    body: JSON.stringify({ ids: cleanIds })
-  });
+    { retries: 2, baseDelayMs: 450 }
+  );
 
   if (response.status === 401 || response.status === 403) {
     throw new Error('AUTH');
@@ -273,14 +303,18 @@ export async function flushOperationJournalQueue(token?: string) {
   const queue = getPendingOperationJournalQueue();
   if (!queue.length) return { ok: true, accepted: 0, remaining: 0 };
 
-  const response = await fetch('/api/operation-journal', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+  const response = await fetchWithRetry(
+    '/api/operation-journal',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ entries: queue.slice(0, maxBatchEntries) })
     },
-    body: JSON.stringify({ entries: queue.slice(0, maxBatchEntries) })
-  });
+    { retries: 2, baseDelayMs: 450 }
+  );
 
   if (!response.ok) {
     throw new Error(`journal-post-${response.status}`);
@@ -302,14 +336,18 @@ export async function markOperationJournalApplied(ids: string[], token?: string)
   const cleanIds = ids.map(String).filter(Boolean);
   if (!cleanIds.length) return { ok: true, updated: 0 };
 
-  const response = await fetch('/api/operation-journal', {
-    method: 'PUT',
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {})
+  const response = await fetchWithRetry(
+    '/api/operation-journal',
+    {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ ids: cleanIds, status: 'applied' })
     },
-    body: JSON.stringify({ ids: cleanIds, status: 'applied' })
-  });
+    { retries: 2, baseDelayMs: 450 }
+  );
 
   if (!response.ok) {
     throw new Error(`journal-put-${response.status}`);

@@ -35,7 +35,7 @@ Aplicativo web de inventario e operacao de estoque, com foco em:
 - solicitacao de pecas por placa e centro de custo
 - separacao de material com validacao por codigo
 - impressao de etiquetas
-- persistencia online compartilhada via Cloudflare Pages + D1
+- persistencia online compartilhada via Cloudflare Pages Functions + Supabase
 
 ## Regras de negocio que NAO devem ser quebradas
 
@@ -98,7 +98,9 @@ Aplicativo web de inventario e operacao de estoque, com foco em:
 ## Fonte de verdade do estado online
 
 - Pages Functions: `functions/api/state.js`
-- Banco D1: `precision-inventory-db`
+- Banco principal atual: Supabase `Armazem28` (`wpvagfjiqifvitdlzjue`)
+- Banco D1 historico/fallback: `precision-inventory-db`
+- Nunca gravar chaves Supabase em Git, frontend, logs ou arquivos de memoria
 
 ## Regra de handoff
 

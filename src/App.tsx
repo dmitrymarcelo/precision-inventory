@@ -17,7 +17,7 @@ import {
   VehicleRecord
 } from './types';
 import { calculateItemStatus, defaultInventorySettings } from './inventoryRules';
-import { CloudInventoryState, loadCloudState, saveCloudState } from './cloudState';
+import { CloudInventoryState, CloudStateResult, loadCloudState, saveCloudState } from './cloudState';
 import { sanitizeRequests } from './requestUtils';
 import { sanitizeVehicles } from './vehicleBase';
 import { classifyInventoryCategory } from './categoryCatalog';
@@ -505,7 +505,8 @@ export default function App() {
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
-  const latestCloudResultRef = useRef<{ state: CloudInventoryState | null; updatedAt: string | null } | null>(null);
+  const latestCloudResultRef = useRef<CloudStateResult | null>(null);
+  const lastBackendRef = useRef<string>('');
   const ignoreCloudUpdatesUntilRef = useRef<number>(0);
   const suppressOutboxWriteRef = useRef(false);
   const lastLocalMutationAtRef = useRef<number>(0);
@@ -715,6 +716,14 @@ export default function App() {
     });
   };
 
+  const reportBackendActive = (backend?: unknown) => {
+    const normalized = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
+    if (normalized !== 'supabase' && normalized !== 'd1') return;
+    if (lastBackendRef.current === normalized) return;
+    lastBackendRef.current = normalized;
+    appendSyncEvent('backend_active', normalized === 'supabase' ? 'Supabase ativo' : 'D1 ativo');
+  };
+
   const describeCloudError = (error: unknown) => {
     const message = error instanceof Error ? error.message : '';
     if (!message) return 'Falha ao falar com o servidor.';
@@ -873,7 +882,7 @@ export default function App() {
   };
 
   const applyCloudStateIfNewer = (
-    result: { state: CloudInventoryState | null; updatedAt: string | null },
+    result: CloudStateResult,
     reason: string
   ) => {
     setCloudHasState(Boolean(result.state));
@@ -907,7 +916,7 @@ export default function App() {
   };
 
   const forceApplyCloudState = (
-    result: { state: CloudInventoryState | null; updatedAt: string | null },
+    result: CloudStateResult,
     reason: string
   ) => {
     setCloudHasState(Boolean(result.state));
@@ -1012,6 +1021,7 @@ export default function App() {
 
       await flushJournalBridge(reason);
       const result = await saveCloudState(outbox.state, authSession?.token);
+      reportBackendActive(result?.backend);
       setCloudHasState(true);
       setCloudAvailable(true);
       setCloudStatus('online');
@@ -1083,11 +1093,12 @@ export default function App() {
         setCloudStatusDetail('');
         appendSyncEvent('flush_fail', `${reason} (HTTP ${httpStatus})`);
       } else {
+        const detail = describeCloudError(error);
         setCloudAvailable(false);
         setCloudStatus('offline');
-        setCloudStatusDetail(describeCloudError(error));
+        setCloudStatusDetail(detail);
         wasOfflineRef.current = true;
-        appendSyncEvent('flush_fail', reason);
+        appendSyncEvent('flush_fail', `${reason}: ${detail}`);
       }
       return false;
     } finally {
@@ -1109,6 +1120,7 @@ export default function App() {
         const result = await loadCloudState();
         if (cancelled) return;
 
+        reportBackendActive(result?.backend);
         latestCloudResultRef.current = result;
         applyCloudStateIfNewer(result, 'initial_load');
 
@@ -1350,6 +1362,7 @@ export default function App() {
         setCloudStatus('loading');
         setCloudStatusDetail('');
         const result = await loadCloudState();
+        reportBackendActive(result?.backend);
         applyCloudStateIfNewer(result, 'retry');
 
         setCloudAvailable(true);
@@ -1387,6 +1400,7 @@ export default function App() {
       try {
         const result = await loadCloudState();
         if (cancelled) return;
+        reportBackendActive(result?.backend);
         latestCloudResultRef.current = result;
 
         const localUpdatedAt = new Date(localUpdatedAtRef.current || 0).getTime() || 0;
@@ -1469,6 +1483,7 @@ export default function App() {
     if (!result || !result.state) {
       try {
         result = await loadCloudState();
+        reportBackendActive(result?.backend);
         latestCloudResultRef.current = result;
       } catch (error) {
         const detail = describeCloudError(error);
@@ -2064,6 +2079,7 @@ export default function App() {
 
       try {
         const result = await loadCloudState();
+        reportBackendActive(result?.backend);
         latestCloudResultRef.current = result;
         applyCloudStateIfNewer(result, 'backup_uploaded');
         setCloudAvailable(true);
@@ -2131,6 +2147,7 @@ export default function App() {
       setCloudStatus('loading');
       setCloudStatusDetail('');
       const result = await loadCloudState();
+      reportBackendActive(result?.backend);
       latestCloudResultRef.current = result;
       applyCloudStateIfNewer(result, 'discard_local_pending');
       setCloudAvailable(true);
