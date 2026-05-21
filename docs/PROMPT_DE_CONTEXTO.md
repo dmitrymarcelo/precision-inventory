@@ -43,7 +43,7 @@ Comandos confiaveis nesta maquina:
 - Build:
   & 'C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\node-v24.15.0-win-x64\node.exe' '.\node_modules\vite\bin\vite.js' build
 - Deploy:
-  & 'C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\node-v24.15.0-win-x64\node.exe' 'C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\wrangler-runner\node_modules\wrangler\bin\wrangler.js' pages deploy dist --project-name precision-inventory --branch main --commit-dirty true --commit-message "<mensagem>"
+  & 'C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\node-v24.15.0-win-x64\node.exe' 'C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\wrangler-runner\node_modules\wrangler\bin\wrangler.js' pages deploy dist --project-name precision-inventory --branch main --commit-dirty=true
 - Validar producao:
   https://precision-inventory.pages.dev/
   https://precision-inventory.pages.dev/api/state
@@ -74,12 +74,16 @@ Regras de negocio que nao podem quebrar:
 - Bateria por placa: se a mesma placa ja recebeu bateria em solicitacao Atendida ainda dentro da validade, abrir popup de confirmacao antes de incluir outra bateria; bateria geral vale 12 meses e SKU 12047 vale 6 meses; regra em src/batteryWarrantyRules.ts.
 - Persistencia online: admin/operacao gravam estado completo; consulta so pode criar novas solicitacoes Aberta via backend, sem alterar estoque/logs/configuracoes.
 - Persistencia online atual: producao deve responder `/api/state` com `backend: "supabase"`; se voltar `backend: "d1"`, investigar secrets Supabase no Cloudflare antes de assumir perda de dados.
+- Previews de branch podem nao ter secrets Supabase e cair para D1; validacao final da operacao precisa ser em `https://precision-inventory.pages.dev/`.
 - Nunca registrar a chave Supabase `service_role` em Git, frontend, logs ou memorias persistentes.
 - Modulo Usuarios: acesso exclusivo para Dmitry Marcelo, matricula 24000, admin; outros admins devem ser bloqueados tambem pela API /api/users.
 - Painel: manter objetivo para o armazem; nao destacar `Memoria operacional`; mostrar contagem diaria no Painel somente quando houver obrigatoriedade pendente para o usuario.
 - Inventario ciclico obrigatorio: configurado em Usuarios para Operacao/Admin; Consulta nao pode ser marcada; usuario marcado fica limitado a Painel, Estoque e Inventario Operacional ate finalizar a contagem diaria; regra central em src/cyclicInventory.ts.
 - Log do sistema: agrega logs de estoque, auditoria de solicitacoes e eventos locais de sync; nao criar tabela nova nem historico longo no servidor/Supabase sem aprovacao e politica de retencao.
 - Ponte segura de operacoes: `/api/operation-journal`, tabela Supabase `operation_journal` apos a migracao, com D1 como fallback historico, retencao 7 dias. Serve para transicao/confirmacao de seguranca, nao historico permanente. Front gera patch compacto por SKU/id em `src/operationJournal.ts`, mostra aviso forte com pendencia, confirma logout e permite exportar backup.
+- Se `Sincronizar agora` mantiver `Ponte local`, o front deve conferir o estado online e limpar somente operacoes locais cujo patch ja consta igual no servidor.
+- Erros 401/403 da ponte devem virar `AUTH`/`Sessao expirada`, nao falha generica de internet.
+- Replay Supabase de `/api/operation-journal?action=replay` deve usar State V2 quando existir e State V1 migrado (`inventory`) quando V2 ainda nao existir; nunca comecar de estado vazio.
 - Hotfix de sync pendente em 2026-05-20: quando houver pendencia local, o botao superior deve virar/agir como `Sincronizar`; nao chamar `Atualizar do online` antes de tentar enviar. Clique manual deve reconstruir outbox se existir `dirty` antigo sem outbox. Se o usuario confirmar descarte pelo online, limpar dirty, outbox e fila local da ponte.
 - Hotfix de leitura online em 2026-05-20: se o menu mostrar `Sistema Local` ou `Falha online`, validar primeiro `/api/state`, asset publicado e detalhe HTTP; o D1 pode ter os dados, mas a leitura do estado grande pode falhar. O front deve mostrar detalhe curto abaixo de `Sistema`. No State V2, `GET /api/state` responde em streaming para reduzir risco de Cloudflare `1102`.
 - Separacao so confirma item lido se o codigo pertencer ao pedido aberto.
