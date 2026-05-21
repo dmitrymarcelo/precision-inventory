@@ -3,20 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { CheckCircle2, Cloud, Info } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Cloud, Info } from 'lucide-react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
-import StockWorkspace from './components/StockWorkspace';
-import InventoryOperation from './components/InventoryOperation';
-import RequestManager from './components/RequestManager';
-import RequestHistory from './components/RequestHistory';
-import MaterialSeparation from './components/MaterialSeparation';
-import VehiclePartsBrowser from './components/VehiclePartsBrowser';
-import PreventiveKits from './components/PreventiveKits';
-import UserManager from './components/UserManager';
-import AutomaticPurchases from './components/AutomaticPurchases';
 import {
   InventoryItem,
   InventoryLog,
@@ -26,12 +17,42 @@ import {
   VehicleRecord
 } from './types';
 import { calculateItemStatus, defaultInventorySettings } from './inventoryRules';
-import { CloudInventoryState, loadCloudState, saveCloudState } from './cloudState';
+import { CloudInventoryState, CloudStateResult, loadCloudState, saveCloudState } from './cloudState';
 import { sanitizeRequests } from './requestUtils';
 import { sanitizeVehicles } from './vehicleBase';
 import { classifyInventoryCategory } from './categoryCatalog';
 import { getVehicleTypeFromModel, normalizeOfficialVehicleModel, normalizeOperationalVehicleType } from './vehicleCatalog';
 import { normalizeInventoryStatus, normalizeLocationText, normalizeUserFacingText } from './textUtils';
+import { formatDivergenceDelta, getOpenDivergences } from './divergenceRules';
+import { getFlushCompletionMode, isSameCloudOutbox, shouldUseJournalReplayForSync } from './syncOutbox';
+import { getAbcAnalysisForSku, getAbcClassPriority } from './abcAnalysis';
+import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, getLatestOperationalLogBySku } from './cyclicInventory';
+import {
+  buildOperationJournalPatch,
+  createOperationJournalEntry,
+  createOperationJournalEntriesForBackup,
+  enqueueOperationJournalEntries,
+  enqueueOperationJournalEntry,
+  flushOperationJournalQueue,
+  getAlreadyAppliedOperationJournalEntryIds,
+  getPendingOperationJournalQueue,
+  hasOperationJournalPatchChanges,
+  markOperationJournalApplied,
+  postOperationJournalEntries,
+  replayOperationJournalEntries,
+  removeOperationJournalEntries
+} from './operationJournal';
+
+const StockWorkspace = React.lazy(() => import('./components/StockWorkspace'));
+const InventoryOperation = React.lazy(() => import('./components/InventoryOperation'));
+const RequestManager = React.lazy(() => import('./components/RequestManager'));
+const RequestHistory = React.lazy(() => import('./components/RequestHistory'));
+const MaterialSeparation = React.lazy(() => import('./components/MaterialSeparation'));
+const VehiclePartsBrowser = React.lazy(() => import('./components/VehiclePartsBrowser'));
+const PreventiveKits = React.lazy(() => import('./components/PreventiveKits'));
+const UserManager = React.lazy(() => import('./components/UserManager'));
+const AutomaticPurchases = React.lazy(() => import('./components/AutomaticPurchases'));
+const OperationLogPanel = React.lazy(() => import('./components/OperationLogPanel'));
 
 const initialData: InventoryItem[] = [
   { sku: '01074', name: 'CATALISADOR PARA TINTAS', quantity: 11, category: 'Grupo 0004', location: 'Sem localização', status: 'Repor em Breve' },
@@ -60,6 +81,7 @@ const syncEventsStorageKey = 'precisionInventory.sync.events.v1';
 const authSessionStorageKey = 'precisionInventory.auth.session.v1';
 const authPinStorageKey = 'precisionInventory.auth.pin.v1';
 const cloudRefreshIntervalMs = 5000;
+const cloudFastRefreshIntervalMs = 1000;
 const cloudFocusRefreshCooldownMs = 1200;
 const validTabs = [
   'dashboard',
@@ -70,6 +92,7 @@ const validTabs = [
   'separation',
   'inventory',
   'inventory-operations',
+  'operation-log',
   'users',
   'purchases'
 ];
@@ -90,6 +113,10 @@ function getInitialRequestId() {
 
 function getInitialInventoryFilter() {
   return new URLSearchParams(window.location.search).get('filter') || '';
+}
+
+function isDailyCycleGateAllowedTab(tab: string) {
+  return tab === 'dashboard' || tab === 'inventory' || tab === 'inventory-operations';
 }
 
 function normalizeStoredItems(items: InventoryItem[]) {
@@ -116,7 +143,8 @@ function normalizeStoredLogs(logs: InventoryLog[]) {
         log.source === 'divergencia'
           ? log.source
           : undefined,
-      referenceCode: log.referenceCode ? normalizeUserFacingText(log.referenceCode) : undefined
+      referenceCode: log.referenceCode ? normalizeUserFacingText(log.referenceCode) : undefined,
+      note: log.note ? normalizeUserFacingText(log.note) : undefined
     }))
     .filter(log => Boolean(log.id && log.sku));
 }
@@ -127,12 +155,14 @@ function normalizeInventoryItemRecord(item: InventoryItem): InventoryItem {
   const classified = classifyInventoryCategory(name, sourceCategory);
   const vehicleModel = normalizeOfficialVehicleModel(item.vehicleModel || '');
   const updatedAt = typeof item.updatedAt === 'string' ? item.updatedAt : undefined;
+  const alertRuleOverrideAt = typeof item.alertRuleOverrideAt === 'string' ? item.alertRuleOverrideAt : undefined;
 
   return {
     ...item,
     name,
     isActiveInWarehouse: item.isActiveInWarehouse === true,
     updatedAt,
+    alertRuleOverrideAt,
     imageUrl: normalizeImageUrl(item.imageUrl),
     imageHint: normalizeUserFacingText(item.imageHint),
     vehicleModel,
@@ -155,10 +185,19 @@ function normalizeImageUrl(value: string | undefined) {
 }
 
 type UserRole = 'consulta' | 'operacao' | 'admin';
-type AuthSession = { role: UserRole; token?: string; userId?: string; matricula?: string; name?: string; mustChangePassword?: boolean; mode?: 'password' };
+type AuthSession = {
+  role: UserRole;
+  token?: string;
+  userId?: string;
+  matricula?: string;
+  name?: string;
+  mustChangePassword?: boolean;
+  requiresDailyCycleInventory?: boolean;
+  mode?: 'password' | 'stock-consulta';
+};
 
 type SyncEvent = { at: string; event: string; detail?: string };
-type CloudOutbox = { state: CloudInventoryState; queuedAt: string; localUpdatedAt: string };
+type CloudOutbox = { state: CloudInventoryState; queuedAt: string; localUpdatedAt: string; journalIds?: string[] };
 
 function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   const [hasUsers, setHasUsers] = useState<boolean | null>(null);
@@ -210,7 +249,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
         message?: string;
         token?: string;
         mustChangePassword?: boolean;
-        user?: { id: string; matricula: string; name: string; role: UserRole };
+        user?: { id: string; matricula: string; name: string; role: UserRole; requiresDailyCycleInventory?: boolean };
       };
 
       if (!response.ok || !data?.ok || !data.user || !data.token) {
@@ -225,6 +264,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
         matricula: data.user.matricula,
         name: data.user.name,
         mustChangePassword: Boolean(data.mustChangePassword),
+        requiresDailyCycleInventory: Boolean(data.user.requiresDailyCycleInventory),
         mode: 'password'
       });
     } catch {
@@ -309,7 +349,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
     <div className="min-h-screen bg-surface-container-lowest flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-[0_18px_48px_rgba(36,52,69,0.14)] overflow-hidden">
         <div className="p-6 border-b border-outline-variant/15">
-          <h1 className="text-2xl font-headline font-extrabold tracking-tight text-on-surface">Precision Inventory</h1>
+          <h1 className="text-2xl font-headline font-extrabold tracking-tight text-on-surface">Armazem 28</h1>
           <p className="text-sm text-on-surface-variant mt-2">Acesso por matrícula e senha.</p>
         </div>
 
@@ -391,6 +431,25 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
                 >
                   {loading ? 'Entrando...' : 'Entrar'}
                 </button>
+
+                <div className="pt-3 border-t border-outline-variant/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onLogin({
+                        role: 'consulta',
+                        name: 'Consulta Estoque',
+                        mode: 'stock-consulta'
+                      });
+                    }}
+                    className="w-full h-12 rounded-xl bg-surface-container-highest text-primary font-bold hover:bg-surface-container-high transition-colors"
+                  >
+                    Consulta Estoque
+                  </button>
+                  <p className="mt-2 text-[11px] text-on-surface-variant font-medium">
+                    Acesso somente para visualização: Painel, Peças/Modelo, Kit Preventivas e Estoque.
+                  </p>
+                </div>
               </div>
 
               {hasUsers === null ? (
@@ -409,20 +468,49 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   );
 }
 
+function ModuleLoading() {
+  return (
+    <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+      <div className="h-2 w-32 rounded-full bg-surface-container-highest animate-pulse" />
+      <div className="mt-4 h-4 w-56 rounded-full bg-surface-container-highest animate-pulse" />
+      <p className="mt-4 text-sm font-semibold text-on-surface-variant">Carregando modulo...</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTabState] = useState(getInitialTab);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
   const [cloudStatus, setCloudStatus] = useState<'loading' | 'online' | 'offline' | 'saving'>('loading');
+  const [cloudStatusDetail, setCloudStatusDetail] = useState('');
   const [cloudLoaded, setCloudLoaded] = useState(false);
   const [cloudAvailable, setCloudAvailable] = useState(false);
   const [cloudHasState, setCloudHasState] = useState(false);
+  const [cloudUpdatePending, setCloudUpdatePending] = useState<{ updatedAt: string; reason: string } | null>(null);
   const [ocrAliases, setOcrAliases] = useState<Record<string, string>>({});
+  const [syncEvents, setSyncEvents] = useState<SyncEvent[]>(() => {
+    try {
+      const stored = localStorage.getItem(syncEventsStorageKey);
+      return stored ? (JSON.parse(stored) as SyncEvent[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const saveTimerRef = useRef<number | null>(null);
   const cloudRetryTimerRef = useRef<number | null>(null);
   const outboxWriteTimerRef = useRef<number | null>(null);
+  const flushInFlightRef = useRef(false);
+  const lastFlushResultRef = useRef<{ ok: boolean; code: string; at: number } | null>(null);
+  const backupUploadInFlightRef = useRef(false);
+  const backupUploadInputRef = useRef<HTMLInputElement | null>(null);
   const wasOfflineRef = useRef(false);
   const localUpdatedAtRef = useRef<string>(localStorage.getItem(localUpdatedAtStorageKey) || '');
   const localDirtyRef = useRef<boolean>(localStorage.getItem(localDirtyStorageKey) === '1');
+  const latestCloudResultRef = useRef<CloudStateResult | null>(null);
+  const lastBackendRef = useRef<string>('');
+  const ignoreCloudUpdatesUntilRef = useRef<number>(0);
+  const suppressOutboxWriteRef = useRef(false);
+  const lastLocalMutationAtRef = useRef<number>(0);
   let initialOutbox: CloudOutbox | null = null;
   try {
     const stored = localStorage.getItem(cloudOutboxStorageKey);
@@ -434,6 +522,23 @@ export default function App() {
     initialOutbox = null;
   }
   const outboxRef = useRef<CloudOutbox | null>(initialOutbox);
+  const [localPendingSync, setLocalPendingSync] = useState(Boolean(initialOutbox) || localDirtyRef.current);
+  const [pendingJournalCount, setPendingJournalCount] = useState(() => getPendingOperationJournalQueue().length);
+
+  useEffect(() => {
+    if (outboxRef.current && !localDirtyRef.current) {
+      localDirtyRef.current = true;
+      localStorage.setItem(localDirtyStorageKey, '1');
+      setLocalPendingSync(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!localDirtyRef.current && !outboxRef.current) {
+      localUpdatedAtRef.current = '';
+      localStorage.removeItem(localUpdatedAtStorageKey);
+    }
+  }, []);
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => {
     try {
       const stored = localStorage.getItem(authSessionStorageKey);
@@ -449,7 +554,9 @@ export default function App() {
         matricula: typeof parsed.matricula === 'string' ? parsed.matricula : undefined,
         name: typeof parsed.name === 'string' ? parsed.name : undefined,
         mustChangePassword: typeof parsed.mustChangePassword === 'boolean' ? parsed.mustChangePassword : undefined,
-        mode: parsed.mode === 'password' ? parsed.mode : undefined
+        requiresDailyCycleInventory:
+          typeof parsed.requiresDailyCycleInventory === 'boolean' ? parsed.requiresDailyCycleInventory : undefined,
+        mode: parsed.mode === 'password' || parsed.mode === 'stock-consulta' ? parsed.mode : undefined
       };
     } catch {
       return null;
@@ -525,6 +632,8 @@ export default function App() {
   };
 
   const mustChangePassword = authSession?.mustChangePassword === true;
+  const isStockConsulta = authSession?.mode === 'stock-consulta';
+  const hasPendingSafetySync = !isStockConsulta && (localPendingSync || pendingJournalCount > 0);
 
   const handleForcePasswordChange = async () => {
     if (!authSession?.token) {
@@ -599,31 +708,226 @@ export default function App() {
   }, [mustChangePassword]);
 
   const appendSyncEvent = (event: string, detail?: string) => {
-    try {
-      const existing = localStorage.getItem(syncEventsStorageKey);
-      const current = existing ? (JSON.parse(existing) as SyncEvent[]) : [];
+    setSyncEvents(current => {
       const next = [{ at: new Date().toISOString(), event, detail }, ...current].slice(0, 40);
-      localStorage.setItem(syncEventsStorageKey, JSON.stringify(next));
-    } catch {}
+      try {
+        localStorage.setItem(syncEventsStorageKey, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   };
 
-  const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string) => {
-    const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt };
+  const reportBackendActive = (backend?: unknown) => {
+    const normalized = typeof backend === 'string' ? backend.trim().toLowerCase() : '';
+    if (normalized !== 'supabase' && normalized !== 'd1') return;
+    if (lastBackendRef.current === normalized) return;
+    lastBackendRef.current = normalized;
+    appendSyncEvent('backend_active', normalized === 'supabase' ? 'Supabase ativo' : 'D1 ativo');
+  };
+
+  const describeCloudError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : '';
+    if (!message) return 'Falha ao falar com o servidor.';
+    return normalizeUserFacingText(message).slice(0, 180);
+  };
+
+  const setOutbox = (state: CloudInventoryState, queuedAt: string, localUpdatedAt: string, journalIds: string[] = []) => {
+    const outbox: CloudOutbox = { state, queuedAt, localUpdatedAt, journalIds };
     outboxRef.current = outbox;
+    setLocalPendingSync(true);
     try {
       localStorage.setItem(cloudOutboxStorageKey, JSON.stringify(outbox));
     } catch {}
   };
 
-  const clearOutbox = () => {
+  const clearOutbox = (expected?: CloudOutbox | null) => {
+    if (expected && !isSameCloudOutbox(outboxRef.current, expected)) {
+      return false;
+    }
     outboxRef.current = null;
     try {
       localStorage.removeItem(cloudOutboxStorageKey);
     } catch {}
+    setLocalPendingSync(localDirtyRef.current);
+    return true;
+  };
+
+  const refreshPendingJournalCount = () => {
+    setPendingJournalCount(getPendingOperationJournalQueue().length);
+  };
+
+  const reconcileLocalJournalWithOnlineState = async (reason: string, preferredResult?: CloudStateResult | null) => {
+    const queue = getPendingOperationJournalQueue();
+    if (!queue.length) {
+      setPendingJournalCount(0);
+      return 0;
+    }
+
+    let result = preferredResult || latestCloudResultRef.current;
+    if (!result?.state) {
+      try {
+        result = await loadCloudState();
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
+        setCloudAvailable(true);
+        setCloudStatus('online');
+        setCloudStatusDetail('');
+      } catch (error) {
+        const detail = describeCloudError(error);
+        appendSyncEvent('journal_reconcile_fail', `${reason}: ${detail}`);
+        refreshPendingJournalCount();
+        return 0;
+      }
+    }
+
+    const alreadyAppliedIds = getAlreadyAppliedOperationJournalEntryIds(queue, result.state);
+    if (!alreadyAppliedIds.length) {
+      refreshPendingJournalCount();
+      return 0;
+    }
+
+    const remaining = removeOperationJournalEntries(alreadyAppliedIds);
+    setPendingJournalCount(remaining.length);
+    appendSyncEvent('journal_local_confirmed', `${alreadyAppliedIds.length} pendencia(s) ja constavam no servidor`);
+    if (remaining.length === 0 && !outboxRef.current && !localDirtyRef.current) {
+      setLocalPendingSync(false);
+    }
+    return alreadyAppliedIds.length;
+  };
+
+  const flushJournalBridge = async (reason: string) => {
+    try {
+      const result = await flushOperationJournalQueue(authSession?.token);
+      setPendingJournalCount(result.remaining);
+      if (result.accepted > 0) {
+        appendSyncEvent('journal_flush_ok', `${result.accepted} operacao(oes) protegida(s) no servidor`);
+      }
+      return result.remaining === 0 || result.accepted > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'AUTH') {
+        lastFlushResultRef.current = { ok: false, code: 'auth', at: Date.now() };
+        setAuthSession(null);
+      }
+      refreshPendingJournalCount();
+      appendSyncEvent('journal_flush_fail', message ? `${reason}: ${message}` : reason);
+      return false;
+    }
+  };
+
+  const markJournalEntriesApplied = async (ids: string[] = []) => {
+    if (!ids.length) return;
+    removeOperationJournalEntries(ids);
+    refreshPendingJournalCount();
+    try {
+      await markOperationJournalApplied(ids, authSession?.token);
+      appendSyncEvent('journal_applied', `${ids.length} operacao(oes) confirmada(s) no estado online`);
+    } catch {
+      appendSyncEvent('journal_apply_mark_fail');
+    }
+  };
+
+  const applyOutboxViaJournalReplay = async (
+    expectedOutbox: CloudOutbox,
+    reason: string
+  ): Promise<{ ok: boolean; updatedAt?: string | null }> => {
+    const current = outboxRef.current;
+    if (!current || !isSameCloudOutbox(current, expectedOutbox)) {
+      appendSyncEvent('journal_replay_skipped', 'Outbox mudou durante a tentativa de replay');
+      return { ok: false };
+    }
+
+    if (!authSession?.token) {
+      return { ok: false };
+    }
+
+    let journalIds = Array.isArray(current.journalIds) ? current.journalIds.slice() : [];
+    if (journalIds.length === 0) {
+      const patch = buildOperationJournalPatch(latestCloudResultRef.current?.state, current.state);
+      if (hasOperationJournalPatchChanges(patch)) {
+        const entries = createOperationJournalEntriesForBackup({
+          previousState: latestCloudResultRef.current?.state,
+          nextState: current.state,
+          createdAt: current.queuedAt
+        });
+        if (entries.length > 0) {
+          enqueueOperationJournalEntries(entries);
+          refreshPendingJournalCount();
+          journalIds = entries.map(entry => entry.id);
+          setOutbox(current.state, current.queuedAt, current.localUpdatedAt, journalIds);
+          appendSyncEvent('journal_queued', `${entries.length} operacao(oes) entrou(aram) na ponte segura (replay)`);
+        }
+      }
+    }
+
+    if (journalIds.length === 0) {
+      appendSyncEvent('journal_replay_fail', 'Sem operacoes na ponte para aplicar');
+      return { ok: false };
+    }
+
+    const queue = getPendingOperationJournalQueue();
+    const byId = new Map(queue.map(entry => [entry.id, entry]));
+    const entriesToSend = journalIds.map(id => byId.get(id)).filter(Boolean);
+
+    appendSyncEvent('journal_replay_start', reason);
+
+    let remainingIds = journalIds.slice();
+    while (entriesToSend.length > 0) {
+      const batch = entriesToSend.splice(0, 25);
+      const result = await postOperationJournalEntries(batch, authSession.token);
+      if (result.acceptedIds.length > 0) {
+        removeOperationJournalEntries(result.acceptedIds);
+      }
+    }
+    refreshPendingJournalCount();
+
+    let updatedAt: string | null = null;
+    let applied = 0;
+    while (remainingIds.length > 0) {
+      const batchIds = remainingIds.slice(0, 25);
+      remainingIds = remainingIds.slice(25);
+      const replay = await replayOperationJournalEntries(batchIds, authSession.token);
+      if (replay.updatedAt) updatedAt = replay.updatedAt;
+      applied += replay.applied;
+    }
+
+    if (applied === 0 && !updatedAt) {
+      appendSyncEvent('journal_replay_fail', 'Operacao nao encontrada no servidor');
+      return { ok: false };
+    }
+
+    await markJournalEntriesApplied(journalIds);
+
+    latestCloudResultRef.current = { state: current.state, updatedAt: updatedAt || new Date().toISOString() };
+    appendSyncEvent('journal_replay_ok', `${journalIds.length} operacao(oes) aplicada(s) no estado online`);
+    return { ok: true, updatedAt };
+  };
+
+  const queueCurrentStateForSync = (reason: string) => {
+    const queuedAt = new Date().toISOString();
+    const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
+    const previousState = latestCloudResultRef.current?.state;
+    const journalEntry = createOperationJournalEntry({ previousState, nextState: state, createdAt: queuedAt });
+    const journalEntries = journalEntry
+      ? [journalEntry]
+      : createOperationJournalEntriesForBackup({ previousState, nextState: state, createdAt: queuedAt });
+
+    if (journalEntries.length > 0) {
+      if (journalEntries.length === 1) {
+        enqueueOperationJournalEntry(journalEntries[0]);
+      } else {
+        enqueueOperationJournalEntries(journalEntries);
+      }
+      refreshPendingJournalCount();
+      appendSyncEvent('journal_queued', `${journalEntries.length} operacao(oes) entrou(aram) na ponte segura de 7 dias`);
+    }
+
+    setOutbox(state, queuedAt, localUpdatedAtRef.current, journalEntries.map(entry => entry.id));
+    appendSyncEvent('outbox_write', reason);
   };
 
   const applyCloudStateIfNewer = (
-    result: { state: CloudInventoryState | null; updatedAt: string | null },
+    result: CloudStateResult,
     reason: string
   ) => {
     setCloudHasState(Boolean(result.state));
@@ -635,6 +939,7 @@ export default function App() {
       return false;
     }
 
+    suppressOutboxWriteRef.current = true;
     setItems(normalizeStoredItems(result.state.items));
     setLogs(normalizeStoredLogs(result.state.logs));
     setSettings({ ...defaultInventorySettings, ...result.state.settings });
@@ -655,35 +960,197 @@ export default function App() {
     return true;
   };
 
-  async function flushOutbox(reason: string) {
-    const outbox = outboxRef.current;
-    if (!outbox) return;
-    if (!cloudLoaded) return;
-    if (cloudStatus === 'saving') return;
+  const forceApplyCloudState = (
+    result: CloudStateResult,
+    reason: string
+  ) => {
+    setCloudHasState(Boolean(result.state));
+    if (!result.state) return false;
 
+    clearOutbox();
+    localDirtyRef.current = false;
+    localStorage.removeItem(localDirtyStorageKey);
+    const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+    if (pendingJournalIds.length > 0) {
+      removeOperationJournalEntries(pendingJournalIds);
+      setPendingJournalCount(0);
+      appendSyncEvent('journal_discarded', 'Ponte local descartada ao aplicar estado online');
+    }
+    setLocalPendingSync(false);
+
+    suppressOutboxWriteRef.current = true;
+    setItems(normalizeStoredItems(result.state.items));
+    setLogs(normalizeStoredLogs(result.state.logs));
+    setSettings({ ...defaultInventorySettings, ...result.state.settings });
+    setRequests(sanitizeRequests(result.state.requests));
+    setVehicles(sanitizeVehicles(result.state.vehicles));
+    setPurchases(result.state.purchases || []);
+    setOcrAliases(
+      result.state.ocrAliases && typeof result.state.ocrAliases === 'object'
+        ? result.state.ocrAliases
+        : {}
+    );
+
+    localUpdatedAtRef.current = result.updatedAt || '';
+    if (result.updatedAt) {
+      localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
+    } else {
+      localStorage.removeItem(localUpdatedAtStorageKey);
+    }
+
+    appendSyncEvent('cloud_refresh_forced', reason);
+    return true;
+  };
+
+  async function flushOutbox(reason: string, options: { force?: boolean } = {}) {
+    if (isStockConsulta) {
+      lastFlushResultRef.current = { ok: false, code: 'stock-consulta', at: Date.now() };
+      return false;
+    }
+    const outbox = outboxRef.current;
+    if (!outbox) {
+      lastFlushResultRef.current = { ok: false, code: 'no-outbox', at: Date.now() };
+      return false;
+    }
+    if (!cloudLoaded && !options.force) {
+      lastFlushResultRef.current = { ok: false, code: 'not-loaded', at: Date.now() };
+      return false;
+    }
+    if (flushInFlightRef.current) {
+      lastFlushResultRef.current = { ok: false, code: 'busy', at: Date.now() };
+      return false;
+    }
+
+    flushInFlightRef.current = true;
     setCloudStatus('saving');
     appendSyncEvent('flush_start', reason);
+    let shouldFlushAgain = false;
 
-    try {
-      const result = await saveCloudState(outbox.state, authSession?.token);
+    const finishJournalReplay = async (updatedAtValue?: string | null) => {
+      const updatedAt = updatedAtValue || new Date().toISOString();
+      localDirtyRef.current = false;
+      localStorage.removeItem(localDirtyStorageKey);
+      localUpdatedAtRef.current = updatedAt;
+      localStorage.setItem(localUpdatedAtStorageKey, updatedAt);
+      latestCloudResultRef.current = { state: outbox.state, updatedAt };
       setCloudHasState(true);
       setCloudAvailable(true);
       setCloudStatus('online');
+      setCloudStatusDetail('');
+      clearOutbox(outbox);
+      setCloudUpdatePending(null);
+      setLocalPendingSync(false);
+      appendSyncEvent('flush_ok', `${reason} (replay)`);
+      lastFlushResultRef.current = { ok: true, code: 'ok', at: Date.now() };
+      if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        showToast('Internet voltou. Alteracoes sincronizadas.', 'success');
+      }
+      return true;
+    };
+
+    try {
+      const serializedStateLength = JSON.stringify(outbox.state).length;
+      if (
+        shouldUseJournalReplayForSync({
+          serializedStateLength,
+          journalIdCount: Array.isArray(outbox.journalIds) ? outbox.journalIds.length : 0,
+          reason
+        })
+      ) {
+        const replay = await applyOutboxViaJournalReplay(outbox, `${reason}_journal_first`);
+        if (replay.ok) {
+          return finishJournalReplay(replay.updatedAt);
+        }
+      }
+
+      await flushJournalBridge(reason);
+      const result = await saveCloudState(outbox.state, authSession?.token);
+      reportBackendActive(result?.backend);
+      setCloudHasState(true);
+      setCloudAvailable(true);
+      setCloudStatus('online');
+      setCloudStatusDetail('');
+      const completionMode = getFlushCompletionMode(outbox, outboxRef.current);
+
+      if (completionMode === 'defer-newer-outbox') {
+        setLocalPendingSync(true);
+        appendSyncEvent('flush_deferred_newer_outbox', reason);
+        shouldFlushAgain = true;
+        lastFlushResultRef.current = { ok: false, code: 'defer-newer-outbox', at: Date.now() };
+        return false;
+      }
+
       localDirtyRef.current = false;
       localStorage.removeItem(localDirtyStorageKey);
       localUpdatedAtRef.current = result.updatedAt;
       localStorage.setItem(localUpdatedAtStorageKey, result.updatedAt);
-      clearOutbox();
+      latestCloudResultRef.current = { state: result.state || outbox.state, updatedAt: result.updatedAt };
+      if (result.state) {
+        suppressOutboxWriteRef.current = true;
+        setItems(normalizeStoredItems(result.state.items));
+        setLogs(normalizeStoredLogs(result.state.logs));
+        setSettings({ ...defaultInventorySettings, ...result.state.settings });
+        setRequests(sanitizeRequests(result.state.requests));
+        setVehicles(sanitizeVehicles(result.state.vehicles));
+        setPurchases(result.state.purchases || []);
+        setOcrAliases(
+          result.state.ocrAliases && typeof result.state.ocrAliases === 'object'
+            ? result.state.ocrAliases
+            : {}
+        );
+      }
+      clearOutbox(outbox);
+      await markJournalEntriesApplied(outbox.journalIds);
+      setCloudUpdatePending(null);
       appendSyncEvent('flush_ok', reason);
       if (wasOfflineRef.current) {
         wasOfflineRef.current = false;
         showToast('Internet voltou. Alterações sincronizadas.', 'success');
       }
-    } catch {
-      setCloudAvailable(false);
-      setCloudStatus('offline');
-      wasOfflineRef.current = true;
-      appendSyncEvent('flush_fail', reason);
+      lastFlushResultRef.current = { ok: true, code: 'ok', at: Date.now() };
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const httpMatch = message.match(/HTTP\s+(\d{3})/i);
+      const httpStatus = httpMatch ? Number(httpMatch[1]) : null;
+      if (message === 'AUTH') {
+        showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
+        setAuthSession(null);
+      } else if (httpStatus === 413 || (httpStatus !== null && httpStatus >= 500)) {
+        try {
+          const replay = await applyOutboxViaJournalReplay(outbox, reason);
+          if (replay.ok) {
+            return finishJournalReplay(replay.updatedAt);
+          }
+        } catch {
+          appendSyncEvent('journal_replay_fail', 'Falha ao aplicar via ponte segura');
+        }
+      }
+      lastFlushResultRef.current = {
+        ok: false,
+        code: message === 'AUTH' ? 'auth' : httpStatus ? `http-${httpStatus}` : 'error',
+        at: Date.now()
+      };
+      if (httpStatus) {
+        setCloudAvailable(true);
+        setCloudStatus('online');
+        setCloudStatusDetail('');
+        appendSyncEvent('flush_fail', `${reason} (HTTP ${httpStatus})`);
+      } else {
+        const detail = describeCloudError(error);
+        setCloudAvailable(false);
+        setCloudStatus('offline');
+        setCloudStatusDetail(detail);
+        wasOfflineRef.current = true;
+        appendSyncEvent('flush_fail', `${reason}: ${detail}`);
+      }
+      return false;
+    } finally {
+      flushInFlightRef.current = false;
+      if (shouldFlushAgain && navigator.onLine) {
+        window.setTimeout(() => void flushOutbox('newer_outbox_pending'), 0);
+      }
     }
   }
 
@@ -698,10 +1165,13 @@ export default function App() {
         const result = await loadCloudState();
         if (cancelled) return;
 
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
         applyCloudStateIfNewer(result, 'initial_load');
 
         setCloudAvailable(true);
         setCloudStatus('online');
+        setCloudStatusDetail('');
         if (cloudRetryTimerRef.current) {
           window.clearTimeout(cloudRetryTimerRef.current);
           cloudRetryTimerRef.current = null;
@@ -709,10 +1179,13 @@ export default function App() {
         if (outboxRef.current && localDirtyRef.current) {
           void flushOutbox('initial_load');
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setCloudAvailable(false);
           setCloudStatus('offline');
+          const detail = describeCloudError(error);
+          setCloudStatusDetail(detail);
+          appendSyncEvent('cloud_refresh_fail', `initial_load: ${detail}`);
           wasOfflineRef.current = true;
           if (!cloudRetryTimerRef.current) {
             cloudRetryTimerRef.current = window.setTimeout(() => {
@@ -743,12 +1216,15 @@ export default function App() {
     const handleOnline = () => {
       wasOfflineRef.current = true;
       setCloudStatus('loading');
+      setCloudStatusDetail('');
+      void flushJournalBridge('online_event');
       void flushOutbox('online_event');
     };
     const handleOffline = () => {
       wasOfflineRef.current = true;
       setCloudAvailable(false);
       setCloudStatus('offline');
+      setCloudStatusDetail('Navegador sem internet.');
       appendSyncEvent('offline');
     };
 
@@ -762,12 +1238,72 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!hasPendingSafetySync) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasPendingSafetySync]);
+
+  useEffect(() => {
     if (authSession) {
       localStorage.setItem(authSessionStorageKey, JSON.stringify(authSession));
     } else {
       localStorage.removeItem(authSessionStorageKey);
     }
   }, [authSession]);
+
+  useEffect(() => {
+    if (!authSession?.token || authSession.mode !== 'password') return;
+    let cancelled = false;
+
+    async function refreshSessionUser() {
+      try {
+        const response = await fetch('/api/auth?action=me', {
+          headers: { authorization: `Bearer ${authSession?.token}` },
+          cache: 'no-store'
+        });
+        if (response.status === 401 || response.status === 403) {
+          setAuthSession(previous => {
+            if (!previous || previous.token !== authSession.token) return previous;
+            return null;
+          });
+          return;
+        }
+        const data = (await response.json()) as {
+          ok?: boolean;
+          user?: {
+            id: string;
+            matricula: string;
+            name: string;
+            role: UserRole;
+            requiresDailyCycleInventory?: boolean;
+          };
+        };
+        if (cancelled || !response.ok || !data?.ok || !data.user) return;
+        setAuthSession(previous => {
+          if (!previous || previous.token !== authSession.token) return previous;
+          return {
+            ...previous,
+            userId: data.user?.id,
+            matricula: data.user?.matricula,
+            name: data.user?.name,
+            role: data.user?.role || previous.role,
+            requiresDailyCycleInventory: Boolean(data.user?.requiresDailyCycleInventory)
+          };
+        });
+      } catch {
+        return;
+      }
+    }
+
+    void refreshSessionUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.mode, authSession?.token]);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(items));
@@ -797,15 +1333,18 @@ export default function App() {
 
   useEffect(() => {
     if (!cloudLoaded) return;
+    if (isStockConsulta) return;
+    if (suppressOutboxWriteRef.current) {
+      suppressOutboxWriteRef.current = false;
+      return;
+    }
+    if (!localDirtyRef.current && !outboxRef.current) return;
     if (outboxWriteTimerRef.current) {
       window.clearTimeout(outboxWriteTimerRef.current);
     }
 
     outboxWriteTimerRef.current = window.setTimeout(() => {
-      const queuedAt = new Date().toISOString();
-      const state: CloudInventoryState = { items, logs, settings, requests, vehicles, purchases, ocrAliases };
-      setOutbox(state, queuedAt, localUpdatedAtRef.current);
-      appendSyncEvent('outbox_write');
+      queueCurrentStateForSync('outbox_write');
       if (navigator.onLine) {
         void flushOutbox('outbox_write');
       }
@@ -821,6 +1360,7 @@ export default function App() {
 
   useEffect(() => {
     if (!cloudLoaded || !cloudAvailable) return;
+    if (isStockConsulta) return;
     if (!localDirtyRef.current && !outboxRef.current) {
       setCloudStatus('online');
       return;
@@ -865,14 +1405,18 @@ export default function App() {
       cloudRetryTimerRef.current = null;
       try {
         setCloudStatus('loading');
+        setCloudStatusDetail('');
         const result = await loadCloudState();
+        reportBackendActive(result?.backend);
         applyCloudStateIfNewer(result, 'retry');
 
         setCloudAvailable(true);
         setCloudStatus('online');
-      } catch {
+        setCloudStatusDetail('');
+      } catch (error) {
         setCloudAvailable(false);
         setCloudStatus('offline');
+        setCloudStatusDetail(describeCloudError(error));
       }
     }, 4000);
 
@@ -890,24 +1434,53 @@ export default function App() {
     let cancelled = false;
     let inFlight = false;
     let lastFocusRefresh = 0;
+    const refreshInterval = activeTab === 'separation' ? cloudFastRefreshIntervalMs : cloudRefreshIntervalMs;
 
     const refreshCloudState = async (reason: string) => {
       if (cancelled || inFlight) return;
-      if (cloudStatus === 'saving' || localDirtyRef.current || outboxRef.current) return;
+      if (cloudStatus === 'saving') return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
       inFlight = true;
       try {
         const result = await loadCloudState();
         if (cancelled) return;
-        applyCloudStateIfNewer(result, reason);
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
+
+        const localUpdatedAt = new Date(localUpdatedAtRef.current || 0).getTime() || 0;
+        const cloudUpdatedAt = new Date(result.updatedAt || 0).getTime() || 0;
+        const hasNewerCloud = Boolean(cloudUpdatedAt && cloudUpdatedAt > localUpdatedAt);
+
+        if (hasNewerCloud && (localDirtyRef.current || outboxRef.current)) {
+          const idleMs = Date.now() - (lastLocalMutationAtRef.current || 0);
+          const shouldAutoAcceptRemote = idleMs > 2500;
+          if (shouldAutoAcceptRemote) {
+            if (outboxRef.current && navigator.onLine) {
+              await flushOutbox('pre_apply_remote');
+            } else if (localDirtyRef.current && !outboxRef.current) {
+              localDirtyRef.current = false;
+              localStorage.removeItem(localDirtyStorageKey);
+            }
+            applyCloudStateIfNewer(result, reason);
+            setCloudUpdatePending(null);
+          } else if (Date.now() >= ignoreCloudUpdatesUntilRef.current) {
+            setCloudUpdatePending({ updatedAt: result.updatedAt || '', reason });
+          }
+        } else {
+          applyCloudStateIfNewer(result, reason);
+          setCloudUpdatePending(null);
+        }
         setCloudAvailable(true);
         setCloudStatus('online');
-      } catch {
+        setCloudStatusDetail('');
+      } catch (error) {
         if (cancelled) return;
         setCloudAvailable(false);
         setCloudStatus('offline');
-        appendSyncEvent('cloud_refresh_fail', reason);
+        const detail = describeCloudError(error);
+        setCloudStatusDetail(detail);
+        appendSyncEvent('cloud_refresh_fail', `${reason}: ${detail}`);
       } finally {
         inFlight = false;
       }
@@ -917,7 +1490,7 @@ export default function App() {
       if (document.visibilityState === 'visible') {
         void refreshCloudState('interval');
       }
-    }, cloudRefreshIntervalMs);
+    }, refreshInterval);
 
     const handleFocusRefresh = () => {
       const now = Date.now();
@@ -941,13 +1514,60 @@ export default function App() {
       window.removeEventListener('focus', handleFocusRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [authSession, cloudLoaded, cloudStatus, mustChangePassword]);
+  }, [activeTab, authSession, cloudLoaded, cloudStatus, mustChangePassword]);
 
-  const markLocalDirty = (updatedAt: string) => {
+  const applyCloudUpdateNow = async () => {
+    if (!isStockConsulta && (localDirtyRef.current || outboxRef.current || pendingJournalCount > 0)) {
+      const confirmApply = window.confirm(
+        'Existe alteração local pendente neste aparelho. Atualizar agora vai substituir sua tela pelo estado online e descartar o que ainda não sincronizou. Continuar?'
+      );
+      if (!confirmApply) return;
+    }
+
+    let result = latestCloudResultRef.current;
+    if (!result || !result.state) {
+      try {
+        result = await loadCloudState();
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
+      } catch (error) {
+        const detail = describeCloudError(error);
+        setCloudStatusDetail(detail);
+        showToast(`Não foi possível carregar o estado online agora: ${detail}`, 'info');
+        return;
+      }
+    }
+
+    const applied = forceApplyCloudState(result, 'user_apply');
+    if (applied) {
+      setCloudAvailable(true);
+      setCloudStatus('online');
+      setCloudStatusDetail('');
+      setCloudUpdatePending(null);
+      showToast('Tela atualizada com o estado online.', 'success');
+    }
+  };
+
+  const ignoreCloudUpdate = () => {
+    ignoreCloudUpdatesUntilRef.current = Date.now() + 60_000;
+    setCloudUpdatePending(null);
+    appendSyncEvent('cloud_update_ignored', 'user_ignore');
+    showToast('Atualização online detectada. Mantendo sua tela por 1 minuto.', 'info');
+  };
+
+  const markLocalDirty = (_updatedAt: string) => {
+    if (isStockConsulta) return;
     localDirtyRef.current = true;
     localStorage.setItem(localDirtyStorageKey, '1');
-    localUpdatedAtRef.current = updatedAt;
-    localStorage.setItem(localUpdatedAtStorageKey, updatedAt);
+    setLocalPendingSync(true);
+    lastLocalMutationAtRef.current = Date.now();
+  };
+
+  const shouldBlockMutationForCloudUpdate = () => {
+    if (isStockConsulta) return false;
+    if (!cloudUpdatePending) return false;
+    showToast('Outro dispositivo salvou mudanças. Toque em Atualizar para continuar.', 'info');
+    return true;
   };
 
   const role: UserRole = authSession?.role || 'consulta';
@@ -957,36 +1577,90 @@ export default function App() {
     name: authSession?.name,
     role
   };
-  const canAdjustStock = role === 'admin';
+  const canAdjustStock = role === 'admin' || role === 'operacao';
   const canReceiveStock = role === 'admin' || role === 'operacao';
   const canOperateSeparation = role === 'admin' || role === 'operacao';
   const canCreateRequests = role === 'admin' || role === 'operacao' || role === 'consulta';
   const canEditExistingRequests = role === 'admin' || role === 'operacao';
   const canDeleteRequests = role === 'admin';
   const canReverseRequests = role === 'admin';
-  const canManageUsers = role === 'admin';
+  const canManageUsers = role === 'admin' && String(authSession?.matricula || '').replace(/\s+/g, '') === '24000';
   const canWriteItemsAndLogs = role === 'admin' || role === 'operacao';
   const canWriteVehicles = role === 'admin' || role === 'operacao';
   const canWriteSettings = role === 'admin';
+  const canEditAlertRules = role === 'admin';
+
+  const openDivergences = useMemo(() => getOpenDivergences(logs), [logs]);
+  const divergenceGateBlocking =
+    !isStockConsulta && (role === 'admin' || role === 'operacao') && openDivergences.length > 0;
+  const openDivergenceSkuSet = useMemo(
+    () => new Set(openDivergences.map(divergence => String(divergence.sku || ''))),
+    [openDivergences]
+  );
+  const dailyCycleDayKey = getCalendarDayKey(new Date(), APP_TIME_ZONE);
+  const dailyCycleRows = useMemo(() => {
+    const latestLogBySku = getLatestOperationalLogBySku(logs, new Date(), APP_TIME_ZONE);
+    const candidateBySku = new Map<string, InventoryItem>();
+
+    items.forEach(item => {
+      if (item.isActiveInWarehouse === true) {
+        candidateBySku.set(item.sku, item);
+      }
+    });
+
+    openDivergences.forEach(divergence => {
+      const item = items.find(candidate => candidate.sku === divergence.sku);
+      if (item) candidateBySku.set(item.sku, item);
+    });
+
+    const candidates = Array.from(candidateBySku.values()).map(item => {
+      const abcRecord = getAbcAnalysisForSku(item.sku);
+      return {
+        item,
+        countedToday: latestLogBySku.has(item.sku),
+        needsRecount: openDivergenceSkuSet.has(item.sku),
+        cycleWeight: getAbcClassPriority(item.sku),
+        abcClass: abcRecord?.className,
+        liveStatus: calculateItemStatus(item, settings, logs)
+      };
+    });
+
+    return buildDailyCycleRows(candidates, { count: 5, dayKey: dailyCycleDayKey });
+  }, [dailyCycleDayKey, items, logs, openDivergenceSkuSet, openDivergences, settings]);
+  const dailyCyclePendingRows = dailyCycleRows.filter(row => !row.countedToday || row.needsRecount);
+  const dailyCycleRequired =
+    !isStockConsulta &&
+    (role === 'admin' || role === 'operacao') &&
+    authSession?.requiresDailyCycleInventory === true;
+  const dailyCycleGateBlocking = dailyCycleRequired && dailyCycleRows.length > 0 && dailyCyclePendingRows.length > 0;
 
   useEffect(() => {
     if (!authSession) return;
-    const allowedTabs =
-      role === 'admin'
-        ? validTabs
+    const allowedTabs = isStockConsulta
+      ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'inventory']
+      : role === 'admin'
+        ? canManageUsers
+          ? validTabs
+          : validTabs.filter(tab => tab !== 'users')
         : role === 'operacao'
-          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'purchases']
+          ? ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests', 'request-history', 'separation', 'inventory', 'inventory-operations', 'operation-log', 'purchases']
           : ['dashboard', 'vehicle-parts', 'preventive-kits', 'requests'];
 
     if (!allowedTabs.includes(activeTab)) {
       setActiveTab('dashboard');
+      return;
     }
-  }, [activeTab, authSession, role]);
+
+    if (dailyCycleGateBlocking && !isDailyCycleGateAllowedTab(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, authSession, canManageUsers, dailyCycleGateBlocking, isStockConsulta, role]);
   const setItemsGuarded: React.Dispatch<React.SetStateAction<InventoryItem[]>> = updater => {
     if (!canWriteItemsAndLogs) {
       showToast('Modo consulta: sem permissão para alterar o estoque.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setItems(previous => {
         const resolved =
@@ -1005,6 +1679,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para registrar alterações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setLogs(previous => {
         const resolved =
@@ -1023,6 +1698,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para alterar configurações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setSettings(previous => {
         const resolved =
@@ -1041,6 +1717,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para alterar solicitações.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setRequests(previous => {
         const resolved =
@@ -1059,6 +1736,7 @@ export default function App() {
       showToast('Modo consulta: sem permissão para importar base de veículos.', 'info');
       return;
     }
+    if (shouldBlockMutationForCloudUpdate()) return;
     flushSync(() => {
       setVehicles(previous => {
         const resolved =
@@ -1074,6 +1752,7 @@ export default function App() {
   };
   const setOcrAliasesGuarded: React.Dispatch<React.SetStateAction<Record<string, string>>> = updater => {
     if (!canWriteItemsAndLogs) return;
+    if (shouldBlockMutationForCloudUpdate()) return;
     markLocalDirty(new Date().toISOString());
     setOcrAliases(updater);
   };
@@ -1169,9 +1848,48 @@ export default function App() {
     });
   };
 
+  const navigateToSku = (sku: string) => {
+    setSelectedSku(sku);
+    setRequestEditorRequestId(null);
+    setActiveTabState('inventory');
+    syncUrl('inventory', sku, null, inventoryFilter);
+  };
+
   const setActiveTab = (tab: string) => {
     const nextTab = tab === 'search' || tab === 'update' ? 'inventory' : tab;
     if (!validTabs.includes(nextTab)) return;
+
+    if (nextTab === 'users' && !canManageUsers) {
+      showToast('Modulo Usuarios restrito ao administrador Dmitry Marcelo (matricula 24000).', 'info');
+      setActiveTabState('dashboard');
+      syncUrl('dashboard', selectedSku, null, inventoryFilter);
+      return;
+    }
+
+    if (dailyCycleGateBlocking && !isDailyCycleGateAllowedTab(nextTab)) {
+      showToast(
+        `Inventario ciclico obrigatorio: conte ${dailyCyclePendingRows.length} item(ns) pendente(s) de hoje antes de continuar.`,
+        'info'
+      );
+      setActiveTabState('dashboard');
+      syncUrl('dashboard', selectedSku, null, inventoryFilter);
+      return;
+    }
+
+    if (divergenceGateBlocking && nextTab !== 'inventory' && nextTab !== 'inventory-operations') {
+      const first = openDivergences[0];
+      if (first) {
+        showToast(
+          `Divergências pendentes (${openDivergences.length}). Corrija antes de continuar. Abrindo SKU ${first.sku}.`,
+          'info'
+        );
+        navigateToSku(first.sku);
+      } else {
+        setActiveTabState('inventory');
+        syncUrl('inventory', selectedSku, null, inventoryFilter);
+      }
+      return;
+    }
 
     const nextRequestId = nextTab === 'separation' ? selectedRequestId : null;
     if (nextTab !== 'separation') {
@@ -1182,10 +1900,7 @@ export default function App() {
   };
 
   const handleSelectSku = (sku: string) => {
-    setSelectedSku(sku);
-    setRequestEditorRequestId(null);
-    setActiveTabState('inventory');
-    syncUrl('inventory', sku, null, inventoryFilter);
+    navigateToSku(sku);
   };
 
   const handleOpenSeparation = (requestId: string) => {
@@ -1242,6 +1957,271 @@ export default function App() {
     syncUrl('vehicle-parts', selectedSku, null, inventoryFilter);
   };
 
+  const handleForcePendingSync = () => {
+    void (async () => {
+      if (!outboxRef.current && localDirtyRef.current) {
+        queueCurrentStateForSync('manual_force_sync_rebuild');
+      }
+
+      if (outboxRef.current) {
+        const saved = await flushOutbox('manual_force_sync', { force: true });
+        if (saved) {
+          showToast('Alteracoes sincronizadas com o servidor.', 'success');
+        } else {
+          const code = lastFlushResultRef.current?.code || '';
+          if (code === 'auth') {
+            showToast('Sessão expirada. Saia e entre novamente para sincronizar.', 'info');
+            return;
+          }
+          if (code === 'busy') {
+            showToast('Sincronização já está em andamento. Aguarde alguns segundos.', 'info');
+            return;
+          }
+          if (code === 'defer-newer-outbox') {
+            showToast('Nova alteração detectada. Tentando sincronizar novamente...', 'info');
+            return;
+          }
+          if (code.startsWith('http-')) {
+            const status = Number(code.slice(5)) || 0;
+            if (status === 413) {
+              showToast('Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup.', 'info');
+              return;
+            }
+            if (status === 429) {
+              showToast('Servidor ocupado no momento. Aguarde alguns segundos e tente novamente.', 'info');
+              return;
+            }
+            if (status >= 500) {
+              showToast('Servidor com instabilidade agora. Aguarde e tente novamente.', 'info');
+              return;
+            }
+            showToast(`Nao foi possivel sincronizar (HTTP ${status}).`, 'info');
+            return;
+          }
+          showToast('Nao foi possivel sincronizar agora. Verifique a internet e tente novamente.', 'info');
+        }
+        return;
+      }
+
+      const journalOk = await flushJournalBridge('manual_force_sync');
+      const confirmedOnline = journalOk ? 0 : await reconcileLocalJournalWithOnlineState('manual_force_sync');
+      const remainingJournal = getPendingOperationJournalQueue().length;
+      if (journalOk || confirmedOnline > 0) {
+        if (!localDirtyRef.current && !outboxRef.current && getPendingOperationJournalQueue().length === 0) {
+          setLocalPendingSync(false);
+          setPendingJournalCount(0);
+        }
+        if (remainingJournal === 0) {
+          showToast(
+            confirmedOnline > 0
+              ? 'Pendencias locais ja estavam confirmadas no servidor.'
+              : 'Ponte de seguranca sincronizada.',
+            'success'
+          );
+        } else {
+          showToast(`Sincronizacao parcial. Ainda restam ${remainingJournal} pendencia(s) locais.`, 'info');
+        }
+      } else {
+        const code = lastFlushResultRef.current?.code || '';
+        showToast(
+          code === 'auth'
+            ? 'Sessao expirada. Saia e entre novamente para sincronizar.'
+            : 'Nao foi possivel sincronizar a ponte agora.',
+          'info'
+        );
+      }
+    })();
+  };
+
+  const handleExportPendingBackup = () => {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      kind: 'precision-inventory-pending-operation-backup',
+      localUpdatedAt: localUpdatedAtRef.current,
+      hasLocalDirty: localDirtyRef.current,
+      outbox: outboxRef.current,
+      operationJournalQueue: getPendingOperationJournalQueue(),
+      syncEvents
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup-operacao-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    appendSyncEvent('backup_exported', 'Backup de emergencia gerado neste aparelho');
+    showToast('Backup de emergencia gerado.', 'success');
+  };
+
+  const handleUploadPendingBackup = () => {
+    if (backupUploadInFlightRef.current) {
+      showToast('Envio de backup já está em andamento.', 'info');
+      return;
+    }
+    if (!authSession?.token) {
+      showToast('Sessão expirada. Saia e entre novamente para enviar o backup.', 'info');
+      setAuthSession(null);
+      return;
+    }
+    backupUploadInputRef.current?.click();
+  };
+
+  const handleBackupUploadInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file) return;
+    if (!authSession?.token) {
+      showToast('Sessão expirada. Saia e entre novamente para enviar o backup.', 'info');
+      setAuthSession(null);
+      return;
+    }
+    if (backupUploadInFlightRef.current) return;
+
+    backupUploadInFlightRef.current = true;
+    setCloudStatus('saving');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text) as {
+        exportedAt?: string;
+        kind?: string;
+        outbox?: { state?: CloudInventoryState | null } | null;
+        operationJournalQueue?: unknown;
+      };
+
+      if (String(backup?.kind || '') !== 'precision-inventory-pending-operation-backup') {
+        showToast('Arquivo de backup inválido.', 'info');
+        return;
+      }
+
+      const queued = Array.isArray(backup?.operationJournalQueue) ? (backup.operationJournalQueue as unknown[]) : [];
+      const outboxState = backup?.outbox?.state && typeof backup.outbox.state === 'object' ? backup.outbox.state : null;
+      const createdAt = typeof backup?.exportedAt === 'string' && backup.exportedAt ? backup.exportedAt : new Date().toISOString();
+
+      const entries =
+        queued.length > 0
+          ? (queued as any[])
+          : outboxState
+            ? createOperationJournalEntriesForBackup({
+                previousState: latestCloudResultRef.current?.state,
+                nextState: outboxState,
+                createdAt
+              })
+            : [];
+
+      if (!entries.length) {
+        showToast('Backup não tem operações para enviar.', 'info');
+        return;
+      }
+
+      let applied = 0;
+      for (let i = 0; i < entries.length; i += 25) {
+        const batch = entries.slice(i, i + 25) as any[];
+        const posted = await postOperationJournalEntries(batch, authSession.token);
+        if (posted.acceptedIds.length === 0) continue;
+        const replay = await replayOperationJournalEntries(posted.acceptedIds, authSession.token);
+        applied += replay.applied;
+      }
+
+      clearOutbox();
+      localDirtyRef.current = false;
+      localStorage.removeItem(localDirtyStorageKey);
+      localUpdatedAtRef.current = '';
+      localStorage.removeItem(localUpdatedAtStorageKey);
+      const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+      if (pendingJournalIds.length > 0) {
+        removeOperationJournalEntries(pendingJournalIds);
+        setPendingJournalCount(0);
+      }
+      setLocalPendingSync(false);
+      appendSyncEvent('journal_flush_ok', `Backup enviado e aplicado (${applied} lote(s))`);
+
+      try {
+        const result = await loadCloudState();
+        reportBackendActive(result?.backend);
+        latestCloudResultRef.current = result;
+        applyCloudStateIfNewer(result, 'backup_uploaded');
+        setCloudAvailable(true);
+        setCloudStatus('online');
+        setCloudStatusDetail('');
+      } catch (error) {
+        setCloudAvailable(false);
+        setCloudStatus('offline');
+        setCloudStatusDetail(describeCloudError(error));
+      }
+
+      showToast('Backup enviado ao servidor e aparelho destravado.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'AUTH') {
+        showToast('Sessão expirada. Saia e entre novamente.', 'info');
+        setAuthSession(null);
+        return;
+      }
+      if (message.includes('journal-replay-413')) {
+        showToast('Estado grande demais para aplicar. Envie novamente ou use Exportar backup.', 'info');
+        return;
+      }
+      showToast('Nao foi possivel enviar o backup agora. Tente novamente.', 'info');
+    } finally {
+      backupUploadInFlightRef.current = false;
+      setCloudStatus(previous => (previous === 'saving' ? (cloudAvailable ? 'online' : 'offline') : previous));
+    }
+  };
+
+  const handleDiscardLocalPending = async () => {
+    if (isStockConsulta) return;
+    const outboxExists = Boolean(outboxRef.current || localDirtyRef.current);
+    const pendingJournalIds = getPendingOperationJournalQueue().map(entry => entry.id);
+    const hasPending = outboxExists || pendingJournalIds.length > 0;
+    if (!hasPending) {
+      setLocalPendingSync(false);
+      setPendingJournalCount(0);
+      return;
+    }
+
+    const confirmBackup = window.confirm(
+      'ATENCAO: isso vai DESCARTAR as alteracoes deste aparelho que ainda nao foram sincronizadas. Primeiro, toque em "Exportar backup" para guardar um arquivo. Deseja continuar mesmo assim?'
+    );
+    if (!confirmBackup) return;
+
+    const confirmFinal = window.confirm('Ultima confirmacao: descartar agora e continuar no estado online?');
+    if (!confirmFinal) return;
+
+    clearOutbox();
+    localDirtyRef.current = false;
+    localStorage.removeItem(localDirtyStorageKey);
+    localUpdatedAtRef.current = '';
+    localStorage.removeItem(localUpdatedAtStorageKey);
+    if (pendingJournalIds.length > 0) {
+      removeOperationJournalEntries(pendingJournalIds);
+      setPendingJournalCount(0);
+      appendSyncEvent('journal_discarded', 'Ponte local descartada manualmente para destravar operacao');
+    }
+    setLocalPendingSync(false);
+    appendSyncEvent('flush_fail', 'Pendencia local descartada para continuar trabalhando');
+    showToast('Pendencia local descartada. Tela voltou a usar o estado online.', 'success');
+
+    try {
+      setCloudStatus('loading');
+      setCloudStatusDetail('');
+      const result = await loadCloudState();
+      reportBackendActive(result?.backend);
+      latestCloudResultRef.current = result;
+      applyCloudStateIfNewer(result, 'discard_local_pending');
+      setCloudAvailable(true);
+      setCloudStatus('online');
+      setCloudStatusDetail('');
+    } catch (error) {
+      setCloudAvailable(false);
+      setCloudStatus('offline');
+      setCloudStatusDetail(describeCloudError(error));
+    }
+  };
+
   if (!authSession) {
     return (
       <LoginScreen
@@ -1257,8 +2237,27 @@ export default function App() {
         setActiveTab={setActiveTab}
         requests={requests}
         authRole={authSession.role}
+        authMode={authSession.mode}
+        canManageUsers={canManageUsers}
         cloudStatus={cloudStatus}
+        cloudStatusDetail={cloudStatusDetail}
+        cloudUpdatePending={Boolean(cloudUpdatePending)}
+        cloudUpdateAt={cloudUpdatePending?.updatedAt}
+        localPendingSync={hasPendingSafetySync}
+        pendingJournalCount={pendingJournalCount}
+        onApplyCloudUpdate={() => void applyCloudUpdateNow()}
+        onIgnoreCloudUpdate={ignoreCloudUpdate}
+        onForcePendingSync={handleForcePendingSync}
+        onExportPendingBackup={handleExportPendingBackup}
+        onUploadPendingBackup={handleUploadPendingBackup}
+        onDiscardLocalPending={() => void handleDiscardLocalPending()}
         onLogout={() => {
+          if (hasPendingSafetySync) {
+            const confirmLogout = window.confirm(
+              'Existe operacao ainda sem confirmacao completa no servidor. Sincronize ou exporte o backup antes de sair. Deseja sair mesmo assim?'
+            );
+            if (!confirmLogout) return;
+          }
           if (authSession.token) {
             void fetch('/api/auth?action=logout', {
               method: 'POST',
@@ -1270,6 +2269,13 @@ export default function App() {
           syncUrl('dashboard', null, null, '');
         }}
       >
+        <input
+          ref={backupUploadInputRef}
+          type="file"
+          accept="application/json"
+          onChange={event => void handleBackupUploadInputChange(event)}
+          className="hidden"
+        />
         {activeTab === 'dashboard' && (
           <Dashboard
             items={items}
@@ -1277,6 +2283,20 @@ export default function App() {
             settings={settings}
             requests={requests}
             authRole={role}
+            viewMode={isStockConsulta ? 'stock-consulta' : 'default'}
+            dailyCycle={
+              role === 'consulta'
+                ? undefined
+                : {
+                    dayKey: dailyCycleDayKey,
+                    required: dailyCycleRequired,
+                    rows: dailyCycleRows,
+                    pendingCount: dailyCyclePendingRows.length,
+                    completedCount: Math.max(0, dailyCycleRows.length - dailyCyclePendingRows.length),
+                    onOpenSku: handleSelectSku,
+                    onOpenInventoryOperations: () => setActiveTab('inventory-operations')
+                  }
+            }
             onSelectSku={handleSelectSku}
             onOpenSeparation={handleOpenSeparation}
             onOpenRequest={handleEditRequest}
@@ -1284,135 +2304,188 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'vehicle-parts' && (
-          <VehiclePartsBrowser
-            items={items}
-            onSelectSku={handleSelectSku}
-            presetType={vehiclePartsPresetType}
-            presetModel={vehiclePartsPresetModel}
-            presetVersion={vehiclePartsPresetVersion}
-          />
-        )}
+        <Suspense fallback={<ModuleLoading />}>
+          {activeTab === 'vehicle-parts' && (
+            <VehiclePartsBrowser
+              items={items}
+              onSelectSku={handleSelectSku}
+              presetType={vehiclePartsPresetType}
+              presetModel={vehiclePartsPresetModel}
+              presetVersion={vehiclePartsPresetVersion}
+            />
+          )}
 
-        {activeTab === 'preventive-kits' && (
-          <PreventiveKits
-            items={items}
-            onSelectSku={handleSelectSku}
-          />
-        )}
+          {activeTab === 'preventive-kits' && (
+            <PreventiveKits
+              items={items}
+              onSelectSku={handleSelectSku}
+              settings={settings}
+              setSettings={setSettingsGuarded}
+              canManagePreventiveKits={role === 'admin'}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'users' && (
-          <UserManager
-            token={authSession.token || ''}
-            canManageUsers={canManageUsers}
-            showToast={showToast}
-            vehicles={vehicles}
-            setVehicles={setVehiclesGuarded}
-          />
-        )}
+          {activeTab === 'users' && (
+            <UserManager
+              token={authSession.token || ''}
+              canManageUsers={canManageUsers}
+              showToast={showToast}
+              vehicles={vehicles}
+              setVehicles={setVehiclesGuarded}
+            />
+          )}
 
-        {activeTab === 'purchases' && (
-          <AutomaticPurchases
-            items={items}
-            logs={logs}
-            settings={settings}
-            purchases={purchases}
-            setPurchases={setPurchasesGuarded}
-            canManagePurchases={role === 'admin' || role === 'operacao'}
-            showToast={showToast}
-            onSelectSku={handleSelectSku}
-          />
-        )}
+          {activeTab === 'purchases' && (
+            <AutomaticPurchases
+              items={items}
+              logs={logs}
+              settings={settings}
+              purchases={purchases}
+              vehicles={vehicles}
+              setPurchases={setPurchasesGuarded}
+              canManagePurchases={role === 'admin' || role === 'operacao'}
+              showToast={showToast}
+              onSelectSku={handleSelectSku}
+            />
+          )}
 
-        {activeTab === 'requests' && (
-          <RequestManager
-            items={items}
-            requests={requests}
-            vehicles={vehicles}
-            setRequests={setRequestsGuarded}
-            externalRequestId={requestEditorRequestId}
-            onClearExternalRequest={handleClearRequestEditor}
-            canCreateRequests={canCreateRequests}
-            canEditExistingRequests={canEditExistingRequests}
-            canDeleteRequests={canDeleteRequests}
-            canOpenSeparation={canOperateSeparation}
-            auditActor={auditActor}
-            showToast={showToast}
-            onOpenSeparation={handleOpenSeparation}
-            onSelectSku={handleSelectSku}
-            onOpenPanel={() => setActiveTab('dashboard')}
-            onOpenVehicleParts={handleOpenVehicleParts}
-          />
-        )}
+          {activeTab === 'requests' && (
+            <RequestManager
+              items={items}
+              logs={logs}
+              requests={requests}
+              vehicles={vehicles}
+              settings={settings}
+              setRequests={setRequestsGuarded}
+              authToken={authSession?.token}
+              externalRequestId={requestEditorRequestId}
+              onClearExternalRequest={handleClearRequestEditor}
+              canCreateRequests={canCreateRequests}
+              canEditExistingRequests={canEditExistingRequests}
+              canDeleteRequests={canDeleteRequests}
+              canOpenSeparation={canOperateSeparation}
+              auditActor={auditActor}
+              showToast={showToast}
+              onOpenSeparation={handleOpenSeparation}
+              onSelectSku={handleSelectSku}
+              onOpenPanel={() => setActiveTab('dashboard')}
+              onOpenVehicleParts={handleOpenVehicleParts}
+            />
+          )}
 
-        {activeTab === 'request-history' && (
-          <RequestHistory
-            requests={requests}
-            logs={logs}
-            items={items}
-            setItems={setItemsGuarded}
-            setLogs={setLogsGuarded}
-            setRequests={setRequestsGuarded}
-            settings={settings}
-            auditActor={auditActor}
-            canReverseRequests={canReverseRequests}
-            onSelectSku={handleSelectSku}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'request-history' && (
+            <RequestHistory
+              requests={requests}
+              logs={logs}
+              items={items}
+              setItems={setItemsGuarded}
+              setLogs={setLogsGuarded}
+              setRequests={setRequestsGuarded}
+              settings={settings}
+              auditActor={auditActor}
+              canReverseRequests={canReverseRequests}
+              onSelectSku={handleSelectSku}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'separation' && (
-          <MaterialSeparation
-            items={items}
-            setItems={setItemsGuarded}
-            logs={logs}
-            setLogs={setLogsGuarded}
-            requests={requests}
-            setRequests={setRequestsGuarded}
-            canEdit={canOperateSeparation}
-            canDeleteRequests={canEditExistingRequests}
-            canReverseRequests={canReverseRequests}
-            auditActor={auditActor}
-            selectedRequestId={selectedRequestId}
-            setSelectedRequestId={handleSelectRequest}
-            onEditRequest={handleEditRequest}
-            settings={settings}
-            showToast={showToast}
-            ocrAliases={ocrAliases}
-            setOcrAliases={setOcrAliasesGuarded}
-            onSelectSku={handleSelectSku}
-          />
-        )}
+          {activeTab === 'separation' && (
+            <MaterialSeparation
+              items={items}
+              setItems={setItemsGuarded}
+              logs={logs}
+              setLogs={setLogsGuarded}
+              requests={requests}
+              setRequests={setRequestsGuarded}
+              canEdit={canOperateSeparation}
+              authToken={authSession?.token}
+              canDeleteRequests={canEditExistingRequests}
+              canReverseRequests={canReverseRequests}
+              auditActor={auditActor}
+              selectedRequestId={selectedRequestId}
+              setSelectedRequestId={handleSelectRequest}
+              onEditRequest={handleEditRequest}
+              settings={settings}
+              showToast={showToast}
+              ocrAliases={ocrAliases}
+              setOcrAliases={setOcrAliasesGuarded}
+              onSelectSku={handleSelectSku}
+            />
+          )}
 
-        {activeTab === 'inventory' && (
-          <StockWorkspace
-            showToast={showToast}
-            canAdjustStock={canAdjustStock}
-            canReceiveStock={canReceiveStock}
-            items={items}
-            setItems={setItemsGuarded}
-            logs={logs}
-            setLogs={setLogsGuarded}
-            selectedSku={selectedSku}
-            onSelectSku={handleSelectSku}
-            settings={settings}
-            ocrAliases={ocrAliases}
-            setOcrAliases={setOcrAliasesGuarded}
-            externalSearchQuery={inventoryFilter}
-            onExternalSearchQueryChange={handleInventoryFilterChange}
-          />
-        )}
+          {activeTab === 'inventory' && (
+            <StockWorkspace
+              showToast={showToast}
+              canAdjustStock={canAdjustStock}
+              canReceiveStock={canReceiveStock}
+              canEditAlertRules={canEditAlertRules}
+              items={items}
+              setItems={setItemsGuarded}
+              logs={logs}
+              setLogs={setLogsGuarded}
+              selectedSku={selectedSku}
+              onSelectSku={handleSelectSku}
+              settings={settings}
+              ocrAliases={ocrAliases}
+              setOcrAliases={setOcrAliasesGuarded}
+              externalSearchQuery={inventoryFilter}
+              onExternalSearchQueryChange={handleInventoryFilterChange}
+            />
+          )}
 
-        {activeTab === 'inventory-operations' && (
-          <InventoryOperation
-            items={items}
-            logs={logs}
-            settings={settings}
-            onSelectSku={handleSelectSku}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'inventory-operations' && (
+            <InventoryOperation
+              items={items}
+              logs={logs}
+              settings={settings}
+              onSelectSku={handleSelectSku}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'operation-log' && (
+            <OperationLogPanel
+              syncEvents={syncEvents}
+              inventoryLogs={logs}
+              requests={requests}
+              cloudStatus={cloudStatus}
+              hasLocalPending={hasPendingSafetySync}
+              pendingJournalCount={pendingJournalCount}
+              cloudUpdatePending={Boolean(cloudUpdatePending)}
+              onApplyCloudUpdate={() => void applyCloudUpdateNow()}
+              onForcePendingSync={handleForcePendingSync}
+              onExportPendingBackup={handleExportPendingBackup}
+            />
+          )}
+        </Suspense>
       </Layout>
+
+      {divergenceGateBlocking && !mustChangePassword && (activeTab === 'inventory' || activeTab === 'inventory-operations') ? (
+        <DivergenceGateBanner
+          divergences={openDivergences}
+          onOpenNext={() => {
+            const next = openDivergences[0];
+            if (!next) return;
+            navigateToSku(next.sku);
+            showToast(`Abrindo SKU com divergencia: ${next.sku}.`, 'success');
+          }}
+          onOpenInventoryOperations={() => setActiveTab('inventory-operations')}
+        />
+      ) : null}
+
+      {divergenceGateBlocking && !mustChangePassword && activeTab !== 'inventory' && activeTab !== 'inventory-operations' ? (
+        <DivergenceGateModal
+          divergences={openDivergences}
+          onOpenNow={() => {
+            const next = openDivergences[0];
+            if (!next) return;
+            navigateToSku(next.sku);
+            showToast(`Abrindo SKU com divergencia: ${next.sku}.`, 'success');
+          }}
+          onOpenInventoryOperations={() => setActiveTab('inventory-operations')}
+        />
+      ) : null}
 
       {toast && (
         <div className="fixed bottom-24 md:bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -1466,5 +2539,129 @@ export default function App() {
       )}
 
     </>
+  );
+}
+
+function DivergenceGateBanner({
+  divergences,
+  onOpenNext,
+  onOpenInventoryOperations
+}: {
+  divergences: ReturnType<typeof getOpenDivergences>;
+  onOpenNext: () => void;
+  onOpenInventoryOperations: () => void;
+}) {
+  const count = divergences.length;
+  const preview = divergences.slice(0, 3).map(entry => entry.sku).join(', ');
+
+  return (
+    <div className="fixed bottom-4 left-4 right-4 z-[110]">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-error/25 bg-error-container/20 px-4 py-4 shadow-[0_18px_48px_rgba(36,52,69,0.22)]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-error flex items-center gap-2">
+              <AlertTriangle size={16} />
+              Divergencias pendentes
+            </p>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              {count} SKU(s) com divergencia aberta. {preview ? `Ex.: ${preview}.` : ''}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={onOpenInventoryOperations}
+              className="h-11 px-4 rounded-xl bg-surface-container-highest text-primary font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Inventario operacional
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNext}
+              className="h-11 px-4 rounded-xl bg-error text-white font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Abrir divergencia
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DivergenceGateModal({
+  divergences,
+  onOpenNow,
+  onOpenInventoryOperations
+}: {
+  divergences: ReturnType<typeof getOpenDivergences>;
+  onOpenNow: () => void;
+  onOpenInventoryOperations: () => void;
+}) {
+  const previewList = divergences.slice(0, 8);
+
+  return (
+    <div className="fixed inset-0 z-[115] bg-black/40 flex items-end sm:items-center justify-center p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_18px_48px_rgba(36,52,69,0.22)] overflow-hidden">
+        <div className="p-5 border-b border-outline-variant/15">
+          <p className="text-xs font-bold uppercase tracking-widest text-error flex items-center gap-2">
+            <AlertTriangle size={16} />
+            Divergencias pendentes
+          </p>
+          <p className="mt-1 font-extrabold text-on-surface">
+            Corrija antes de continuar
+          </p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Existem {divergences.length} SKU(s) com divergencia aberta. Elas continuam aparecendo ate ficar sem pendencias.
+          </p>
+        </div>
+
+        <div className="p-5">
+          <div className="grid gap-2">
+            {previewList.map(entry => (
+              <div
+                key={`div-${entry.sku}`}
+                className="rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wider text-outline">
+                      SKU {entry.sku} • {normalizeLocationText(entry.location)}
+                    </p>
+                    <p className="mt-1 font-semibold text-on-surface truncate">
+                      {normalizeUserFacingText(entry.itemName)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-sm font-bold text-error">
+                    {formatDivergenceDelta(entry.delta)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={onOpenInventoryOperations}
+              className="h-12 px-4 rounded-xl bg-surface-container-highest text-primary font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Inventario operacional
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNow}
+              className="h-12 px-4 rounded-xl bg-error text-white font-bold flex items-center justify-center gap-2"
+            >
+              <ArrowRight size={18} />
+              Abrir para recontar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

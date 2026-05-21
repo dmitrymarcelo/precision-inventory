@@ -1,16 +1,24 @@
+import { getSupabaseAdmin, isSupabaseConfigured, migrateD1ToSupabaseIfNeeded } from './supabase.js';
+
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store'
 };
 
 export async function onRequestGet({ request, env }) {
-  await ensureAuthSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env);
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    await migrateD1ToSupabaseIfNeeded(env, sb);
+  } else {
+    await ensureAuthSchema(env.DB);
+  }
 
   const url = new URL(request.url);
   const action = (url.searchParams.get('action') || '').toLowerCase();
 
   if (action === 'me') {
-    const session = await getSessionFromRequest(request, env.DB);
+    const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
     if (!session) {
       return Response.json({ ok: false }, { status: 401, headers: jsonHeaders });
     }
@@ -22,7 +30,8 @@ export async function onRequestGet({ request, env }) {
           id: session.userId,
           matricula: session.matricula,
           name: session.name,
-          role: session.role
+          role: session.role,
+          requiresDailyCycleInventory: session.requiresDailyCycleInventory === true
         }
       },
       { headers: jsonHeaders }
@@ -33,7 +42,13 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  await ensureAuthSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env);
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    await migrateD1ToSupabaseIfNeeded(env, sb);
+  } else {
+    await ensureAuthSchema(env.DB);
+  }
 
   const url = new URL(request.url);
   const action = (url.searchParams.get('action') || '').toLowerCase();
@@ -47,24 +62,27 @@ export async function onRequestPost({ request, env }) {
       return Response.json({ ok: false, message: 'Informe matrícula e senha.' }, { status: 400, headers: jsonHeaders });
     }
 
-    const user = await env.DB
-      .prepare(
-        `
-          SELECT id, matricula, name, role, password_hash, password_salt, password_iters, active, must_change_password
+    const user = supabaseEnabled
+      ? await loadUserByMatriculaSupabase(env, matricula)
+      : await env.DB
+        .prepare(
+          `
+          SELECT id, matricula, name, role, password_hash, password_salt, password_iters, active, must_change_password,
+                 requires_daily_cycle_inventory as requiresDailyCycleInventory
           FROM users
           WHERE matricula = ?
           LIMIT 1
         `
-      )
-      .bind(matricula)
-      .first();
+        )
+        .bind(matricula)
+        .first();
 
     if (!user || Number(user.active) !== 1) {
       return Response.json({ ok: false, message: 'Usuário ou senha inválidos.' }, { status: 401, headers: jsonHeaders });
     }
 
     const iterations = Number(user.password_iters) || 50000;
-    const computed = hashPassword(password, String(user.password_salt), iterations);
+    const computed = await hashPassword(password, String(user.password_salt), iterations);
     const ok = timingSafeEqualString(computed, String(user.password_hash));
 
     if (!ok) {
@@ -75,15 +93,32 @@ export async function onRequestPost({ request, env }) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 30);
 
-    await env.DB
-      .prepare(
-        `
+    if (supabaseEnabled) {
+      const sb = getSupabaseAdmin(env);
+      const { error } = await sb.from('sessions').upsert(
+        [
+          {
+            token,
+            user_id: String(user.id),
+            role: String(user.role),
+            created_at: now.toISOString(),
+            expires_at: expiresAt.toISOString()
+          }
+        ],
+        { onConflict: 'token' }
+      );
+      if (error) throw error;
+    } else {
+      await env.DB
+        .prepare(
+          `
           INSERT INTO sessions (token, user_id, role, created_at, expires_at)
           VALUES (?, ?, ?, ?, ?)
         `
-      )
-      .bind(token, String(user.id), String(user.role), now.toISOString(), expiresAt.toISOString())
-      .run();
+        )
+        .bind(token, String(user.id), String(user.role), now.toISOString(), expiresAt.toISOString())
+        .run();
+    }
 
     return Response.json(
       {
@@ -94,7 +129,8 @@ export async function onRequestPost({ request, env }) {
           id: String(user.id),
           matricula: String(user.matricula),
           name: String(user.name || ''),
-          role: String(user.role)
+          role: String(user.role),
+          requiresDailyCycleInventory: Number(user.requiresDailyCycleInventory) === 1
         }
       },
       { headers: jsonHeaders }
@@ -103,7 +139,7 @@ export async function onRequestPost({ request, env }) {
 
   if (action === 'change-password') {
     try {
-      const session = await getSessionFromRequest(request, env.DB);
+      const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
       if (!session) {
         return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
       }
@@ -124,18 +160,33 @@ export async function onRequestPost({ request, env }) {
       const iterations = 50000;
       const saltBytes = getRandomBytes(16);
       const salt = bytesToHex(saltBytes);
-      const hash = hashPassword(password, salt, iterations);
+      const hash = await hashPassword(password, salt, iterations);
 
-      await env.DB
-        .prepare(
-          `
+      if (supabaseEnabled) {
+        const sb = getSupabaseAdmin(env);
+        const { error } = await sb
+          .from('users')
+          .update({
+            password_hash: hash,
+            password_salt: salt,
+            password_iters: iterations,
+            must_change_password: 0,
+            updated_at: now
+          })
+          .eq('id', session.userId);
+        if (error) throw error;
+      } else {
+        await env.DB
+          .prepare(
+            `
             UPDATE users
             SET password_hash = ?, password_salt = ?, password_iters = ?, must_change_password = 0, updated_at = ?
             WHERE id = ?
           `
-        )
-        .bind(hash, salt, iterations, now, session.userId)
-        .run();
+          )
+          .bind(hash, salt, iterations, now, session.userId)
+          .run();
+      }
 
       return Response.json({ ok: true }, { headers: jsonHeaders });
     } catch {
@@ -150,9 +201,14 @@ export async function onRequestPost({ request, env }) {
   }
 
   if (action === 'logout') {
-    const session = await getSessionFromRequest(request, env.DB);
+    const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
     if (session) {
-      await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(session.token).run();
+      if (supabaseEnabled) {
+        const sb = getSupabaseAdmin(env);
+        await sb.from('sessions').delete().eq('token', session.token);
+      } else {
+        await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(session.token).run();
+      }
     }
 
     return Response.json({ ok: true }, { headers: jsonHeaders });
@@ -184,6 +240,7 @@ async function ensureAuthSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -194,6 +251,9 @@ async function ensureAuthSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -395,14 +455,23 @@ function concatBytes(...parts) {
   return merged;
 }
 
-function hashPassword(password, saltValue, iterations) {
+export async function hashPassword(password, saltValue, iterations) {
   const enc = new TextEncoder();
   const salt = decodeSalt(saltValue);
   let data = concatBytes(salt, enc.encode(':'), enc.encode(password));
   const rounds = Number.isFinite(iterations) && iterations > 0 ? Math.floor(iterations) : 50000;
-  for (let i = 0; i < rounds; i += 1) {
-    data = sha256(data);
+  const subtle = globalThis.crypto?.subtle;
+
+  if (subtle && typeof subtle.digest === 'function') {
+    for (let i = 0; i < rounds; i += 1) {
+      data = new Uint8Array(await subtle.digest('SHA-256', data));
+    }
+  } else {
+    for (let i = 0; i < rounds; i += 1) {
+      data = sha256(data);
+    }
   }
+
   return bytesToHex(data);
 }
 
@@ -412,17 +481,40 @@ export async function createUser(db, { matricula, name, role, password }) {
   const iterations = 50000;
   const saltBytes = getRandomBytes(16);
   const salt = bytesToHex(saltBytes);
-  const hash = hashPassword(password, salt, iterations);
+  const hash = await hashPassword(password, salt, iterations);
 
-  await db
-    .prepare(
-      `
+  const env = db && typeof db === 'object' && !('prepare' in db) ? db : null;
+  const supabaseEnabled = env ? isSupabaseConfigured(env) : false;
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    const { error } = await sb.from('users').insert([
+      {
+        id,
+        matricula,
+        name,
+        role,
+        password_hash: hash,
+        password_salt: salt,
+        password_iters: iterations,
+        must_change_password: 0,
+        requires_daily_cycle_inventory: 0,
+        active: 1,
+        created_at: now,
+        updated_at: now
+      }
+    ]);
+    if (error) throw error;
+  } else {
+    await db
+      .prepare(
+        `
         INSERT INTO users (id, matricula, name, role, password_hash, password_salt, password_iters, active, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `
-    )
-    .bind(id, matricula, name, role, hash, salt, iterations, now, now)
-    .run();
+      )
+      .bind(id, matricula, name, role, hash, salt, iterations, now, now)
+      .run();
+  }
 
   return { id, createdAt: now };
 }
@@ -434,19 +526,25 @@ export async function getSessionFromRequest(request, db) {
   if (!token) return null;
 
   const now = new Date().toISOString();
-  const session = await db
-    .prepare(
-      `
-        SELECT s.token, s.user_id as userId, s.role, s.expires_at as expiresAt, u.matricula, u.name, u.active
+  const env = db && typeof db === 'object' && !('prepare' in db) ? db : null;
+  const supabaseEnabled = env ? isSupabaseConfigured(env) : false;
+
+  const session = supabaseEnabled
+    ? await loadSessionSupabase(env, token, now)
+    : await db
+      .prepare(
+        `
+        SELECT s.token, s.user_id as userId, s.role, s.expires_at as expiresAt, u.matricula, u.name, u.active,
+               u.requires_daily_cycle_inventory as requiresDailyCycleInventory
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.token = ?
           AND s.expires_at > ?
         LIMIT 1
       `
-    )
-    .bind(token, now)
-    .first();
+      )
+      .bind(token, now)
+      .first();
 
   if (!session) return null;
   if (Number(session.active) !== 1) return null;
@@ -456,6 +554,52 @@ export async function getSessionFromRequest(request, db) {
     userId: String(session.userId),
     matricula: String(session.matricula || ''),
     name: String(session.name || ''),
-    role: String(session.role || '')
+    role: String(session.role || ''),
+    requiresDailyCycleInventory: Number(session.requiresDailyCycleInventory) === 1
+  };
+}
+
+async function loadUserByMatriculaSupabase(env, matricula) {
+  const sb = getSupabaseAdmin(env);
+  const { data, error } = await sb
+    .from('users')
+    .select(
+      'id, matricula, name, role, password_hash, password_salt, password_iters, active, must_change_password, requires_daily_cycle_inventory'
+    )
+    .eq('matricula', matricula)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    ...data,
+    requiresDailyCycleInventory: Number(data.requires_daily_cycle_inventory) || 0
+  };
+}
+
+async function loadSessionSupabase(env, token, now) {
+  const sb = getSupabaseAdmin(env);
+  const { data: sessionRow, error: sessionError } = await sb
+    .from('sessions')
+    .select('token, user_id, role, expires_at')
+    .eq('token', token)
+    .gt('expires_at', now)
+    .maybeSingle();
+  if (sessionError || !sessionRow) return null;
+
+  const { data: userRow, error: userError } = await sb
+    .from('users')
+    .select('id, matricula, name, active, requires_daily_cycle_inventory')
+    .eq('id', sessionRow.user_id)
+    .maybeSingle();
+  if (userError || !userRow) return null;
+
+  return {
+    token: sessionRow.token,
+    userId: sessionRow.user_id,
+    role: sessionRow.role,
+    expiresAt: sessionRow.expires_at,
+    matricula: userRow.matricula,
+    name: userRow.name,
+    active: userRow.active,
+    requiresDailyCycleInventory: userRow.requires_daily_cycle_inventory
   };
 }

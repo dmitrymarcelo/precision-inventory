@@ -13,8 +13,9 @@ import { calculateItemStatus } from '../inventoryRules';
 import { getAbcAnalysisForSku, getAbcClassPriority, getAbcSortRank, getAdaptiveAbcStockPolicy } from '../abcAnalysis';
 import { getVehicleTypeFromModel, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { formatDivergenceDelta, getOpenDivergenceMap, type OpenDivergence } from '../divergenceRules';
+import { APP_TIME_ZONE, buildDailyCycleRows, getCalendarDayKey, isOperationalInventoryLog, isSameCalendarDay } from '../cyclicInventory';
 
-const APP_TIME_ZONE = 'America/Manaus';
 const MAX_VISIBLE_OPERATION_ITEMS = 6;
 
 interface InventoryOperationProps {
@@ -38,25 +39,50 @@ export default function InventoryOperation({
   const [focusVehicleType, setFocusVehicleType] = useState('all');
   const [focusStatus, setFocusStatus] = useState<InventoryStatusFilter>('all');
 
-  const activeItems = useMemo(() => items.filter(item => item.isActiveInWarehouse === true), [items]);
+  const openDivergenceBySku = useMemo(() => getOpenDivergenceMap(logs), [logs]);
+  const itemBySku = useMemo(() => {
+    const next = new Map<string, InventoryItem>();
+    items.forEach(item => {
+      if (!item?.sku) return;
+      next.set(String(item.sku), item);
+    });
+    return next;
+  }, [items]);
+
+  const operationBaseItems = useMemo(() => {
+    const next = new Map<string, InventoryItem>();
+
+    items.forEach(item => {
+      if (item.isActiveInWarehouse === true) {
+        next.set(item.sku, item);
+      }
+    });
+
+    for (const divergence of openDivergenceBySku.values()) {
+      const item = itemBySku.get(divergence.sku);
+      if (item) next.set(item.sku, item);
+    }
+
+    return Array.from(next.values());
+  }, [itemBySku, items, openDivergenceBySku]);
 
   const locationOptions = useMemo(
     () =>
-      Array.from(new Set(activeItems.map(item => normalizeLocationText(item.location))))
+      Array.from(new Set(operationBaseItems.map(item => normalizeLocationText(item.location))))
         .sort((first, second) => first.localeCompare(second, 'pt-BR')),
-    [activeItems]
+    [operationBaseItems]
   );
 
   const vehicleTypeOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          activeItems
+          operationBaseItems
             .map(item => getEffectiveVehicleType(item))
             .filter(Boolean)
         )
       ).sort((first, second) => first.localeCompare(second, 'pt-BR')),
-    [activeItems]
+    [operationBaseItems]
   );
 
   useEffect(() => {
@@ -94,7 +120,7 @@ export default function InventoryOperation({
 
   const filteredItems = useMemo(
     () =>
-      activeItems.filter(item => {
+      operationBaseItems.filter(item => {
         const matchesLocation = focusLocation === 'all' || normalizeLocationText(item.location) === focusLocation;
         const matchesVehicleType =
           focusVehicleType === 'all' || getEffectiveVehicleType(item) === focusVehicleType;
@@ -102,24 +128,26 @@ export default function InventoryOperation({
 
         return matchesLocation && matchesVehicleType && matchesStatus;
       }),
-    [activeItems, focusLocation, focusStatus, focusVehicleType, logs, settings]
+    [focusLocation, focusStatus, focusVehicleType, logs, operationBaseItems, settings]
   );
 
   const operationRows = useMemo(
     () =>
       filteredItems.map(item => {
         const latestLog = latestLogBySku.get(item.sku) || null;
+        const openDivergence = openDivergenceBySku.get(item.sku) || null;
         const liveStatus = calculateItemStatus(item, settings, logs);
         const abcRecord = getAbcAnalysisForSku(item.sku);
         const abcPolicy = getAdaptiveAbcStockPolicy(item.sku, logs);
         const abcRank = getAbcSortRank(item.sku);
         const abcRankScore = Number.isFinite(abcRank) ? Math.max(0, 1000 - Math.min(abcRank, 1000)) : 0;
-        const absDelta = latestLog ? Math.abs(latestLog.delta) : 0;
-        const needsRecount = latestLog?.source === 'divergencia';
+        const absDelta = openDivergence ? Math.abs(openDivergence.delta) : latestLog ? Math.abs(latestLog.delta) : 0;
+        const needsRecount = Boolean(openDivergence);
         const priorityScore =
           getAbcClassPriority(item.sku) * 10000 +
           abcRankScore +
           getStatusPriority(liveStatus) * 1000 +
+          (needsRecount ? 3000 : 0) +
           (isNoLocation(item.location) ? 200 : 0) +
           absDelta * 10 +
           (item.quantity <= 0 ? 50 : 0);
@@ -127,6 +155,7 @@ export default function InventoryOperation({
         return {
           item,
           latestLog,
+          openDivergence,
           liveStatus,
           abcRecord,
           abcPolicy,
@@ -136,7 +165,57 @@ export default function InventoryOperation({
           priorityScore
         };
       }),
-    [filteredItems, latestLogBySku, logs, settings]
+    [filteredItems, latestLogBySku, logs, openDivergenceBySku, settings]
+  );
+
+  const cycleCandidateRows = useMemo(
+    () =>
+      operationBaseItems.map(item => {
+        const latestLog = latestLogBySku.get(item.sku) || null;
+        const openDivergence = openDivergenceBySku.get(item.sku) || null;
+        const liveStatus = calculateItemStatus(item, settings, logs);
+        const abcRecord = getAbcAnalysisForSku(item.sku);
+        const abcPolicy = getAdaptiveAbcStockPolicy(item.sku, logs);
+        const abcRank = getAbcSortRank(item.sku);
+        const abcRankScore = Number.isFinite(abcRank) ? Math.max(0, 1000 - Math.min(abcRank, 1000)) : 0;
+        const absDelta = openDivergence ? Math.abs(openDivergence.delta) : latestLog ? Math.abs(latestLog.delta) : 0;
+        const needsRecount = Boolean(openDivergence);
+        const priorityScore =
+          getAbcClassPriority(item.sku) * 10000 +
+          abcRankScore +
+          getStatusPriority(liveStatus) * 1000 +
+          (needsRecount ? 3000 : 0) +
+          (isNoLocation(item.location) ? 200 : 0) +
+          absDelta * 10 +
+          (item.quantity <= 0 ? 50 : 0);
+
+        return {
+          item,
+          latestLog,
+          openDivergence,
+          liveStatus,
+          abcRecord,
+          abcPolicy,
+          absDelta,
+          needsRecount,
+          countedToday: Boolean(latestLog),
+          priorityScore
+        };
+      }),
+    [latestLogBySku, logs, openDivergenceBySku, operationBaseItems, settings]
+  );
+
+  const cyclicDayKey = getCalendarDayKey(new Date(), APP_TIME_ZONE);
+  const cyclicInventoryRows = useMemo(
+    () =>
+      buildDailyCycleRows(
+        cycleCandidateRows.map(row => ({
+          ...row,
+          cycleWeight: getAbcClassPriority(row.item.sku)
+        })),
+        { count: 5, dayKey: cyclicDayKey }
+      ),
+    [cycleCandidateRows, cyclicDayKey]
   );
 
   const pendingQueue = useMemo(
@@ -297,6 +376,66 @@ export default function InventoryOperation({
         </p>
       </div>
 
+      <div className="mb-6 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-4">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Inventario ciclico</p>
+            <h3 className="text-lg font-headline font-extrabold text-on-surface">Contagem diaria do armazem</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Sorteio de {cyclicDayKey} baseado na Curva ABC. Use para manter contagem diaria sem precisar escolher SKU.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = cyclicInventoryRows[0];
+              if (!next) {
+                showToast('Nao ha itens suficientes para o inventario ciclico.', 'info');
+                return;
+              }
+              onSelectSku(next.item.sku);
+              showToast(`Abrindo o primeiro item do inventario ciclico: ${next.item.sku}.`, 'success');
+            }}
+            className="h-11 px-4 rounded-xl bg-surface-container-highest text-primary font-bold flex items-center justify-center gap-2"
+          >
+            <ArrowRight size={18} />
+            Abrir primeiro
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {cyclicInventoryRows.map(row => (
+            <button
+              key={`cyclic-${row.item.sku}`}
+              type="button"
+              onClick={() => onSelectSku(row.item.sku)}
+              className="text-left rounded-xl border border-outline-variant/20 bg-surface-container-lowest px-4 py-4 hover:bg-surface-container-high transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-outline">SKU {row.item.sku}</p>
+                  <p className="mt-1 font-semibold text-on-surface truncate">{normalizeUserFacingText(row.item.name)}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold text-primary">
+                  {row.abcRecord?.className ? `ABC ${row.abcRecord.className}` : 'ABC -'}
+                </span>
+              </div>
+              <div className="mt-3 text-[11px] font-semibold text-on-surface-variant flex flex-col gap-1">
+                <span>{normalizeLocationText(row.item.location)}</span>
+                <span>{formatVehicleType(row.item)}</span>
+                <span className={row.needsRecount ? 'text-error' : ''}>
+                  {row.needsRecount && row.openDivergence
+                    ? `Divergencia ${formatDivergenceDelta(row.openDivergence.delta)}`
+                    : row.countedToday
+                      ? 'Ja contado hoje'
+                      : 'Pendente hoje'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid gap-3 md:grid-cols-3 mb-6">
         <label className="flex flex-col gap-2 text-xs font-bold uppercase tracking-wider text-outline">
           Localizacao
@@ -365,7 +504,7 @@ export default function InventoryOperation({
 
         <OperationColumn
           title="Recontagem prioritaria"
-          description="Itens com divergencia de saldo pedem uma segunda conferencia."
+          description="Divergencias ficam abertas ate um ajuste de recontagem."
           emptyMessage="Nao ha divergencias abertas neste recorte."
           tone="warning"
           rows={recountQueue}
@@ -374,10 +513,10 @@ export default function InventoryOperation({
           renderMeta={row => (
             <>
               <span>
-                Diferenca {row.latestLog && row.latestLog.delta > 0 ? '+' : ''}
-                {row.latestLog?.delta ?? 0}
+                Diferenca {row.openDivergence ? formatDivergenceDelta(row.openDivergence.delta) : '0 un'}
               </span>
-              <span>Ultima contagem {row.latestLog ? formatLogTime(row.latestLog.date) : '--:--'}</span>
+              <span>Detectada {row.openDivergence ? formatLogTime(row.openDivergence.date) : '--:--'}</span>
+              {row.openDivergence?.referenceCode ? <span>{row.openDivergence.referenceCode}</span> : null}
             </>
           )}
         />
@@ -554,21 +693,6 @@ function isNoLocation(value: unknown) {
   return normalized === 'sem localizacao';
 }
 
-function isSameCalendarDay(firstDate: string, secondDate: Date) {
-  const first = new Date(firstDate);
-  if (Number.isNaN(first.getTime())) return false;
-  return getCalendarDateKey(first) === getCalendarDateKey(secondDate);
-}
-
-function getCalendarDateKey(value: Date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(value);
-}
-
 function formatLogTime(date: string) {
   return new Intl.DateTimeFormat('pt-BR', {
     timeZone: APP_TIME_ZONE,
@@ -577,15 +701,10 @@ function formatLogTime(date: string) {
   }).format(new Date(date));
 }
 
-function isOperationalInventoryLog(log: InventoryLog) {
-  if (log.source === 'ajuste' || log.source === 'divergencia') return true;
-  if (log.source) return false;
-  return !log.referenceCode;
-}
-
 interface OperationRow {
   item: InventoryItem;
   latestLog: InventoryLog | null;
+  openDivergence: OpenDivergence | null;
   liveStatus: InventoryItem['status'];
   abcRecord: ReturnType<typeof getAbcAnalysisForSku>;
   abcPolicy: ReturnType<typeof getAdaptiveAbcStockPolicy>;

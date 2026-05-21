@@ -669,8 +669,16 @@ export default function InventoryList({
                         showToast('Modo consulta: sem permissão para apontar itens ativos.', 'info');
                         return;
                       }
-                      const now = new Date().toISOString();
+
                       const nextActive = item.isActiveInWarehouse !== true;
+                      const confirmed = window.confirm(
+                        nextActive
+                          ? `Marcar o SKU ${item.sku} como ativo no armazém?`
+                          : `Remover o SKU ${item.sku} dos ativos do armazém?`
+                      );
+                      if (!confirmed) return;
+
+                      const now = new Date().toISOString();
                       setItems(previous =>
                         previous.map(current =>
                           current.sku === item.sku
@@ -698,7 +706,7 @@ export default function InventoryList({
                     title={item.isActiveInWarehouse ? 'Remover dos ativos' : 'Marcar como ativo'}
                   >
                     {item.isActiveInWarehouse ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-                    Ativo
+                    {item.isActiveInWarehouse ? 'Ativo' : 'Ativar'}
                   </button>
                   <span
                     className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${getStatusBadgeTone(item.status)}`}

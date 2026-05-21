@@ -4,8 +4,10 @@ import {
   Barcode,
   Camera,
   Loader2,
+  Minus,
   PackageCheck,
   Pencil,
+  Plus,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -30,6 +32,12 @@ import {
   startPreparedScanner
 } from '../barcodeUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import {
+  formatDivergenceDelta,
+  getOpenDivergenceForSku,
+  getReportedRemainingBySkuFromDivergences,
+  getRequestDivergenceLogs
+} from '../divergenceRules';
 
 interface MaterialSeparationProps {
   items: InventoryItem[];
@@ -39,6 +47,7 @@ interface MaterialSeparationProps {
   requests: MaterialRequest[];
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
   canEdit: boolean;
+  authToken?: string;
   canDeleteRequests: boolean;
   canReverseRequests: boolean;
   auditActor: MaterialRequestAuditActor;
@@ -52,6 +61,14 @@ interface MaterialSeparationProps {
   onSelectSku: (sku: string) => void;
 }
 
+type RequestLockPayload = {
+  requestId: string;
+  holder: { userId: string; matricula: string; name: string; role: string };
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+};
+
 export default function MaterialSeparation({
   items,
   setItems,
@@ -60,6 +77,7 @@ export default function MaterialSeparation({
   requests,
   setRequests,
   canEdit,
+  authToken,
   canDeleteRequests,
   canReverseRequests,
   auditActor,
@@ -87,13 +105,20 @@ export default function MaterialSeparation({
     separatedAfter: number;
   } | null>(null);
   const [quantityConfirmationValue, setQuantityConfirmationValue] = useState('');
+  const [quantityConfirmationNote, setQuantityConfirmationNote] = useState('');
   const [reportedRemainingBySku, setReportedRemainingBySku] = useState<Record<string, number>>({});
+  const [manualSeparationEnabled, setManualSeparationEnabled] = useState(false);
+  const [requestLock, setRequestLock] = useState<RequestLockPayload | null>(null);
+  const [requestLockStatus, setRequestLockStatus] = useState<
+    'idle' | 'loading' | 'holding' | 'blocked' | 'readonly' | 'error'
+  >('idle');
   const videoRef = useRef<HTMLVideoElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const scanLockedRef = useRef(false);
   const releaseTimerRef = useRef<number | null>(null);
+  const lockHeldRef = useRef(false);
   const canMutate = canEdit;
   const audioContextRef = useRef<AudioContext | null>(null);
   const itemsRef = useRef(items);
@@ -160,15 +185,239 @@ export default function MaterialSeparation({
   useEffect(() => {
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
     setReportedRemainingBySku({});
+    setManualSeparationEnabled(false);
   }, [currentRequest?.id]);
+
+  useEffect(() => {
+    lockHeldRef.current = false;
+    setRequestLock(null);
+    setRequestLockStatus('idle');
+    const requestId = currentRequest?.id || '';
+    if (!requestId) return;
+
+    let cancelled = false;
+    let heartbeatTimer: number | null = null;
+    let pollTimer: number | null = null;
+
+    const makeAuthHeaders = () => {
+      const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' };
+      if (authToken) headers.authorization = `Bearer ${authToken}`;
+      return headers;
+    };
+
+    const readLock = async () => {
+      const response = await fetch(`/api/request-lock?requestId=${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return data.lock;
+    };
+
+    const postLock = async (action: 'acquire' | 'heartbeat' | 'release', keepalive = false) => {
+      const response = await fetch(`/api/request-lock?action=${action}`, {
+        method: 'POST',
+        headers: makeAuthHeaders(),
+        body: JSON.stringify({ requestId }),
+        keepalive
+      });
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('AUTH');
+      }
+      if (response.status === 409) {
+        const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+        return { ok: false as const, lock: data.lock };
+      }
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return { ok: true as const, lock: data.lock };
+    };
+
+    const setBlocked = (lock: RequestLockPayload | null) => {
+      setRequestLock(lock);
+      setRequestLockStatus('blocked');
+      lockHeldRef.current = false;
+      if (heartbeatTimer) {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      if (!pollTimer) {
+        pollTimer = window.setInterval(async () => {
+          try {
+            const latest = await readLock();
+            if (cancelled) return;
+            if (!latest) {
+              setRequestLock(null);
+              if (canEdit && authToken) {
+                const acquired = await postLock('acquire');
+                if (cancelled) return;
+                if (acquired.ok) {
+                  setRequestLock(acquired.lock);
+                  setRequestLockStatus('holding');
+                  lockHeldRef.current =
+                    Boolean(acquired.lock?.holder?.userId) && acquired.lock?.holder.userId === (auditActor.id || '');
+                  if (pollTimer) {
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                  }
+                  if (!heartbeatTimer) {
+                    heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+                  }
+                } else {
+                  setRequestLock(acquired.lock);
+                  setRequestLockStatus('blocked');
+                }
+              }
+            } else {
+              setRequestLock(latest);
+            }
+          } catch {
+            return;
+          }
+        }, 4000);
+      }
+    };
+
+    const heartbeat = async () => {
+      if (!canEdit || !authToken) return;
+      try {
+        const result = await postLock('heartbeat');
+        if (cancelled) return;
+        if (result.ok) {
+          setRequestLock(result.lock);
+          setRequestLockStatus('holding');
+          lockHeldRef.current =
+            Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+        } else {
+          setBlocked(result.lock);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          setRequestLockStatus('error');
+          setRequestLock(null);
+          lockHeldRef.current = false;
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+      }
+    };
+
+    const acquireOrLoad = async () => {
+      try {
+        if (canEdit && authToken) {
+          setRequestLockStatus('loading');
+          const result = await postLock('acquire');
+          if (cancelled) return;
+          if (result.ok) {
+            setRequestLock(result.lock);
+            setRequestLockStatus('holding');
+            lockHeldRef.current =
+              Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+            if (!heartbeatTimer) {
+              heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+            }
+            return;
+          }
+          setBlocked(result.lock);
+          return;
+        }
+
+        setRequestLockStatus('readonly');
+        const lock = await readLock();
+        if (cancelled) return;
+        setRequestLock(lock);
+        if (lock) {
+          setRequestLockStatus('blocked');
+        } else {
+          setRequestLockStatus('idle');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+        setRequestLockStatus('error');
+        setRequestLock(null);
+        lockHeldRef.current = false;
+      }
+    };
+
+    void acquireOrLoad();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void acquireOrLoad();
+        if (lockHeldRef.current) {
+          void heartbeat();
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (!lockHeldRef.current) return;
+      if (!canEdit || !authToken) return;
+      void postLock('release', true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (pollTimer) window.clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (lockHeldRef.current && canEdit && authToken) {
+        void postLock('release', true);
+      }
+      lockHeldRef.current = false;
+    };
+  }, [auditActor.id, authToken, canEdit, currentRequest?.id, showToast]);
 
   const requestProgress = currentRequest ? getRequestProgress(currentRequest) : null;
   const currentStatus = normalizeUserFacingText(currentRequest?.status);
   const isCurrentRequestLocked = currentStatus === 'Atendida' || currentStatus === 'Estornada';
+  const currentUserId = auditActor.id || '';
+  const isLockHeldByMe = Boolean(requestLock && requestLock.holder?.userId && requestLock.holder.userId === currentUserId);
+  const isLockHeldByOther = Boolean(
+    requestLock && requestLock.holder?.userId && requestLock.holder.userId !== currentUserId
+  );
+  const isRequestEditBlockedByLock = Boolean(currentRequest && !isCurrentRequestLocked && isLockHeldByOther);
+  const canManualSeparate = canMutate && auditActor.role === 'admin' && !isCurrentRequestLocked && !isRequestEditBlockedByLock;
   const canReverseCurrentRequest = canReverseRequests && currentStatus === 'Atendida';
-  const canFinalizeCurrentRequest =
-    Boolean(currentRequest) && !isCurrentRequestLocked && Boolean(requestProgress) && requestProgress?.pending === 0;
+  const requestDivergenceLogs = useMemo(
+    () => getRequestDivergenceLogs(currentRequest, logs),
+    [currentRequest, logs]
+  );
+  const requestDivergenceBySku = useMemo(() => {
+    const next = new Map<string, InventoryLog>();
+    requestDivergenceLogs.forEach(log => {
+      if (!next.has(log.sku)) next.set(log.sku, log);
+    });
+    return next;
+  }, [requestDivergenceLogs]);
+  const hasRequestDivergence = requestDivergenceLogs.length > 0;
+  const canFinalizeDivergentRequest = !hasRequestDivergence || auditActor.role === 'admin';
+  const isRequestReadyForFinalization =
+    Boolean(currentRequest) &&
+    !isCurrentRequestLocked &&
+    Boolean(requestProgress) &&
+    requestProgress?.pending === 0;
+  const canFinalizeCurrentRequest = isRequestReadyForFinalization && canFinalizeDivergentRequest;
+
+  useEffect(() => {
+    if (!isRequestEditBlockedByLock) return;
+    if (isScannerOpen) closeScanner();
+    setManualSeparationEnabled(false);
+    setQuantityConfirmation(null);
+  }, [isRequestEditBlockedByLock]);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -334,9 +583,66 @@ export default function MaterialSeparation({
     setScannerFeedback('neutral');
   };
 
+  const describeCurrentLockHolder = () => {
+    const holderName = normalizeUserFacingText(requestLock?.holder?.name || '');
+    const holderMatricula = normalizeUserFacingText(requestLock?.holder?.matricula || '');
+    if (holderName && holderMatricula) return `${holderName} (${holderMatricula})`;
+    if (holderName) return holderName;
+    if (holderMatricula) return holderMatricula;
+    return 'outro usuário';
+  };
+
+  const applyManualSeparatedChange = (sku: string, amount: number) => {
+    if (!currentRequest) {
+      showToast('Abra uma solicitação para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
+      return;
+    }
+
+    if (!manualSeparationEnabled) {
+      showToast('Ative o modo manual para ajustar a separação.', 'info');
+      return;
+    }
+
+    if (!canManualSeparate) {
+      showToast('Somente administradores podem separar manualmente.', 'info');
+      return;
+    }
+
+    const { request: updatedRequest, updated } = bumpSeparatedQuantity(currentRequest, sku, amount);
+    if (!updated) return;
+
+    const now = new Date().toISOString();
+    const nextRequest = {
+      ...updatedRequest,
+      updatedAt: now
+    };
+    nextRequest.status = recalculateRequestStatus(nextRequest);
+
+    setRequests(previous => previous.map(request => (request.id === nextRequest.id ? nextRequest : request)));
+    setLastConfirmedSku(sku);
+
+    const requestItem = nextRequest.items.find(item => item.sku === sku);
+    if (requestItem) {
+      showToast(
+        `Separação manual: SKU ${sku} agora ${requestItem.separatedQuantity}/${requestItem.requestedQuantity}.`,
+        'success'
+      );
+    }
+  };
+
   const startScanner = () => {
     if (!requestRef.current) {
       showToast('Abra uma solicitação antes de iniciar a separação.', 'info');
+      return;
+    }
+
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
       return;
     }
 
@@ -392,6 +698,13 @@ export default function MaterialSeparation({
       return;
     }
 
+    if (isRequestEditBlockedByLock) {
+      setScannerFeedback('error');
+      setScannerStatus(`Solicitação em modificação por ${describeCurrentLockHolder()}.`);
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
+      return;
+    }
+
     const activeStatus = normalizeUserFacingText(activeRequest.status);
     if (activeStatus === 'Atendida' || activeStatus === 'Estornada') {
       setScannerFeedback('error');
@@ -416,6 +729,14 @@ export default function MaterialSeparation({
       setScannerStatus(`O SKU ${detected.matchedSku} não faz parte desta separação.`);
       lockScannerBriefly('error', 1200);
       showToast(`O SKU ${detected.matchedSku} não pertence a esta solicitação.`, 'info');
+      return;
+    }
+
+    const openDivergence = getOpenDivergenceForSku(logs, detected.matchedSku);
+    if (openDivergence && openDivergence.referenceCode !== activeRequest.code && auditActor.role !== 'admin') {
+      setScannerStatus(`SKU ${detected.matchedSku} tem divergencia aberta. Recontagem administrativa necessaria.`);
+      lockScannerBriefly('error', 1400);
+      showToast(`SKU ${detected.matchedSku} bloqueado por divergencia aberta.`, 'info');
       return;
     }
 
@@ -476,6 +797,7 @@ export default function MaterialSeparation({
         separatedAfter: nextSeparated
       });
       setQuantityConfirmationValue(expectedRemaining === null ? '' : String(expectedRemaining));
+      setQuantityConfirmationNote('');
       return;
     }
 
@@ -507,6 +829,11 @@ export default function MaterialSeparation({
       return;
     }
 
+    if (isRequestEditBlockedByLock) {
+      showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
+      return;
+    }
+
     if (!canMutate) {
       showToast('Modo consulta: sem permissão para concluir a separação.', 'info');
       return;
@@ -515,6 +842,11 @@ export default function MaterialSeparation({
     const pendingItems = currentRequest.items.filter(item => item.separatedQuantity < item.requestedQuantity);
     if (pendingItems.length > 0) {
       showToast('Ainda existem itens pendentes nesta separação.', 'info');
+      return;
+    }
+
+    if (hasRequestDivergence && auditActor.role !== 'admin') {
+      showToast('Esta separacao tem divergencia. Um administrador precisa revisar e concluir.', 'info');
       return;
     }
 
@@ -532,13 +864,18 @@ export default function MaterialSeparation({
 
     const now = new Date().toISOString();
     const requestItemsBySku = new Map(currentRequest.items.map(requestItem => [requestItem.sku, requestItem]));
+    const effectiveReportedRemainingBySku = getReportedRemainingBySkuFromDivergences(
+      currentRequest,
+      logs,
+      reportedRemainingBySku
+    );
 
     setItems(previous =>
       previous.map(item => {
         const requestItem = requestItemsBySku.get(item.sku);
         if (!requestItem) return item;
 
-        const reportedRemaining = reportedRemainingBySku[item.sku];
+        const reportedRemaining = effectiveReportedRemainingBySku[item.sku];
         const nextQuantity = Number.isFinite(reportedRemaining)
           ? Math.max(0, Math.floor(reportedRemaining))
           : Math.max(0, item.quantity - requestItem.separatedQuantity);
@@ -559,7 +896,7 @@ export default function MaterialSeparation({
     const generatedLogs: InventoryLog[] = currentRequest.items.map(requestItem => {
       const stockItem = stockMap.get(requestItem.sku)!;
       const expectedAfter = Math.max(0, stockItem.quantity - requestItem.separatedQuantity);
-      const reportedRemaining = reportedRemainingBySku[requestItem.sku];
+      const reportedRemaining = effectiveReportedRemainingBySku[requestItem.sku];
       const quantityAfter = Number.isFinite(reportedRemaining) ? Math.max(0, Math.floor(reportedRemaining)) : expectedAfter;
 
       return {
@@ -591,7 +928,9 @@ export default function MaterialSeparation({
                 at: now,
                 event: 'separation_fulfilled',
                 actor: auditActor,
-                detail: 'Concluiu e baixou estoque'
+                detail: hasRequestDivergence
+                  ? `Concluiu com ${requestDivergenceLogs.length} divergencia(s) registrada(s)`
+                  : 'Concluiu e baixou estoque'
               }
             )
           : request
@@ -603,6 +942,7 @@ export default function MaterialSeparation({
     setReportedRemainingBySku({});
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
   };
 
   const reverseRequest = () => {
@@ -721,6 +1061,7 @@ export default function MaterialSeparation({
     setReportedRemainingBySku({});
     setQuantityConfirmation(null);
     setQuantityConfirmationValue('');
+    setQuantityConfirmationNote('');
     showToast(`Solicitação ${currentRequest.code} estornada. Estoque devolvido.`, 'success');
   };
 
@@ -798,6 +1139,13 @@ export default function MaterialSeparation({
                           <button
                             type="button"
                             onClick={() => {
+                              if (currentRequest?.id === request.id && isRequestEditBlockedByLock) {
+                                showToast(
+                                  `Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`,
+                                  'info'
+                                );
+                                return;
+                              }
                               const confirmed = window.confirm(`Remover a solicitação ${request.code}?`);
                               if (!confirmed) return;
                               const now = new Date().toISOString();
@@ -869,6 +1217,67 @@ export default function MaterialSeparation({
                 </div>
               </div>
 
+              {!isCurrentRequestLocked && isRequestEditBlockedByLock && (
+                <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
+                  <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Solicitação em modificação</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      Em processo de modificação por {describeCurrentLockHolder()}. Esta tela fica somente para consulta até liberar.
+                    </p>
+                    {canEdit ? (
+                      <p className="text-sm text-on-surface-variant mt-2">
+                        Assim que a pessoa sair, o sistema libera automaticamente e você poderá editar.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+              {!isCurrentRequestLocked && !isRequestEditBlockedByLock && isLockHeldByMe && requestLockStatus === 'holding' ? (
+                <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 flex items-start gap-3">
+                  <PackageCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Você está com prioridade nesta solicitação</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      Enquanto esta tela estiver aberta, outros usuários verão um aviso de “em modificação” e não conseguirão editar.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {auditActor.role === 'admin' && !isCurrentRequestLocked ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRequestEditBlockedByLock) {
+                        showToast(`Solicitação em modificação por ${describeCurrentLockHolder()}. Aguarde para editar.`, 'info');
+                        return;
+                      }
+                      if (!canMutate) {
+                        showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                        return;
+                      }
+                      if (isScannerOpen) closeScanner();
+                      setManualSeparationEnabled(previous => {
+                        const next = !previous;
+                        showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                        return next;
+                      });
+                    }}
+                    className={`h-11 w-full px-4 rounded-lg font-bold flex items-center justify-center ${
+                      manualSeparationEnabled
+                        ? 'bg-primary-container text-on-primary-container'
+                        : 'bg-surface-container-highest text-primary'
+                    }`}
+                    disabled={isRequestEditBlockedByLock}
+                  >
+                    Itens para separar
+                  </button>
+                </div>
+              ) : null}
+
               {isCurrentRequestLocked && (
                 <div className="mt-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
                   <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
@@ -894,6 +1303,18 @@ export default function MaterialSeparation({
                   </div>
                 </div>
               )}
+
+              {!isCurrentRequestLocked && hasRequestDivergence ? (
+                <div className="mt-4 rounded-xl border border-error/25 bg-error-container/20 px-4 py-4 flex items-start gap-3">
+                  <ShieldAlert size={18} className="text-error shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-on-surface">Divergencia registrada nesta separacao</p>
+                    <p className="text-sm text-on-surface-variant mt-1">
+                      {requestDivergenceLogs.length} ocorrencia(s). Operacao pode separar, mas a baixa final exige administrador.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
@@ -906,20 +1327,21 @@ export default function MaterialSeparation({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {canFinalizeCurrentRequest ? (
+                  {isRequestReadyForFinalization ? (
                     <button
                       type="button"
                       onClick={finalizeRequest}
-                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2"
+                      disabled={!canFinalizeCurrentRequest || isRequestEditBlockedByLock}
+                      className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       <PackageCheck size={18} />
-                      Concluir e baixar estoque
+                      {canFinalizeCurrentRequest ? 'Concluir e baixar estoque' : 'Revisao admin necessaria'}
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={startScanner}
-                      disabled={isCurrentRequestLocked}
+                      disabled={isCurrentRequestLocked || isRequestEditBlockedByLock}
                       className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold flex items-center gap-2 disabled:opacity-60"
                     >
                       {isScannerBusy ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
@@ -1025,21 +1447,56 @@ export default function MaterialSeparation({
                 <div>
                   <h3 className="font-headline font-bold text-xl text-on-surface">Itens para separar</h3>
                   <p className="text-sm text-on-surface-variant mt-1">
-                    A separação só avança pela leitura da etiqueta correta do item.
+                    {manualSeparationEnabled && auditActor.role === 'admin'
+                      ? 'Admin: use + e - para ajustar manualmente quando a etiqueta não ler.'
+                      : 'A separação só avança pela leitura da etiqueta correta do item.'}
                   </p>
                 </div>
+                {!isCurrentRequestLocked ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canMutate) {
+                          showToast('Modo consulta: sem permissão para separar manualmente.', 'info');
+                          return;
+                        }
+                        if (auditActor.role !== 'admin') {
+                          showToast('Somente administradores podem separar manualmente.', 'info');
+                          return;
+                        }
+                        if (isScannerOpen) closeScanner();
+                        setManualSeparationEnabled(previous => {
+                          const next = !previous;
+                          showToast(next ? 'Modo manual de separação ativado.' : 'Modo manual de separação desativado.', 'info');
+                          return next;
+                        });
+                      }}
+                      className={`h-11 px-4 rounded-lg font-bold flex items-center justify-center ${
+                        manualSeparationEnabled
+                          ? 'bg-primary-container text-on-primary-container'
+                          : 'bg-surface-container-highest text-primary'
+                      }`}
+                    >
+                      Itens para separar
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-3">
                 {currentRequest.items.map(requestItem => {
                   const isHighlighted = lastConfirmedSku === requestItem.sku;
                   const separatedDone = requestItem.separatedQuantity >= requestItem.requestedQuantity;
+                  const divergence = requestDivergenceBySku.get(requestItem.sku);
 
                   return (
                     <div
                       key={requestItem.id}
                       className={`rounded-xl border p-4 transition-colors ${
-                        isHighlighted
+                        divergence
+                          ? 'border-error/30 bg-error-container/15'
+                          : isHighlighted
                           ? 'border-primary bg-primary-container/15'
                           : 'border-outline-variant/15 bg-surface-container-low'
                       }`}
@@ -1056,6 +1513,12 @@ export default function MaterialSeparation({
                           <p className="text-xs text-on-surface-variant mt-1">
                             SKU {requestItem.sku} • {normalizeLocationText(requestItem.location)} • {normalizeUserFacingText(requestItem.category)}
                           </p>
+                          {divergence ? (
+                            <p className="text-[11px] font-semibold text-error mt-2">
+                              Divergencia: sistema {divergence.expectedQuantityAfter ?? '--'} / real{' '}
+                              {divergence.reportedQuantityAfter ?? divergence.quantityAfter} ({formatDivergenceDelta(divergence.delta)})
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -1065,6 +1528,28 @@ export default function MaterialSeparation({
                               {requestItem.separatedQuantity}/{requestItem.requestedQuantity}
                             </p>
                           </div>
+                          {auditActor.role === 'admin' ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, -1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity <= 0}
+                                className="h-11 w-11 rounded-lg bg-surface-container-highest text-primary font-bold flex items-center justify-center disabled:opacity-50"
+                                aria-label={`Retirar 1 de ${requestItem.sku}`}
+                              >
+                                <Minus size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => applyManualSeparatedChange(requestItem.sku, 1)}
+                                disabled={!canManualSeparate || requestItem.separatedQuantity >= requestItem.requestedQuantity}
+                                className="h-11 w-11 rounded-lg bg-primary text-on-primary font-bold flex items-center justify-center disabled:opacity-60"
+                                aria-label={`Separar 1 de ${requestItem.sku}`}
+                              >
+                                <Plus size={18} />
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1141,8 +1626,24 @@ export default function MaterialSeparation({
               ) : null}
             </div>
 
+            {quantityConfirmation.expectedRemaining !== null &&
+            Number.isFinite(Number(quantityConfirmationValue)) &&
+            Math.floor(Number(quantityConfirmationValue)) !== quantityConfirmation.expectedRemaining ? (
+              <div className="mt-4">
+                <label className="block text-xs font-bold uppercase tracking-widest text-outline mb-2">
+                  Motivo da divergencia
+                </label>
+                <input
+                  className="w-full h-12 rounded-lg bg-surface-container-highest border border-outline-variant/20 px-4 text-on-surface"
+                  value={quantityConfirmationNote}
+                  onChange={event => setQuantityConfirmationNote(event.target.value)}
+                  placeholder="Ex.: falta fisica, sobra na locacao, embalagem aberta"
+                />
+              </div>
+            ) : null}
+
             <form
-              className="mt-5 flex flex-col-reverse sm:flex-row gap-2 justify-end"
+              className="mt-5 flex justify-end"
               onSubmit={event => {
                 event.preventDefault();
 
@@ -1150,6 +1651,7 @@ export default function MaterialSeparation({
                 if (!active || !currentRequest || active.requestId !== currentRequest.id) {
                   setQuantityConfirmation(null);
                   setQuantityConfirmationValue('');
+                  setQuantityConfirmationNote('');
                   lockScannerBriefly('neutral', 250);
                   return;
                 }
@@ -1163,6 +1665,12 @@ export default function MaterialSeparation({
                 const reportedRemaining = Math.floor(parsed);
                 const expectedRemaining = active.expectedRemaining;
                 const isDivergent = expectedRemaining !== null && reportedRemaining !== expectedRemaining;
+                const note = normalizeUserFacingText(quantityConfirmationNote);
+
+                if (isDivergent && note.length < 6) {
+                  showToast('Informe um motivo curto para registrar a divergencia.', 'info');
+                  return;
+                }
 
                 setReportedRemainingBySku(previous => ({
                   ...previous,
@@ -1184,7 +1692,8 @@ export default function MaterialSeparation({
                       source: 'divergencia',
                       referenceCode: currentRequest.code,
                       expectedQuantityAfter: expectedRemaining,
-                      reportedQuantityAfter: reportedRemaining
+                      reportedQuantityAfter: reportedRemaining,
+                      note
                     },
                     ...previous
                   ]);
@@ -1195,38 +1704,18 @@ export default function MaterialSeparation({
                 showToast(confirmationMessage, 'success');
                 setQuantityConfirmation(null);
                 setQuantityConfirmationValue('');
+                setQuantityConfirmationNote('');
                 lockScannerBriefly('success', 900);
               }}
             >
               <button
-                type="button"
-                className="h-11 px-4 rounded-lg bg-surface-container-highest text-on-surface font-bold"
-                onClick={() => {
-                  const active = quantityConfirmation;
-                  if (active?.expectedRemaining !== null && active?.expectedRemaining !== undefined) {
-                    setReportedRemainingBySku(previous => ({
-                      ...previous,
-                      [active.sku]: active.expectedRemaining as number
-                    }));
-                    const confirmationMessage = buildRemainingMessage(
-                      active.sku,
-                      active.itemName,
-                      active.expectedRemaining,
-                      active.location
-                    );
-                    setScannerStatus(confirmationMessage);
-                    showToast(confirmationMessage, 'success');
-                  }
-                  setQuantityConfirmation(null);
-                  setQuantityConfirmationValue('');
-                  lockScannerBriefly('success', 900);
-                }}
-              >
-                Usar saldo do sistema
-              </button>
-              <button
                 type="submit"
                 className="h-11 px-4 rounded-lg bg-primary text-on-primary font-bold"
+                disabled={
+                  quantityConfirmationValue.trim() === '' ||
+                  !Number.isFinite(Number(quantityConfirmationValue)) ||
+                  Number(quantityConfirmationValue) < 0
+                }
               >
                 {quantityConfirmation.expectedRemaining !== null &&
                 Number.isFinite(Number(quantityConfirmationValue)) &&
@@ -1237,7 +1726,7 @@ export default function MaterialSeparation({
             </form>
 
             <p className="text-[11px] text-on-surface-variant mt-3">
-              Se estiver diferente do sistema, digite o valor real e confirme. A divergência fica registrada e será aplicada ao baixar o estoque.
+              Digite o saldo real conferido na locação. Se estiver diferente do sistema, a divergência fica registrada e será aplicada ao baixar o estoque.
             </p>
           </div>
         </div>

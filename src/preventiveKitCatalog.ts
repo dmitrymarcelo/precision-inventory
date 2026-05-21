@@ -1,14 +1,4 @@
-export interface PreventiveKitItem {
-  sku: string;
-  description: string;
-  requiredQuantity: number;
-}
-
-export interface PreventiveKitDefinition {
-  id: string;
-  name: string;
-  items: PreventiveKitItem[];
-}
+import type { InventorySettings, PreventiveKitDefinition } from './types';
 
 export const preventiveKitCatalog: PreventiveKitDefinition[] = [
   {
@@ -81,7 +71,7 @@ export const preventiveKitCatalog: PreventiveKitDefinition[] = [
     id: 'moto',
     name: 'MOTO',
     items: [
-      { sku: '18000', description: 'FILTRO DE COMBUSTIVEL', requiredQuantity: 1 },
+      { sku: '18002', description: 'FILTRO COMBUSTIVEL GI80 HONDA NXR BROS', requiredQuantity: 1 },
       { sku: '17902', description: 'OLEO 20W50 MOTO - LITRO', requiredQuantity: 1 }
     ]
   },
@@ -110,3 +100,8 @@ export const preventiveKitCatalog: PreventiveKitDefinition[] = [
     ]
   }
 ];
+
+export function resolvePreventiveKitCatalog(settings?: InventorySettings | null) {
+  const custom = settings?.preventiveKits;
+  return Array.isArray(custom) && custom.length > 0 ? custom : preventiveKitCatalog;
+}

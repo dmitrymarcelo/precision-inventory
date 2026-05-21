@@ -1,6 +1,18 @@
 import { getSessionFromRequest } from './auth.js';
+import {
+  getSupabaseAdmin,
+  isSupabaseConfigured,
+  isSupabaseUsable,
+  loadStateV2ResponseStreamFromSupabase,
+  loadStateV2FromSupabase,
+  migrateD1ToSupabaseIfNeeded,
+  saveStateV2ToSupabase
+} from './supabase.js';
 
 const STATE_KEY = 'inventory';
+const STATE_V2_MANIFEST_KEY = 'inventory_v2_manifest';
+const STATE_V2_PREFIX = 'inventory_v2';
+const MAX_STATE_ROW_BYTES = 1900000;
 
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
@@ -8,59 +20,558 @@ const jsonHeaders = {
 };
 
 export async function onRequestGet({ env }) {
-  await ensureSchema(env.DB);
+  const supabaseConfigured = isSupabaseConfigured(env);
+  let supabaseFallbackDetail = supabaseConfigured ? '' : 'supabase_not_configured';
 
-  const row = await env.DB
-    .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-    .bind(STATE_KEY)
-    .first();
-
-  return Response.json({
-    state: row ? JSON.parse(row.value) : null,
-    updatedAt: row?.updated_at ?? null
-  }, { headers: jsonHeaders });
-}
-
-export async function onRequestPut({ request, env }) {
-  await ensureSchema(env.DB);
-
-  const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
-  const hasUsers = (Number(userCountRow?.count) || 0) > 0;
-  if (hasUsers) {
-    const session = await getSessionFromRequest(request, env.DB);
-    if (!session) {
-      return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
-    }
-    if (session.role !== 'operacao' && session.role !== 'admin') {
-      return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+  if (supabaseConfigured) {
+    try {
+      const sb = getSupabaseAdmin(env);
+      await migrateD1ToSupabaseIfNeeded(env, sb);
+      const v2Stream = await loadStateV2ResponseStreamFromSupabase(sb);
+      if (v2Stream) {
+        return new Response(v2Stream, { headers: jsonHeaders });
+      }
+      const row = await sb.from('app_state').select('value, updated_at').eq('key', STATE_KEY).maybeSingle();
+      if (!row.error) {
+        const state = row.data?.value ? safeParseJson(row.data.value, null) : null;
+        return Response.json({ state, updatedAt: row.data?.updated_at ?? null, backend: 'supabase' }, { headers: jsonHeaders });
+      }
+      supabaseFallbackDetail = describeSupabaseError(row.error) || 'supabase_app_state_error';
+    } catch (error) {
+      supabaseFallbackDetail = describeSupabaseError(error) || 'supabase_exception';
     }
   }
 
-  const body = await request.json();
-  const incomingState = normalizeState(body);
-  const updatedAt = new Date().toISOString();
+  try {
+    await ensureSchema(env.DB);
+    const fallbackHeaders = withSupabaseFallbackHeader(supabaseFallbackDetail);
 
-  const existingRow = await env.DB
-    .prepare('SELECT value, updated_at FROM app_state WHERE key = ?')
-    .bind(STATE_KEY)
-    .first();
+    const v2Manifest = await loadStateV2Manifest(env.DB);
+    if (v2Manifest) {
+      return new Response(streamStateV2Response(env.DB, v2Manifest), { headers: fallbackHeaders });
+    }
 
-  const state = existingRow
-    ? mergeStates(normalizeState(JSON.parse(existingRow.value)), incomingState)
-    : incomingState;
+    const row = await env.DB.prepare('SELECT value, updated_at FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+    const rawStateText = row?.value ? String(row.value) : '';
+    const stateText = rawStateText && isValidJson(rawStateText) ? rawStateText : 'null';
+    return new Response(`{"state":${stateText},"updatedAt":${JSON.stringify(row?.updated_at ?? null)},"backend":"d1"}`, {
+      headers: fallbackHeaders
+    });
+  } catch {
+    return Response.json(
+      { ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' },
+      { status: 503, headers: jsonHeaders }
+    );
+  }
+}
 
-  await env.DB
-    .prepare(`
-      INSERT INTO app_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at
-    `)
-    .bind(STATE_KEY, JSON.stringify(state), updatedAt)
-    .run();
+function withSupabaseFallbackHeader(detail) {
+  const clean = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  if (!clean) return jsonHeaders;
+  return {
+    ...jsonHeaders,
+    'x-precision-supabase-fallback': clean
+  };
+}
 
-  return Response.json({ ok: true, updatedAt }, { headers: jsonHeaders });
+export async function onRequestPut({ request, env, context }) {
+  try {
+    if (isSupabaseConfigured(env) && (await isSupabaseUsable(env))) {
+      try {
+        const sb = getSupabaseAdmin(env);
+        await migrateD1ToSupabaseIfNeeded(env, sb);
+
+        const { count: userCount, error: userCountError } = await sb.from('users').select('id', { count: 'exact', head: true });
+        const hasUsers = !userCountError && (Number(userCount) || 0) > 0;
+        let sessionRole = '';
+        if (hasUsers) {
+          const session = await getSessionFromRequest(request, env);
+          if (!session) {
+            return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
+          }
+          sessionRole = String(session.role || '');
+          if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
+            return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+          }
+        }
+
+        const body = await request.json();
+        const incomingState = normalizeState(body);
+        const updatedAt = new Date().toISOString();
+
+        const existingV2 = await loadStateV2FromSupabase(sb);
+        const existingState = existingV2 ? normalizeState(existingV2.state) : await loadStateV1Supabase(sb);
+        const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
+        const state = canWriteFullState
+          ? existingState
+            ? mergeStates(existingState, incomingState)
+            : incomingState
+          : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
+
+        const saved = await saveStateV2ToSupabase(sb, state, updatedAt);
+        if (!saved.ok) {
+          return Response.json(
+            {
+              ok: false,
+              message:
+                'Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup e Enviar backup ao servidor.'
+            },
+            { status: 413, headers: jsonHeaders }
+          );
+        }
+
+        const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+        if (newDivergenceLogs.length > 0) {
+          const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+          if (context?.waitUntil) {
+            context.waitUntil(task);
+          } else {
+            void task;
+          }
+        }
+
+        return Response.json({ ok: true, updatedAt, state, backend: 'supabase' }, { headers: jsonHeaders });
+      } catch {
+        // fallback to D1 below
+      }
+    }
+
+    await ensureSchema(env.DB);
+
+    const userCountRow = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
+    const hasUsers = (Number(userCountRow?.count) || 0) > 0;
+    let sessionRole = '';
+    if (hasUsers) {
+      const session = await getSessionFromRequest(request, env.DB);
+      if (!session) {
+        return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
+      }
+      sessionRole = String(session.role || '');
+      if (sessionRole !== 'operacao' && sessionRole !== 'admin' && sessionRole !== 'consulta') {
+        return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
+      }
+    }
+
+    const body = await request.json();
+    const incomingState = normalizeState(body);
+    const updatedAt = new Date().toISOString();
+
+    const existingV2 = await loadStateV2(env.DB);
+    const existingState = existingV2 ? normalizeState(existingV2.state) : await loadStateV1(env.DB);
+    const canWriteFullState = !hasUsers || sessionRole === 'operacao' || sessionRole === 'admin';
+    const state = canWriteFullState
+      ? existingState
+        ? mergeStates(existingState, incomingState)
+        : incomingState
+      : mergeConsultaRequestState(existingState || normalizeState({}), incomingState);
+
+    const saved = await saveStateV2(env.DB, state, updatedAt);
+    if (!saved.ok) {
+      return Response.json(
+        {
+          ok: false,
+          message:
+            'Nao foi possivel sincronizar: dados muito grandes para o servidor. Use Exportar backup e Enviar backup ao servidor.'
+        },
+        { status: 413, headers: jsonHeaders }
+      );
+    }
+
+    const newDivergenceLogs = existingState ? collectNewDivergenceLogs(existingState, state) : [];
+    if (newDivergenceLogs.length > 0) {
+      const task = sendDivergenceNotifications(newDivergenceLogs, updatedAt, env);
+      if (context?.waitUntil) {
+        context.waitUntil(task);
+      } else {
+        void task;
+      }
+    }
+
+    return Response.json({ ok: true, updatedAt, state, backend: 'd1' }, { headers: jsonHeaders });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const lowered = String(message || '').toLowerCase();
+    const looksTooLarge =
+      lowered.includes('toobig') ||
+      lowered.includes('too big') ||
+      lowered.includes('too large') ||
+      lowered.includes('payload') ||
+      lowered.includes('entity too large');
+
+    if (looksTooLarge) {
+      return Response.json(
+        {
+          ok: false,
+          message:
+            'Estado grande demais para salvar agora. Exporte o backup neste aparelho e depois descarte a pendencia local para continuar.'
+        },
+        { status: 413, headers: jsonHeaders }
+      );
+    }
+
+    return Response.json(
+      { ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' },
+      { status: 500, headers: jsonHeaders }
+    );
+  }
+}
+
+async function loadStateV1Supabase(sb) {
+  try {
+    const { data, error } = await sb.from('app_state').select('value').eq('key', STATE_KEY).maybeSingle();
+    if (error || !data?.value) return null;
+    const parsed = safeParseJson(data.value, null);
+    return parsed ? normalizeState(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeParseJson(raw, fallback) {
+  try {
+    return JSON.parse(String(raw ?? ''));
+  } catch {
+    return fallback;
+  }
+}
+
+function describeSupabaseError(error) {
+  const message = error instanceof Error ? error.message : '';
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code || '') : '';
+  const details = error && typeof error === 'object' && 'details' in error ? String(error.details || '') : '';
+  const hint = error && typeof error === 'object' && 'hint' in error ? String(error.hint || '') : '';
+  const status = error && typeof error === 'object' && 'status' in error ? String(error.status || '') : '';
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  const parts = [code ? `code=${clean(code)}` : '', status ? `status=${clean(status)}` : '', clean(message), clean(details), clean(hint)]
+    .filter(Boolean)
+    .slice(0, 4);
+  return parts.join(' | ');
+}
+
+async function loadStateV1(db) {
+  const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_KEY).first();
+  return row ? normalizeState(JSON.parse(row.value)) : null;
+}
+
+async function loadStateV2Manifest(db) {
+  const manifestRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  if (!manifestRow?.value) return null;
+  let manifest = null;
+  try {
+    manifest = JSON.parse(manifestRow.value);
+  } catch {
+    return null;
+  }
+  if (!manifest || manifest.version !== 2 || typeof manifest.updatedAt !== 'string' || !hasSafeManifestParts(manifest.parts)) {
+    return null;
+  }
+  return manifest;
+}
+
+async function loadStateV2(db) {
+  const manifest = await loadStateV2Manifest(db);
+  if (!manifest) return null;
+
+  const state = normalizeState({});
+  const parts = manifest.parts || {};
+  const items = await loadChunkedArray(db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+  const logs = await loadChunkedArray(db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+  const requests = await loadChunkedArray(db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+  const vehicles = await loadChunkedArray(db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+  const purchases = await loadChunkedArray(db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+  const settingsRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:settings`).first();
+  const aliasesRow = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(`${STATE_V2_PREFIX}:ocrAliases`).first();
+
+  state.items = items;
+  state.logs = logs;
+  state.requests = requests;
+  state.vehicles = vehicles;
+  state.purchases = purchases;
+  state.settings = settingsRow?.value ? JSON.parse(settingsRow.value) : {};
+  state.ocrAliases = aliasesRow?.value ? JSON.parse(aliasesRow.value) : {};
+
+  return { state, updatedAt: manifest.updatedAt };
+}
+
+function streamStateV2Response(db, manifest) {
+  const parts = manifest.parts || {};
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    async start(controller) {
+      const write = text => controller.enqueue(encoder.encode(text));
+
+      write('{"state":{"items":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:items:`, Number(parts.items) || 0);
+      write(',"logs":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:logs:`, Number(parts.logs) || 0);
+
+      const settingsRow = await safeFirst(db, `${STATE_V2_PREFIX}:settings`);
+      const rawSettings = settingsRow?.value ? String(settingsRow.value) : '';
+      const settings = rawSettings && isValidJson(rawSettings) ? rawSettings : '{}';
+      write(`,"settings":${settings}`);
+
+      write(',"requests":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:requests:`, Number(parts.requests) || 0);
+      write(',"vehicles":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:vehicles:`, Number(parts.vehicles) || 0);
+      write(',"purchases":');
+      await writeChunkedArrayTextStreamSafe(write, db, `${STATE_V2_PREFIX}:purchases:`, Number(parts.purchases) || 0);
+
+      const aliasesRow = await safeFirst(db, `${STATE_V2_PREFIX}:ocrAliases`);
+      const rawAliases = aliasesRow?.value ? String(aliasesRow.value) : '';
+      const ocrAliases = rawAliases && isValidJson(rawAliases) ? rawAliases : '{}';
+      write(`,"ocrAliases":${ocrAliases}},"updatedAt":${JSON.stringify(manifest.updatedAt)},"backend":"d1"}`);
+      controller.close();
+    }
+  });
+}
+
+async function writeChunkedArrayTextStream(write, db, prefix, count) {
+  write('[');
+  let hasContent = false;
+
+  const keys = [];
+  for (let i = 0; i < count; i += 1) {
+    keys.push(`${prefix}${i}`);
+  }
+  const rows = await safeAll(db, keys);
+  const byKey = new Map(rows.map(row => [String(row.key), String(row.value || '').trim()]));
+
+  for (let i = 0; i < count; i += 1) {
+    const value = byKey.get(`${prefix}${i}`) || '';
+    if (!value || value === '[]') continue;
+    if (!value.startsWith('[') || !value.endsWith(']')) continue;
+    try {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed) || parsed.length === 0) continue;
+    } catch {
+      continue;
+    }
+    const inner = value.slice(1, -1).trim();
+    if (!inner) continue;
+    if (hasContent) write(',');
+    write(inner);
+    hasContent = true;
+  }
+
+  write(']');
+}
+
+async function writeChunkedArrayTextStreamSafe(write, db, prefix, count) {
+  try {
+    await writeChunkedArrayTextStream(write, db, prefix, count);
+  } catch {
+    write('[]');
+  }
+}
+
+async function safeFirst(db, key) {
+  try {
+    return await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(key).first();
+  } catch {
+    return null;
+  }
+}
+
+async function safeAll(db, keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return [];
+  try {
+    const placeholders = keys.map(() => '?').join(', ');
+    const result = await db
+      .prepare(`SELECT key, value FROM app_state WHERE key IN (${placeholders})`)
+      .bind(...keys)
+      .all();
+    const rows = Array.isArray(result?.results) ? result.results : [];
+    return rows
+      .map(row => ({ key: row?.key, value: row?.value }))
+      .filter(row => typeof row.key === 'string');
+  } catch {
+    return [];
+  }
+}
+
+async function loadChunkedArray(db, prefix, count) {
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const key = `${prefix}${i}`;
+    const row = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(key).first();
+    if (!row?.value) continue;
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) out.push(...parsed);
+  }
+  return out;
+}
+
+async function saveStateV2(db, state, updatedAt) {
+  const chunks = {
+    items: chunkArray(state.items || []),
+    logs: chunkArray(state.logs || []),
+    requests: chunkArray(state.requests || []),
+    vehicles: chunkArray(state.vehicles || []),
+    purchases: chunkArray(state.purchases || [])
+  };
+
+  if (
+    chunks.items.tooLarge ||
+    chunks.logs.tooLarge ||
+    chunks.requests.tooLarge ||
+    chunks.vehicles.tooLarge ||
+    chunks.purchases.tooLarge
+  ) {
+    return { ok: false };
+  }
+
+  const previous = await db.prepare('SELECT value FROM app_state WHERE key = ?').bind(STATE_V2_MANIFEST_KEY).first();
+  const previousKeys = previous?.value ? collectManifestKeysSafe(previous.value) : [];
+  const nextKeys = [];
+
+  const statements = [];
+
+  const upsert = (key, value) => {
+    nextKeys.push(key);
+    statements.push(
+      db
+        .prepare(
+          `
+            INSERT INTO app_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = excluded.updated_at
+          `
+        )
+        .bind(key, value, updatedAt)
+    );
+  };
+
+  upsert(`${STATE_V2_PREFIX}:settings`, JSON.stringify(state.settings || {}));
+  upsert(`${STATE_V2_PREFIX}:ocrAliases`, JSON.stringify(state.ocrAliases || {}));
+
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:items:`, chunks.items.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:logs:`, chunks.logs.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:requests:`, chunks.requests.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:vehicles:`, chunks.vehicles.chunks);
+  writeChunkedArray(upsert, `${STATE_V2_PREFIX}:purchases:`, chunks.purchases.chunks);
+
+  const manifest = {
+    version: 2,
+    updatedAt,
+    parts: {
+      items: chunks.items.chunks.length,
+      logs: chunks.logs.chunks.length,
+      requests: chunks.requests.chunks.length,
+      vehicles: chunks.vehicles.chunks.length,
+      purchases: chunks.purchases.chunks.length
+    }
+  };
+  nextKeys.push(STATE_V2_MANIFEST_KEY);
+  statements.push(
+    db
+      .prepare(
+        `
+          INSERT INTO app_state (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        `
+      )
+      .bind(STATE_V2_MANIFEST_KEY, JSON.stringify(manifest), updatedAt)
+  );
+
+  const nextKeySet = new Set(nextKeys);
+  for (const key of previousKeys) {
+    if (nextKeySet.has(key)) continue;
+    statements.push(db.prepare('DELETE FROM app_state WHERE key = ?').bind(key));
+  }
+
+  for (const statement of statements) {
+    await statement.run();
+  }
+
+  return { ok: true };
+}
+
+function writeChunkedArray(upsert, prefix, list) {
+  for (let i = 0; i < list.length; i += 1) {
+    upsert(`${prefix}${i}`, JSON.stringify(list[i]));
+  }
+}
+
+function chunkArray(records) {
+  const chunks = [];
+  let current = [];
+
+  const fits = value => byteLength(JSON.stringify(value)) <= MAX_STATE_ROW_BYTES;
+
+  for (const record of Array.isArray(records) ? records : []) {
+    current.push(record);
+    if (fits(current)) continue;
+    current.pop();
+    if (current.length === 0) {
+      return { chunks: [], tooLarge: true };
+    }
+    chunks.push(current);
+    current = [record];
+    if (!fits(current)) {
+      return { chunks: [], tooLarge: true };
+    }
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return { chunks, tooLarge: false };
+}
+
+function byteLength(text) {
+  const encoder = new TextEncoder();
+  return encoder.encode(text).length;
+}
+
+function isValidJson(raw) {
+  try {
+    JSON.parse(String(raw ?? ''));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function collectManifestKeysSafe(raw) {
+  let manifest = null;
+  try {
+    manifest = JSON.parse(String(raw || ''));
+  } catch {
+    return [];
+  }
+  if (!manifest || manifest.version !== 2 || !hasSafeManifestParts(manifest.parts)) return [];
+  const parts = manifest.parts || {};
+  const keys = [
+    `${STATE_V2_PREFIX}:settings`,
+    `${STATE_V2_PREFIX}:ocrAliases`
+  ];
+
+  const pushChunks = (prefix, count) => {
+    const total = Number(count) || 0;
+    for (let i = 0; i < total; i += 1) keys.push(`${prefix}${i}`);
+  };
+
+  pushChunks(`${STATE_V2_PREFIX}:items:`, parts.items);
+  pushChunks(`${STATE_V2_PREFIX}:logs:`, parts.logs);
+  pushChunks(`${STATE_V2_PREFIX}:requests:`, parts.requests);
+  pushChunks(`${STATE_V2_PREFIX}:vehicles:`, parts.vehicles);
+  pushChunks(`${STATE_V2_PREFIX}:purchases:`, parts.purchases);
+  keys.push(STATE_V2_MANIFEST_KEY);
+  return keys;
+}
+
+function hasSafeManifestParts(parts) {
+  if (!parts || typeof parts !== 'object') return false;
+  return ['items', 'logs', 'requests', 'vehicles', 'purchases'].every(key => {
+    const value = Number(parts[key]) || 0;
+    return Number.isInteger(value) && value >= 0 && value <= 80;
+  });
 }
 
 export function onRequestOptions() {
@@ -96,6 +607,7 @@ async function ensureSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -106,6 +618,9 @@ async function ensureSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -147,6 +662,33 @@ function mergeStates(existing, incoming) {
   };
 }
 
+function mergeConsultaRequestState(existing, incoming) {
+  return {
+    ...existing,
+    requests: mergeRequestsById(existing.requests, filterConsultaCreatedRequests(existing.requests, incoming.requests))
+  };
+}
+
+function filterConsultaCreatedRequests(existingRequests, incomingRequests) {
+  const existingIds = new Set(existingRequests.map(request => (request?.id ? String(request.id) : '')).filter(Boolean));
+  return incomingRequests.filter(request => isConsultaCreatedRequest(request, existingIds));
+}
+
+function isConsultaCreatedRequest(request, existingIds) {
+  if (!request || !request.id || existingIds.has(String(request.id))) return false;
+  if (request.deletedAt || request.reversedAt || request.fulfilledAt) return false;
+  if (request.status !== 'Aberta') return false;
+  if (!request.vehiclePlate || !request.costCenter) return false;
+  if (!Array.isArray(request.items) || request.items.length === 0) return false;
+
+  return request.items.every(item => {
+    if (!item || !item.sku) return false;
+    const requestedQuantity = Number(item.requestedQuantity);
+    const separatedQuantity = Number(item.separatedQuantity) || 0;
+    return Number.isFinite(requestedQuantity) && requestedQuantity > 0 && separatedQuantity <= 0;
+  });
+}
+
 function mergeItemsBySku(existingItems, incomingItems) {
   const merged = new Map();
   for (const item of existingItems) {
@@ -170,9 +712,122 @@ function mergeRequestsById(existingRequests, incomingRequests) {
     if (!incoming || !incoming.id) continue;
     const id = String(incoming.id);
     const current = merged.get(id);
-    merged.set(id, chooseNewerRecord(current, incoming, 'updatedAt'));
+    merged.set(id, current ? mergeMaterialRequest(current, incoming) : incoming);
   }
   return Array.from(merged.values());
+}
+
+function mergeMaterialRequest(a, b) {
+  const newer = chooseNewerRecord(a, b, 'updatedAt');
+  const older = newer === a ? b : a;
+
+  const merged = { ...older, ...newer };
+
+  merged.items = mergeRequestItems(older?.items || [], newer?.items || []);
+  merged.auditTrail = mergeAuditTrail(older?.auditTrail || [], newer?.auditTrail || []);
+
+  const status = mergeRequestStatus(a, b);
+  merged.status = status;
+
+  if (status === 'Atendida') {
+    merged.fulfilledAt = merged.fulfilledAt || a?.fulfilledAt || b?.fulfilledAt;
+    merged.reversedAt = undefined;
+  }
+
+  if (status === 'Estornada') {
+    merged.reversedAt = merged.reversedAt || a?.reversedAt || b?.reversedAt;
+  }
+
+  const updatedAtTime = Math.max(parseUpdatedAt(a?.updatedAt), parseUpdatedAt(b?.updatedAt));
+  merged.updatedAt = updatedAtTime > 0 ? new Date(updatedAtTime).toISOString() : merged.updatedAt;
+
+  if (a?.deletedAt || b?.deletedAt) {
+    const deletedAtTime = Math.max(parseUpdatedAt(a?.deletedAt), parseUpdatedAt(b?.deletedAt));
+    merged.deletedAt = deletedAtTime > 0 ? new Date(deletedAtTime).toISOString() : a?.deletedAt || b?.deletedAt;
+  }
+
+  return merged;
+}
+
+function mergeRequestStatus(a, b) {
+  const statusA = typeof a?.status === 'string' ? a.status : '';
+  const statusB = typeof b?.status === 'string' ? b.status : '';
+
+  if (a?.reversedAt || b?.reversedAt) return 'Estornada';
+  if (a?.fulfilledAt || b?.fulfilledAt) return 'Atendida';
+
+  const rankA = requestStatusRank(statusA);
+  const rankB = requestStatusRank(statusB);
+  return rankA >= rankB ? statusA || statusB || 'Aberta' : statusB || statusA || 'Aberta';
+}
+
+function requestStatusRank(value) {
+  switch (value) {
+    case 'Estornada':
+      return 5;
+    case 'Atendida':
+      return 4;
+    case 'Separada':
+      return 3;
+    case 'Em separação':
+      return 2;
+    case 'Aberta':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function mergeRequestItems(existingItems, incomingItems) {
+  const merged = new Map();
+
+  for (const item of existingItems) {
+    if (item && item.sku) merged.set(String(item.sku), item);
+  }
+
+  for (const incoming of incomingItems) {
+    if (!incoming || !incoming.sku) continue;
+    const sku = String(incoming.sku);
+    const current = merged.get(sku);
+
+    if (!current) {
+      merged.set(sku, incoming);
+      continue;
+    }
+
+    const requestedQuantity = Math.max(Number(current.requestedQuantity) || 0, Number(incoming.requestedQuantity) || 0);
+    const separatedQuantity = Math.max(Number(current.separatedQuantity) || 0, Number(incoming.separatedQuantity) || 0);
+
+    const base = chooseNewerRecord(current, incoming, 'updatedAt');
+    merged.set(sku, {
+      ...current,
+      ...incoming,
+      ...base,
+      requestedQuantity,
+      separatedQuantity: Math.min(separatedQuantity, requestedQuantity)
+    });
+  }
+
+  return Array.from(merged.values());
+}
+
+function mergeAuditTrail(existingEntries, incomingEntries) {
+  if (!Array.isArray(existingEntries) && !Array.isArray(incomingEntries)) return undefined;
+  const merged = new Map();
+  const all = []
+    .concat(Array.isArray(existingEntries) ? existingEntries : [])
+    .concat(Array.isArray(incomingEntries) ? incomingEntries : []);
+
+  for (const entry of all) {
+    if (!entry) continue;
+    const key = entry.id ? String(entry.id) : '';
+    if (!key) continue;
+    if (!merged.has(key)) merged.set(key, entry);
+  }
+
+  const result = Array.from(merged.values());
+  result.sort((left, right) => parseUpdatedAt(left?.at) - parseUpdatedAt(right?.at));
+  return result;
 }
 
 function mergeVehiclesById(existingVehicles, incomingVehicles) {
@@ -242,4 +897,66 @@ function parseUpdatedAt(value) {
   if (!value || typeof value !== 'string') return 0;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function collectNewDivergenceLogs(existingState, mergedState) {
+  const existingIds = new Set(
+    (existingState?.logs || []).map(log => (log && log.id ? String(log.id) : '')).filter(Boolean)
+  );
+
+  return (mergedState?.logs || []).filter(log => {
+    if (!log || !log.id) return false;
+    if (log.source !== 'divergencia') return false;
+    return !existingIds.has(String(log.id));
+  });
+}
+
+async function sendDivergenceNotifications(logs, updatedAt, env) {
+  const urlList = String(env?.DIVERGENCE_WEBHOOK_URLS || env?.DIVERGENCE_WEBHOOK_URL || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  if (urlList.length === 0) return;
+
+  const payload = JSON.stringify({
+    event: 'divergence_created',
+    updatedAt,
+    divergences: logs.slice(0, 20).map(log => ({
+      id: log.id,
+      sku: log.sku,
+      itemName: log.itemName,
+      location: log.location,
+      delta: log.delta,
+      expectedQuantityAfter: log.expectedQuantityAfter,
+      reportedQuantityAfter: log.reportedQuantityAfter ?? log.quantityAfter,
+      referenceCode: log.referenceCode,
+      date: log.date,
+      note: log.note
+    }))
+  });
+
+  await Promise.allSettled(
+    urlList.map(url => postWebhook(url, payload, env))
+  );
+}
+
+async function postWebhook(url, payload, env) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        ...(env?.DIVERGENCE_WEBHOOK_AUTH ? { authorization: String(env.DIVERGENCE_WEBHOOK_AUTH) } : {}),
+        ...(env?.DIVERGENCE_WEBHOOK_SECRET ? { 'x-webhook-secret': String(env.DIVERGENCE_WEBHOOK_SECRET) } : {})
+      },
+      body: payload,
+      signal: controller.signal
+    });
+  } catch {} finally {
+    clearTimeout(timeout);
+  }
 }

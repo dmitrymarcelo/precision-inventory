@@ -57,6 +57,7 @@ Fluxo:
 Regra critica:
 
 - quantidade digitada = saldo final contado
+- o botao `Ativo` deve pedir confirmacao antes de marcar ou desmarcar o SKU
 
 ## Skill 4 - Operar Solicitacao de pecas
 
@@ -67,6 +68,16 @@ Fluxo:
 3. buscar itens
 4. adicionar somente itens com saldo
 5. salvar ou enviar para separacao
+
+Regra de bateria:
+
+- se a placa ja recebeu uma bateria em solicitacao `Atendida` ainda dentro da validade, abrir popup de confirmacao ao tentar incluir outra bateria
+- o `OK` do popup confirma a inclusao do item; cancelar aborta a inclusao
+- bateria geral vale 12 meses
+- `12047 - BATERIA 5A 12V` vale 6 meses por ser bateria de moto
+- a regra usa `fulfilledAt` da solicitacao atendida; se faltar, usa a data atualizada como fallback
+- pedidos estornados/excluidos nao contam
+- fonte da regra: `src/batteryWarrantyRules.ts`
 
 Estados esperados:
 
@@ -135,6 +146,8 @@ Arquivos mais sensiveis:
 Ponto central:
 
 - `functions/api/state.js`
+- persistencia principal atual: Supabase `Armazem28` (`wpvagfjiqifvitdlzjue`)
+- D1 `precision-inventory-db` permanece como fallback historico enquanto o backend dual existir
 
 O estado online guarda:
 
@@ -144,6 +157,63 @@ O estado online guarda:
 - solicitacoes
 - veiculos
 - aliases OCR
+
+Permissoes de gravacao:
+
+- `admin` e `operacao` podem enviar o estado completo pelo `PUT /api/state`
+- `consulta` pode criar somente novas solicitacoes `Aberta`
+- quando `consulta` envia estado, o backend deve preservar estoque, logs, configuracoes, veiculos, compras e aliases do estado online
+- se mexer nessa regra, validar com `scripts/test-state-consulta-save.mjs`
+- se mexer em outbox/sync local, validar com `scripts/test-sync-outbox.mjs`
+- o `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
+- o `Log do sistema` nao deve criar tabela nova nem historico longo no servidor/Supabase sem aprovacao explicita
+- eventos locais de sync devem continuar limitados no navegador; para historico servidor, definir retencao antes
+- a ponte segura de operacoes usa `/api/operation-journal` e tabela Supabase `operation_journal`, com D1 como fallback historico
+- a retencao da ponte e 7 dias; ela e transicao/confirmacao, nao historico permanente
+- o front deve enviar patch compacto por SKU/id, nunca snapshot gigante do estado inteiro
+- quando existir pendencia local, o botao superior deve agir como `Sincronizar`, nao como `Atualizar do online`
+- se houver `dirty` local antigo sem outbox, o clique em `Sincronizar agora` deve reconstruir a outbox a partir do estado atual antes de enviar
+- se o usuario escolher aplicar o estado online e descartar o local, limpar dirty, outbox e fila local da ponte para nao manter banner vermelho falso
+- se o menu mostrar `Sistema Local` ou `Falha online`, investigar primeiro `GET /api/state` e o detalhe HTTP exibido no menu; nao assumir perda no D1 sem validar
+- quando `GET /api/state` falhar, o front deve mostrar o motivo curto em `Sistema`, porque o dado pode existir no servidor mas a leitura do estado grande pode ter falhado
+- para estado grande, manter a leitura otimizada/State V2 em `functions/api/state.js` e evitar parsing/deserializacao desnecessaria no Worker
+- no State V2, `GET /api/state` deve responder em streaming para nao montar uma string gigante antes de enviar; isso reduz risco de Cloudflare `1102`
+- migracao D1 -> Supabase foi concluida em 2026-05-20; `/api/state` deve retornar `backend: "supabase"` em producao
+- se `/api/state` voltar com `backend: "d1"` e cabecalho `x-precision-supabase-fallback`, investigar primeiro as secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Cloudflare
+- nunca registrar a chave `service_role` em Git, frontend, logs ou memorias persistentes
+- se mexer na ponte, validar com `scripts/test-operation-journal-api.mjs` e `scripts/test-operation-journal-patch.mjs`
+- se o botao `Sincronizar agora` mantiver `Ponte local`, conferir o estado online e limpar somente operacoes locais cujo patch ja conste igual no servidor
+- erros 401/403 da ponte segura devem virar `AUTH` para mostrar `Sessao expirada`, nao falha generica de internet
+- no Supabase, replay de `/api/operation-journal?action=replay` deve usar State V2 quando existir; se ainda nao existir, deve partir do State V1 migrado (`inventory`), nunca de estado vazio
+- previews de branch podem nao ter secrets Supabase e cair para fallback D1; a validacao final precisa ser na producao com `backend: "supabase"`
+- com pendencia local, manter aviso forte, confirmacao de logout e backup exportavel
+
+## Skill 8.1 - Inventario ciclico obrigatorio
+
+Objetivo:
+
+- permitir que administradores obriguem usuarios de `operacao` ou `admin` a finalizar a contagem diaria do armazem
+
+Regra:
+
+- configurar em `Usuarios` pelo campo `Inventario ciclico diario obrigatorio`
+- `consulta` nao pode receber essa obrigatoriedade, porque nao altera estoque
+- usuario obrigado fica limitado a `Painel`, `Estoque` e `Inventario Operacional` ate finalizar o ciclo diario
+- no `Painel`, a contagem diaria aparece somente quando houver obrigatoriedade pendente para o usuario
+- sem bloqueio obrigatorio, o `Painel` deve ficar objetivo, focado em alertas, solicitacoes e operacao do armazem
+- o ciclo diario usa `src/cyclicInventory.ts` e fuso `America/Manaus`
+- item conta como concluido quando existe log operacional do dia (`ajuste` ou `divergencia`) e nao existe divergencia aberta no SKU
+- validar com `scripts/test-cyclic-inventory.mjs` e `scripts/test-user-cycle-requirement.mjs`
+
+## Skill 8.2 - Gestao de usuarios
+
+Regra:
+
+- o modulo `Usuarios` e exclusivo do usuario `Dmitry Marcelo`, matricula `24000`, com papel `admin`
+- outros administradores nao podem acessar a opcao nem pela tela nem pela API `/api/users`
+- backend: `functions/api/users.js`
+- frontend: `src/App.tsx` e `src/components/Layout.tsx`
+- se mexer nessa permissao, validar com `scripts/test-users-primary-admin-access.mjs`
 
 ## Skill 9 - Deploy
 
@@ -166,6 +236,7 @@ Se o deploy travar:
 - nao quebrar o fluxo de operacao para testar uma ideia
 - manter um caminho estavel e outro experimental quando necessario
 - documentar decisoes novas nos arquivos de memoria
+- protecoes contra toque acidental, como confirmacao do botao `Ativo`, devem valer tanto no estoque quanto no detalhe do item
 
 ## Skill 11 - Curva ABC e limites automaticos
 
@@ -210,15 +281,15 @@ Caminho do cofre:
 
 Notas principais:
 
-- `Precision Inventory/00 - Mapa do Projeto`
-- `Precision Inventory/01 - Regras de Negocio`
-- `Precision Inventory/02 - Modulos e Fluxos`
-- `Precision Inventory/03 - Deploy Cloudflare e GitHub`
-- `Precision Inventory/04 - Curva ABC e Inventario Operacional`
-- `Precision Inventory/05 - Decisoes Recentes`
-- `Precision Inventory/06 - Riscos e Cuidados`
-- `Precision Inventory/08 - Prompt de Contexto`
-- `Precision Inventory/99 - Diario de Handoff`
+- `Armazem 28/00 - Mapa do Projeto`
+- `Armazem 28/01 - Regras de Negocio`
+- `Armazem 28/02 - Modulos e Fluxos`
+- `Armazem 28/03 - Deploy Cloudflare e GitHub`
+- `Armazem 28/04 - Curva ABC e Inventario Operacional`
+- `Armazem 28/05 - Decisoes Recentes`
+- `Armazem 28/06 - Riscos e Cuidados`
+- `Armazem 28/08 - Prompt de Contexto`
+- `Armazem 28/99 - Diario de Handoff`
 
 Regra:
 
@@ -249,6 +320,13 @@ Agrupamento atual:
 - `VW` deve aparecer como `SAVEIRO/GOL`
 - `CHEVROLET` deve aparecer como `S-10`
 - `OLEO`, quando salvo no item, deve continuar como tipo operacional para compra
+- pedido manual de compra deve ter placa, centro de custo editavel, SKU, quantidade e motivo
+- ao digitar a placa no pedido manual, buscar a base de veiculos e preencher centro de custo quando encontrar
+- ao digitar SKU/nome no pedido manual, mostrar sugestoes de itens automaticamente
+- o pedido manual pode ser montado com varios SKUs antes de salvar
+- cada SKU do pedido manual pode ter quantidade editada ou ser removido no formulario
+- pedidos manuais em `Manual` ou `Em analise` podem ser editados/removidos depois de criados
+- quando varios SKUs forem salvos juntos, manter o lote pelo campo `manualBatchId`
 
 Cotacoes:
 
@@ -265,10 +343,12 @@ Cotacoes:
 - quando reconhecer outros SKUs no PDF, salvar a cotacao tambem nos itens vinculados, sem aprovar automaticamente
 - se o PDF nao reconhecer um item, permitir vinculo manual no formulario
 - cada cotacao tem botao para imprimir o mapa de cotacao
+- ao imprimir item vinculado, o mapa deve aparecer como um unico orcamento com varias linhas de item
+- se o item vinculado ja tiver cotacoes salvas no proprio SKU, o mapa deve reaproveitar quantidade, valor unitario e total dessa cotacao em vez de imprimir `-`
 
 Memoria Obsidian:
 
-- `Precision Inventory/07 - Proposta Compras Automaticas`
+- `Armazem 28/07 - Proposta Compras Automaticas`
 
 Documento tecnico no projeto:
 
@@ -290,7 +370,7 @@ Regra:
 - antes de iniciar um novo chat, usar o prompt de contexto como handoff
 - o novo agente deve ler `AGENTS.md`, `HANDOFF.md`, `SKILLS.md` e `docs/PROMPT_DE_CONTEXTO.md`
 - para modulo `Compras`, ler tambem `docs/COMPRAS_AUTOMATICAS.md`
-- para memoria ampla, consultar Obsidian `Precision Inventory/08 - Prompt de Contexto`
+- para memoria ampla, consultar Obsidian `Armazem 28/08 - Prompt de Contexto`
 - para memoria procedural Hermes, consultar `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-context\SKILL.md`
 
 Quando sugerir novo chat:
@@ -299,3 +379,201 @@ Quando sugerir novo chat:
 - muitas ferramentas chamadas
 - tarefa nova e grande depois de uma entrega concluida
 - risco de gastar credito relendo contexto antigo
+
+## Skill 15 - Graphify do projeto
+
+Objetivo:
+
+- usar Graphify como mapa rapido de arquitetura do projeto
+- reduzir buscas repetidas em arquivos quando a pergunta for sobre relacao entre modulos
+
+Instalacao local atual:
+
+- CLI: `C:\Users\dmitry.santos\.local\bin\graphify.exe`
+- Grafo do projeto: `graphify-out/`
+- Relatorio principal: `graphify-out/GRAPH_REPORT.md`
+- Hook local do Codex: `.codex/hooks.json`
+- Skill Hermes: `C:\Users\dmitry.santos\.hermes\skills\graphify\SKILL.md`
+- Skill Hermes do fluxo do projeto: `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-graphify\SKILL.md`
+
+Regras:
+
+- antes de perguntas grandes de arquitetura, ler `graphify-out/GRAPH_REPORT.md`
+- para relacoes entre modulos, usar `graphify query`, `graphify path` ou `graphify explain`
+- apos alterar codigo, rodar `C:\Users\dmitry.santos\.local\bin\graphify.exe update .`
+- nao adicionar `graphify-out/cache/`, `graphify-out/manifest.json` nem `graphify-out/cost.json` ao Git
+- manter `.graphifyignore` evitando `node_modules`, `dist`, `.codex-tools`, `AGENTS.md`, `.codex` e o proprio `graphify-out`
+
+## Skill 16 - Divergencias operacionais
+
+Objetivo:
+
+- tratar divergencia como pendencia operacional ate recontagem administrativa
+- reduzir risco de furo em estoque, solicitacao e separacao sem mexer em Compras/Pagamentos
+
+Regra atual:
+
+- a fonte compartilhada da regra e `src/divergenceRules.ts`
+- divergencia aberta = ultimo log `divergencia` do SKU sem log posterior `ajuste`
+- `ajuste` posterior representa recontagem e encerra a pendencia
+- `recebimento` nao encerra divergencia
+- `solicitacao` nao encerra divergencia
+
+Aplicacao:
+
+- `Inventario Operacional` mostra divergencias abertas mesmo se forem de outro dia
+- `Buscar e Atualizar` mostra alerta de divergencia aberta e pede confirmacao para encerrar por ajuste
+- `Solicitacao de pecas` bloqueia item com divergencia aberta antes de criar/salvar pedido
+- `Separacao de material` registra motivo quando o saldo real diverge do sistema
+- baixa final com divergencia exige admin
+- `Historico` mostra divergencias da solicitacao com sistema, real, diferenca e motivo
+
+Cuidados:
+
+- nao liberar item divergente em nova solicitacao sem recontagem
+- nao considerar recebimento como solucao automatica para divergencia antiga
+- se alterar esse fluxo, validar mobile e fluxo de separacao com leitor
+
+## Skill 17 - Protocolo Karpathy para Codex
+
+Objetivo:
+
+- consultar primeiro o protocolo de trabalho antes de tarefas de codigo
+- reduzir suposicoes erradas, overengineering, refatoracao lateral e entrega sem verificacao
+
+Fonte principal no projeto:
+
+- `CODEX.md`
+
+Fonte instalada como skill global do Codex:
+
+- `C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\SKILL.md`
+- referencias originais em `C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\references\`
+
+Repositorio clonado para referencia local:
+
+- `.codex-tools/andrej-karpathy-skills`
+
+Instalacao como skill do workspace (Trae):
+
+- `.trae/skills/karpathy-guidelines/SKILL.md`
+
+Regra:
+
+- antes de mexer em codigo, consultar `CODEX.md`
+- para tarefas nao triviais, aplicar os quatro principios:
+  - pensar antes de codar
+  - simplicidade primeiro
+  - mudancas cirurgicas
+  - execucao guiada por objetivo verificavel
+- o protocolo complementa, mas nao substitui, `AGENTS.md`, `HANDOFF.md` e as regras de negocio do estoque
+
+## Skill 18 - Kit Preventivas
+
+Objetivo:
+
+- manter os kits de preventiva centralizados e consistentes entre a tela `Kit Preventivas` e o seletor de kits em `Solicitacao de pecas`
+
+Fonte principal:
+
+- `src/preventiveKitCatalog.ts`
+
+Regra:
+
+- alterar componentes do kit somente no catalogo central
+- validar se a tela e o seletor de solicitacao usam o mesmo SKU apos a mudanca
+
+Kit `MOTO` atual:
+
+- `18002` - `FILTRO COMBUSTIVEL GI80 HONDA NXR BROS` - exige 1
+- `17902` - `OLEO 20W50 MOTO - LITRO` - exige 1
+
+## Skill 19 - Superpowers para Codex
+
+Objetivo:
+
+- disponibilizar metodologia complementar de desenvolvimento por skills, sem substituir o protocolo `CODEX.md`
+- usar processos estruturados quando a tarefa pedir descoberta, planejamento, TDD, debug, revisao ou verificacao final
+
+Instalacao atual:
+
+- clone principal: `C:\Users\dmitry.santos\.codex\superpowers`
+- descoberta de skills por junction: `C:\Users\dmitry.santos\.agents\skills\superpowers`
+- clone de referencia do projeto: `.codex-tools/superpowers`
+- fonte: `https://github.com/obra/superpowers.git`
+
+Skills instaladas:
+
+- `brainstorming`
+- `dispatching-parallel-agents`
+- `executing-plans`
+- `finishing-a-development-branch`
+- `receiving-code-review`
+- `requesting-code-review`
+- `subagent-driven-development`
+- `systematic-debugging`
+- `test-driven-development`
+- `using-git-worktrees`
+- `using-superpowers`
+- `verification-before-completion`
+- `writing-plans`
+- `writing-skills`
+
+## Skill 20 - Impeccable (UI/UX)
+
+Objetivo:
+
+- melhorar UX/UI com alto rigor (hierarquia visual, tipografia, layout, cores, acessibilidade, responsivo, performance e polish)
+- usar quando a tarefa envolver design, refinamento visual, auditoria de interface, ou iteracao guiada por qualidade
+
+Fonte (repositorio):
+
+- `.codex-tools/impeccable` (clone de referencia do projeto)
+- fonte: `https://github.com/pbakaus/impeccable.git`
+
+Instalacao como skill do workspace (Trae):
+
+- `.trae/skills/impeccable/SKILL.md`
+
+Regra:
+
+- consultar `CODEX.md` primeiro em tarefas de codigo
+- usar Superpowers depois, quando alguma skill combinar com o trabalho
+- as regras de negocio do inventario e a UX mobile continuam tendo prioridade
+- reiniciar o Codex para a lista de skills aparecer em novas sessoes
+
+Validacao:
+
+- todas as skills passaram no `quick_validate.py` com `PYTHONUTF8=1`
+
+## Skill 20 - Validade de bateria por placa
+
+Objetivo:
+
+- abrir popup de confirmacao quando uma placa tentar solicitar outra bateria antes de vencer a validade da ultima bateria atendida
+- reduzir troca duplicada e facilitar revisao operacional sem bloquear casos legitimos
+
+Fonte principal:
+
+- `src/batteryWarrantyRules.ts`
+- integracao visual em `src/components/RequestManager.tsx`
+
+Regra atual:
+
+- validade operacional da bateria geral = 12 meses a partir da data de fechamento da solicitacao atendida
+- validade do SKU `12047 - BATERIA 5A 12V` = 6 meses, por ser bateria de moto
+- o calculo usa `fulfilledAt`; se um registro antigo nao tiver esse campo, usa `updatedAt` ou `createdAt`
+- compara por placa normalizada
+- considera apenas solicitacoes `Atendida`
+- ignora solicitacoes excluidas, estornadas e o proprio pedido em edicao
+- identifica baterias de veiculo por descricao/categoria contendo `BATERIA`
+- ignora acessorios como terminal, cabo, suporte, tampa, carregador e bateria pequena/litio tipo `CR2032`
+- o alerta aparece no formulario quando o pedido atual tem bateria e a placa tem bateria ainda dentro da validade operacional
+- ao adicionar bateria por busca, leitor, seletor por modelo ou kit, abre popup antes de incluir se houver validade ativa
+
+Comportamento:
+
+- popup exige `OK` para confirmar a inclusao do item
+- se cancelar, a bateria nao entra na solicitacao
+- texto deve orientar revisao antes de liberar outra bateria
+- se no futuro o usuario pedir bloqueio obrigatorio, transformar a regra em validacao antes de salvar

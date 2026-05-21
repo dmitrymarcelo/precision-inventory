@@ -11,6 +11,7 @@ import {
   Minimize2,
   Package,
   PackageCheck,
+  RefreshCw,
   ScanLine,
   Shield,
   ShoppingCart,
@@ -26,8 +27,21 @@ interface LayoutProps {
   setActiveTab: (tab: string) => void;
   requests: MaterialRequest[];
   authRole: 'consulta' | 'operacao' | 'admin';
+  authMode?: 'password' | 'stock-consulta';
+  canManageUsers?: boolean;
   onLogout: () => void;
   cloudStatus: 'loading' | 'online' | 'offline' | 'saving';
+  cloudStatusDetail?: string;
+  cloudUpdatePending?: boolean;
+  cloudUpdateAt?: string;
+  localPendingSync?: boolean;
+  pendingJournalCount?: number;
+  onApplyCloudUpdate?: () => void;
+  onIgnoreCloudUpdate?: () => void;
+  onForcePendingSync?: () => void;
+  onExportPendingBackup?: () => void;
+  onUploadPendingBackup?: () => void;
+  onDiscardLocalPending?: () => void;
 }
 
 type NavigationItem = {
@@ -43,14 +57,28 @@ export default function Layout({
   setActiveTab,
   requests,
   authRole,
+  authMode,
+  canManageUsers = false,
   onLogout,
-  cloudStatus
+  cloudStatus,
+  cloudStatusDetail = '',
+  cloudUpdatePending,
+  cloudUpdateAt,
+  onApplyCloudUpdate,
+  onIgnoreCloudUpdate,
+  localPendingSync = false,
+  pendingJournalCount = 0,
+  onForcePendingSync,
+  onExportPendingBackup,
+  onUploadPendingBackup,
+  onDiscardLocalPending
 }: LayoutProps) {
   const [supportsFullscreen, setSupportsFullscreen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
-  const roleLabel = authRole === 'admin' ? 'Admin' : authRole === 'operacao' ? 'Operação' : 'Consulta';
+  const roleLabel =
+    authMode === 'stock-consulta' ? 'Consulta Estoque' : authRole === 'admin' ? 'Admin' : authRole === 'operacao' ? 'Operação' : 'Consulta';
   const cloudLabel =
     cloudStatus === 'online'
       ? 'Online'
@@ -58,13 +86,18 @@ export default function Layout({
         ? 'Salvando'
         : cloudStatus === 'loading'
           ? 'Conectando'
-          : 'Local';
+          : cloudStatusDetail
+            ? 'Falha online'
+            : 'Local';
   const cloudTone =
     cloudStatus === 'online'
       ? 'bg-primary-container text-on-primary-container'
       : cloudStatus === 'saving' || cloudStatus === 'loading'
         ? 'bg-surface-container-highest text-on-surface-variant'
         : 'bg-error-container text-on-error-container';
+  const syncButtonHandler = localPendingSync && onForcePendingSync ? onForcePendingSync : onApplyCloudUpdate;
+  const syncButtonLabel = localPendingSync ? 'Sincronizar' : 'Atualizar';
+  const syncButtonAriaLabel = localPendingSync ? 'Sincronizar pendencias deste aparelho' : 'Atualizar do online';
 
   const openRequestCount = requests.filter(request => {
     if (request.deletedAt) return false;
@@ -116,13 +149,21 @@ export default function Layout({
     }
   };
 
-  const navigationItems: NavigationItem[] = [
-    { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-    { key: 'vehicle-parts', label: 'Peças/Modelo', icon: Package },
-    { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
-    { key: 'requests', label: 'Solicitações', icon: ShoppingCart }
-  ];
-  if (authRole !== 'consulta') {
+  const navigationItems: NavigationItem[] =
+    authMode === 'stock-consulta'
+      ? [
+          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+          { key: 'vehicle-parts', label: 'Peças/Modelo', icon: Package },
+          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
+          { key: 'inventory', label: 'Estoque', icon: ClipboardList }
+        ]
+      : [
+          { key: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+          { key: 'vehicle-parts', label: 'Peças/Modelo', icon: Package },
+          { key: 'preventive-kits', label: 'Kit Preventivas', icon: PackageCheck },
+          { key: 'requests', label: 'Solicitações', icon: ShoppingCart }
+        ];
+  if (authMode !== 'stock-consulta' && authRole !== 'consulta') {
     navigationItems.push({
       key: 'separation',
       label: 'Separação',
@@ -132,10 +173,10 @@ export default function Layout({
     navigationItems.push({ key: 'inventory', label: 'Estoque', icon: ClipboardList });
     navigationItems.push({ key: 'purchases', label: 'Compras', icon: ShoppingCart });
   }
-  if (authRole === 'admin') {
+  if (authMode !== 'stock-consulta' && authRole !== 'consulta') {
     navigationItems.push({ key: 'inventory-operations', label: 'Inventário Operacional', icon: ClipboardPlus });
   }
-  if (authRole !== 'consulta') {
+  if (authMode !== 'stock-consulta' && authRole !== 'consulta') {
     navigationItems.push({ key: 'request-history', label: 'Histórico', icon: History });
   }
   return (
@@ -143,7 +184,7 @@ export default function Layout({
       <header className="fixed top-0 w-full z-50 bg-slate-50/85 dark:bg-slate-950/85 backdrop-blur-xl shadow-sm dark:shadow-none h-14">
         <div className="flex items-center justify-between px-4 md:px-5 py-3 w-full h-full">
           <div className="flex items-center">
-            <Archive className="text-blue-900 dark:text-blue-200" size={22} aria-label="Precision Inventory" />
+            <Archive className="text-blue-900 dark:text-blue-200" size={22} aria-label="Armazem 28" />
           </div>
 
           <div className="hidden lg:flex items-center gap-2 mr-4">
@@ -186,80 +227,222 @@ export default function Layout({
                   {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </button>
               )}
+              {authMode !== 'stock-consulta' && authRole !== 'consulta' && syncButtonHandler ? (
+                <button
+                  type="button"
+                  onClick={syncButtonHandler}
+                  className={`relative h-9 px-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors active:scale-95 duration-150 ${
+                    localPendingSync
+                      ? 'bg-primary text-on-primary hover:bg-primary/90'
+                      : 'bg-surface-container-highest text-on-surface-variant hover:bg-surface-container-low'
+                  }`}
+                  aria-label={syncButtonAriaLabel}
+                >
+                  <RefreshCw size={18} />
+                  <span className="hidden sm:inline">{syncButtonLabel}</span>
+                </button>
+              ) : null}
             </div>
 
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                type="button"
-                onClick={() => setIsProfileMenuOpen(current => !current)}
-                className="h-9 w-9 rounded-full bg-surface-container-highest overflow-hidden flex items-center justify-center text-on-primary-container font-bold text-xs ring-2 ring-transparent hover:ring-primary/25 transition-all"
-                aria-label="Abrir menu do usuário"
-                aria-expanded={isProfileMenuOpen}
-              >
-                <img
-                  className="w-full h-full object-cover"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuA53BVqxrhuHCQBP8pavZTZAxJbROOTQlQhmuTSmCwtBKqmcZOcl0kpBR7jDWKQqLhSoHwEqquURsCPMvdogYH2hvrMlzBhi5st5M--BTMV1QUhEHP-vIY1dasbWxaIawKZgWrQd3kHaz_8gF7SVHucQoSb_KPIY-LhcfIoc82I30inE_6G_HSJJukJvrGuH8brjXJCst0cZtvdFsSk-6CMcyDeV64XONOFTPb9ATY5yr4Jsxha093eVfjR4hLj5yhN8GwuzmBqEGoA"
-                  alt="Usuário"
-                />
-              </button>
+            {authMode === 'stock-consulta' ? (
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 h-9 px-3 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold text-xs">
+                  <Shield size={16} className="text-primary" />
+                  {roleLabel}
+                </div>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="h-9 px-3 rounded-xl bg-surface-container-highest text-error font-bold text-sm flex items-center gap-2 hover:bg-error-container/20 transition-colors"
+                >
+                  <LogOut size={18} />
+                  Sair
+                </button>
+              </div>
+            ) : (
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileMenuOpen(current => !current)}
+                  className="h-9 w-9 rounded-full bg-surface-container-highest overflow-hidden flex items-center justify-center text-on-primary-container font-bold text-xs ring-2 ring-transparent hover:ring-primary/25 transition-all"
+                  aria-label="Abrir menu do usuário"
+                  aria-expanded={isProfileMenuOpen}
+                >
+                  <img
+                    className="w-full h-full object-cover"
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuA53BVqxrhuHCQBP8pavZTZAxJbROOTQlQhmuTSmCwtBKqmcZOcl0kpBR7jDWKQqLhSoHwEqquURsCPMvdogYH2hvrMlzBhi5st5M--BTMV1QUhEHP-vIY1dasbWxaIawKZgWrQd3kHaz_8gF7SVHucQoSb_KPIY-LhcfIoc82I30inE_6G_HSJJukJvrGuH8brjXJCst0cZtvdFsSk-6CMcyDeV64XONOFTPb9ATY5yr4Jsxha093eVfjR4hLj5yhN8GwuzmBqEGoA"
+                    alt="Usuário"
+                  />
+                </button>
 
-              {isProfileMenuOpen && (
-                <div className="absolute right-0 mt-3 w-64 overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-[0_18px_48px_rgba(36,52,69,0.18)] z-[80]">
-                  <div className="p-4 border-b border-outline-variant/15">
-                    <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Conta</p>
-                    <div className="mt-3 grid gap-2 text-sm">
-                      <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low px-3 py-2">
-                        <span className="inline-flex items-center gap-2 text-on-surface-variant font-semibold">
-                          <Shield size={16} />
-                          Permissão
-                        </span>
-                        <strong className="text-on-surface">{roleLabel}</strong>
-                      </div>
-                      <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${cloudTone}`}>
-                        <span className="inline-flex items-center gap-2 font-semibold">
-                          <Cloud size={16} />
-                          Sistema
-                        </span>
-                        <strong>{cloudLabel}</strong>
+                {isProfileMenuOpen && (
+                  <div className="absolute right-0 mt-3 w-64 overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-[0_18px_48px_rgba(36,52,69,0.18)] z-[80]">
+                    <div className="p-4 border-b border-outline-variant/15">
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Conta</p>
+                      <div className="mt-3 grid gap-2 text-sm">
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low px-3 py-2">
+                          <span className="inline-flex items-center gap-2 text-on-surface-variant font-semibold">
+                            <Shield size={16} />
+                            Permissão
+                          </span>
+                          <strong className="text-on-surface">{roleLabel}</strong>
+                        </div>
+                        <div className={`rounded-xl px-3 py-2 ${cloudTone}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="inline-flex items-center gap-2 font-semibold">
+                              <Cloud size={16} />
+                              Sistema
+                            </span>
+                            <strong>{cloudLabel}</strong>
+                          </div>
+                          {cloudStatusDetail ? (
+                            <p className="mt-1 text-[11px] font-semibold leading-snug opacity-85">
+                              {cloudStatusDetail}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="p-2">
-                    {authRole === 'admin' && (
+                    <div className="p-2">
+                      {canManageUsers && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            setActiveTab('users');
+                          }}
+                          className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                        >
+                          <Users size={18} className="text-primary" />
+                          Usuários
+                        </button>
+                      )}
+                      {authRole !== 'consulta' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            setActiveTab('operation-log');
+                          }}
+                          className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                        >
+                          <History size={18} className="text-primary" />
+                          Log do sistema
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
                           setIsProfileMenuOpen(false);
-                          setActiveTab('users');
+                          onLogout();
                         }}
-                        className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+                        className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-error hover:bg-error-container/30 transition-colors"
                       >
-                        <Users size={18} className="text-primary" />
-                        Usuários
+                        <LogOut size={18} />
+                        Sair
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsProfileMenuOpen(false);
-                        onLogout();
-                      }}
-                      className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-error hover:bg-error-container/30 transition-colors"
-                    >
-                      <LogOut size={18} />
-                      Sair
-                    </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="bg-slate-200/50 dark:bg-slate-800/50 h-[1px] w-full mb-px" />
       </header>
 
       <main className="flex-grow pt-20 pb-8 px-3 sm:px-4 lg:px-6 xl:px-8 2xl:px-10 max-w-[1720px] 2xl:max-w-[1880px] mx-auto w-full">
+        {localPendingSync ? (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-red-800">
+                  Salvamento pendente neste aparelho
+                </p>
+                <p className="mt-1 text-sm font-semibold text-red-950">
+                  Nao limpe dados do navegador, nao troque de aparelho e nao formate antes de sincronizar.
+                </p>
+                <p className="mt-1 text-xs text-red-800">
+                  A ponte de seguranca guarda a operacao por ate 7 dias no servidor quando consegue sincronizar.
+                  {pendingJournalCount > 0 ? ` Pendencias locais da ponte: ${pendingJournalCount}.` : ''}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {onForcePendingSync ? (
+                  <button
+                    type="button"
+                    onClick={onForcePendingSync}
+                    className="h-11 px-4 rounded-xl bg-primary text-on-primary font-bold"
+                  >
+                    Sincronizar agora
+                  </button>
+                ) : null}
+                {onExportPendingBackup ? (
+                  <button
+                    type="button"
+                    onClick={onExportPendingBackup}
+                    className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
+                  >
+                    Exportar backup
+                  </button>
+                ) : null}
+                {onUploadPendingBackup ? (
+                  <button
+                    type="button"
+                    onClick={onUploadPendingBackup}
+                    className="h-11 px-4 rounded-xl bg-white text-red-800 border border-red-200 font-bold"
+                  >
+                    Enviar backup ao servidor
+                  </button>
+                ) : null}
+                {onDiscardLocalPending ? (
+                  <button
+                    type="button"
+                    onClick={onDiscardLocalPending}
+                    className="h-11 px-4 rounded-xl bg-white text-red-900 border border-red-300 font-bold"
+                  >
+                    Continuar (descartar local)
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {cloudUpdatePending ? (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-amber-800">
+                  Atualização disponível
+                </p>
+                <p className="mt-1 text-sm font-semibold text-amber-900">
+                  Outro colaborador salvou mudanças no sistema online.
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Para evitar conflito, sua tela não atualizou automaticamente
+                  {cloudUpdateAt ? ` (cloud ${formatCloudUpdateTime(cloudUpdateAt)}).` : '.'}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={onApplyCloudUpdate}
+                  className="h-11 px-4 rounded-xl bg-primary text-on-primary font-bold"
+                >
+                  Atualizar agora
+                </button>
+                <button
+                  type="button"
+                  onClick={onIgnoreCloudUpdate}
+                  className="h-11 px-4 rounded-xl bg-surface-container-highest text-on-surface-variant font-bold"
+                >
+                  Manter minha tela
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {children}
       </main>
 
@@ -296,4 +479,13 @@ export default function Layout({
       </nav>
     </div>
   );
+}
+
+function formatCloudUpdateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
 }

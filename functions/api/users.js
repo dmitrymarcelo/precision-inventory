@@ -1,4 +1,7 @@
 import { createUser, getSessionFromRequest } from './auth.js';
+import { getSupabaseAdmin, isSupabaseConfigured, migrateD1ToSupabaseIfNeeded } from './supabase.js';
+
+const PRIMARY_USER_MANAGER_MATRICULA = '24000';
 
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
@@ -6,34 +9,77 @@ const jsonHeaders = {
 };
 
 export async function onRequestGet({ request, env }) {
-  await ensureAuthSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env);
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    await migrateD1ToSupabaseIfNeeded(env, sb);
+  } else {
+    await ensureAuthSchema(env.DB);
+  }
 
   const url = new URL(request.url);
   const meta = url.searchParams.get('meta') === '1';
 
   if (meta) {
-    const row = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
-    const count = Number(row?.count) || 0;
+    const count = supabaseEnabled
+      ? await getUsersCountSupabase(env)
+      : Number((await env.DB.prepare('SELECT COUNT(1) as count FROM users').first())?.count) || 0;
     return Response.json({ ok: true, hasUsers: count > 0 }, { headers: jsonHeaders });
   }
 
-  const session = await getSessionFromRequest(request, env.DB);
+  const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
   if (!session) {
     return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
   }
-  if (session.role !== 'admin') {
+  if (!canManageUsers(session)) {
     return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
   }
 
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    const { data, error } = await sb
+      .from('users')
+      .select('id, matricula, name, role, active, requires_daily_cycle_inventory, created_at, updated_at')
+      .order('matricula');
+    if (error) {
+      return Response.json({ ok: false, message: 'Servidor com instabilidade agora. Aguarde e tente novamente.' }, { status: 500, headers: jsonHeaders });
+    }
+    const users = Array.isArray(data)
+      ? data.map(user => ({
+        id: String(user.id),
+        matricula: String(user.matricula || ''),
+        name: String(user.name || ''),
+        role: String(user.role || ''),
+        active: Number(user.active) || 0,
+        requiresDailyCycleInventory: Number(user.requires_daily_cycle_inventory) || 0,
+        createdAt: String(user.created_at || ''),
+        updatedAt: String(user.updated_at || '')
+      }))
+      : [];
+    return Response.json({ ok: true, users }, { headers: jsonHeaders });
+  }
+
   const rows = await env.DB
-    .prepare('SELECT id, matricula, name, role, active, created_at as createdAt, updated_at as updatedAt FROM users ORDER BY matricula')
+    .prepare(
+      `SELECT id, matricula, name, role, active,
+              requires_daily_cycle_inventory as requiresDailyCycleInventory,
+              created_at as createdAt, updated_at as updatedAt
+       FROM users
+       ORDER BY matricula`
+    )
     .all();
 
   return Response.json({ ok: true, users: rows?.results ?? [] }, { headers: jsonHeaders });
 }
 
 export async function onRequestPost({ request, env }) {
-  await ensureAuthSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env);
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    await migrateD1ToSupabaseIfNeeded(env, sb);
+  } else {
+    await ensureAuthSchema(env.DB);
+  }
 
   const url = new URL(request.url);
   const bootstrap = url.searchParams.get('bootstrap') === '1';
@@ -42,6 +88,7 @@ export async function onRequestPost({ request, env }) {
   const matricula = normalizeMatricula(body?.matricula);
   const name = typeof body?.nome === 'string' ? body.nome.trim() : '';
   const role = normalizeRole(body?.role);
+  const requiresDailyCycleInventory = role !== 'consulta' && body?.requiresDailyCycleInventory === true ? 1 : 0;
   const password = typeof body?.senha === 'string' ? body.senha : '';
 
   if (!matricula || !name || !password) {
@@ -55,15 +102,16 @@ export async function onRequestPost({ request, env }) {
     return Response.json({ ok: false, message: 'Senha muito curta (mínimo 4).' }, { status: 400, headers: jsonHeaders });
   }
 
-  const row = await env.DB.prepare('SELECT COUNT(1) as count FROM users').first();
-  const hasUsers = (Number(row?.count) || 0) > 0;
+  const hasUsers = supabaseEnabled
+    ? (await getUsersCountSupabase(env)) > 0
+    : (Number((await env.DB.prepare('SELECT COUNT(1) as count FROM users').first())?.count) || 0) > 0;
 
   if (hasUsers) {
-    const session = await getSessionFromRequest(request, env.DB);
+    const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
     if (!session) {
       return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
     }
-    if (session.role !== 'admin') {
+    if (!canManageUsers(session)) {
       return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
     }
   } else if (!bootstrap) {
@@ -75,15 +123,24 @@ export async function onRequestPost({ request, env }) {
 
   try {
     if (!hasUsers && bootstrap) {
-      const result = await bootstrapUpsertAdmin(env.DB, { matricula, name, password });
+      const result = await bootstrapUpsertAdmin(supabaseEnabled ? env : env.DB, { matricula, name, password });
       return Response.json({ ok: true, id: result.id, createdAt: result.createdAt }, { headers: jsonHeaders });
     }
 
-    const result = await createUser(env.DB, { matricula, name, role, password });
-    await env.DB
-      .prepare('UPDATE users SET must_change_password = 1 WHERE id = ?')
-      .bind(result.id)
-      .run();
+    const result = await createUser(supabaseEnabled ? env : env.DB, { matricula, name, role, password });
+    if (supabaseEnabled) {
+      const sb = getSupabaseAdmin(env);
+      const { error } = await sb
+        .from('users')
+        .update({ must_change_password: 1, requires_daily_cycle_inventory: requiresDailyCycleInventory })
+        .eq('id', result.id);
+      if (error) throw error;
+    } else {
+      await env.DB
+        .prepare('UPDATE users SET must_change_password = 1, requires_daily_cycle_inventory = ? WHERE id = ?')
+        .bind(requiresDailyCycleInventory, result.id)
+        .run();
+    }
     return Response.json({ ok: true, id: result.id, createdAt: result.createdAt }, { headers: jsonHeaders });
   } catch (error) {
     const message = String(error?.message || '');
@@ -98,13 +155,19 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestPut({ request, env }) {
-  await ensureAuthSchema(env.DB);
+  const supabaseEnabled = isSupabaseConfigured(env);
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    await migrateD1ToSupabaseIfNeeded(env, sb);
+  } else {
+    await ensureAuthSchema(env.DB);
+  }
 
-  const session = await getSessionFromRequest(request, env.DB);
+  const session = await getSessionFromRequest(request, supabaseEnabled ? env : env.DB);
   if (!session) {
     return Response.json({ ok: false, message: 'Sessão inválida.' }, { status: 401, headers: jsonHeaders });
   }
-  if (session.role !== 'admin') {
+  if (!canManageUsers(session)) {
     return Response.json({ ok: false, message: 'Sem permissão.' }, { status: 403, headers: jsonHeaders });
   }
 
@@ -117,46 +180,72 @@ export async function onRequestPut({ request, env }) {
   const name = typeof body?.nome === 'string' ? body.nome.trim() : undefined;
   const role = body?.role !== undefined ? normalizeRole(body.role) : undefined;
   const active = body?.active !== undefined ? (body.active ? 1 : 0) : undefined;
+  const hasCycleRequirement = body?.requiresDailyCycleInventory !== undefined;
   const password = typeof body?.senha === 'string' ? body.senha : '';
 
-  const existing = await env.DB
-    .prepare('SELECT id, matricula, role, active FROM users WHERE id = ? LIMIT 1')
-    .bind(id)
-    .first();
+  const existing = supabaseEnabled
+    ? await loadUserByIdSupabase(env, id)
+    : await env.DB
+      .prepare('SELECT id, matricula, role, active, requires_daily_cycle_inventory as requiresDailyCycleInventory FROM users WHERE id = ? LIMIT 1')
+      .bind(id)
+      .first();
 
   if (!existing) {
     return Response.json({ ok: false, message: 'Usuário não encontrado.' }, { status: 404, headers: jsonHeaders });
   }
 
   if (String(existing.role) === 'admin' && active === 0) {
-    const adminCountRow = await env.DB.prepare("SELECT COUNT(1) as count FROM users WHERE role = 'admin' AND active = 1").first();
-    const adminCount = Number(adminCountRow?.count) || 0;
+    const adminCount = supabaseEnabled
+      ? await getAdminActiveCountSupabase(env)
+      : Number((await env.DB.prepare("SELECT COUNT(1) as count FROM users WHERE role = 'admin' AND active = 1").first())?.count) || 0;
     if (adminCount <= 1) {
       return Response.json({ ok: false, message: 'Não é possível desativar o último admin.' }, { status: 400, headers: jsonHeaders });
     }
   }
 
   const now = new Date().toISOString();
-  await env.DB
-    .prepare(
-      `
+  const nextRole = role || String(existing.role || '');
+  const requiresDailyCycleInventory =
+    nextRole === 'consulta'
+      ? 0
+      : hasCycleRequirement
+        ? body.requiresDailyCycleInventory === true ? 1 : 0
+        : undefined;
+
+  if (supabaseEnabled) {
+    const payload = {
+      ...(name !== undefined ? { name } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(active !== undefined ? { active } : {}),
+      ...(requiresDailyCycleInventory !== undefined ? { requires_daily_cycle_inventory: requiresDailyCycleInventory } : {}),
+      updated_at: now
+    };
+    const sb = getSupabaseAdmin(env);
+    const { error } = await sb.from('users').update(payload).eq('id', id);
+    if (error) throw error;
+  } else {
+    await env.DB
+      .prepare(
+        `
         UPDATE users
         SET
           name = COALESCE(?, name),
           role = COALESCE(?, role),
           active = COALESCE(?, active),
+          requires_daily_cycle_inventory = COALESCE(?, requires_daily_cycle_inventory),
           updated_at = ?
         WHERE id = ?
       `
-    )
-    .bind(name ?? null, role ?? null, active ?? null, now, id)
-    .run();
+      )
+      .bind(name ?? null, role ?? null, active ?? null, requiresDailyCycleInventory ?? null, now, id)
+      .run();
+  }
 
   if (password) {
     if (password.length < 4) {
       return Response.json({ ok: false, message: 'Senha muito curta (mínimo 4).' }, { status: 400, headers: jsonHeaders });
     }
-    await updatePassword(env.DB, id, password, now, true);
+    await updatePassword(supabaseEnabled ? env : env.DB, id, password, now, true);
   }
 
   return Response.json({ ok: true }, { headers: jsonHeaders });
@@ -185,6 +274,7 @@ async function ensureAuthSchema(db) {
           password_salt TEXT NOT NULL,
           password_iters INTEGER NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
+          requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0,
           active INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -195,6 +285,9 @@ async function ensureAuthSchema(db) {
 
   try {
     await db.prepare('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0').run();
+  } catch {}
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN requires_daily_cycle_inventory INTEGER NOT NULL DEFAULT 0').run();
   } catch {}
 
   await db
@@ -232,30 +325,48 @@ function normalizeRole(value) {
   return 'consulta';
 }
 
+function canManageUsers(session) {
+  return String(session?.role || '') === 'admin' && normalizeMatricula(session?.matricula) === PRIMARY_USER_MANAGER_MATRICULA;
+}
+
 async function bootstrapUpsertAdmin(db, { matricula, name, password }) {
   const now = new Date().toISOString();
-  const existing = await db
-    .prepare('SELECT id FROM users WHERE matricula = ? LIMIT 1')
-    .bind(matricula)
-    .first();
+  const env = db && typeof db === 'object' && !('prepare' in db) ? db : null;
+  const supabaseEnabled = env ? isSupabaseConfigured(env) : false;
+
+  const existing = supabaseEnabled
+    ? await loadUserByMatriculaSupabase(env, matricula)
+    : await db
+      .prepare('SELECT id FROM users WHERE matricula = ? LIMIT 1')
+      .bind(matricula)
+      .first();
 
   if (!existing) {
-    return await createUser(db, { matricula, name, role: 'admin', password });
+    return await createUser(supabaseEnabled ? env : db, { matricula, name, role: 'admin', password });
   }
 
   const id = String(existing.id);
-  await db
-    .prepare(
-      `
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    const { error } = await sb
+      .from('users')
+      .update({ name, role: 'admin', active: 1, must_change_password: 0, updated_at: now })
+      .eq('id', id);
+    if (error) throw error;
+  } else {
+    await db
+      .prepare(
+        `
         UPDATE users
         SET name = ?, role = 'admin', active = 1, must_change_password = 0, updated_at = ?
         WHERE id = ?
       `
-    )
-    .bind(name, now, id)
-    .run();
+      )
+      .bind(name, now, id)
+      .run();
+  }
 
-  await updatePassword(db, id, password, now, false);
+  await updatePassword(supabaseEnabled ? env : db, id, password, now, false);
 
   return { id, createdAt: now };
 }
@@ -408,14 +519,23 @@ function concatBytes(...parts) {
   return merged;
 }
 
-function hashPassword(password, saltValue, iterations) {
+async function hashPassword(password, saltValue, iterations) {
   const enc = new TextEncoder();
   const salt = decodeSalt(saltValue);
   let data = concatBytes(salt, enc.encode(':'), enc.encode(password));
   const rounds = Number.isFinite(iterations) && iterations > 0 ? Math.floor(iterations) : 50000;
-  for (let i = 0; i < rounds; i += 1) {
-    data = sha256(data);
+  const subtle = globalThis.crypto?.subtle;
+
+  if (subtle && typeof subtle.digest === 'function') {
+    for (let i = 0; i < rounds; i += 1) {
+      data = new Uint8Array(await subtle.digest('SHA-256', data));
+    }
+  } else {
+    for (let i = 0; i < rounds; i += 1) {
+      data = sha256(data);
+    }
   }
+
   return bytesToHex(data);
 }
 
@@ -423,7 +543,25 @@ async function updatePassword(db, id, password, updatedAt, mustChangePassword) {
   const iterations = 50000;
   const saltBytes = getRandomBytes(16);
   const salt = bytesToHex(saltBytes);
-  const hash = hashPassword(password, salt, iterations);
+  const hash = await hashPassword(password, salt, iterations);
+
+  const env = db && typeof db === 'object' && !('prepare' in db) ? db : null;
+  const supabaseEnabled = env ? isSupabaseConfigured(env) : false;
+  if (supabaseEnabled) {
+    const sb = getSupabaseAdmin(env);
+    const { error } = await sb
+      .from('users')
+      .update({
+        password_hash: hash,
+        password_salt: salt,
+        password_iters: iterations,
+        must_change_password: mustChangePassword ? 1 : 0,
+        updated_at: updatedAt
+      })
+      .eq('id', id);
+    if (error) throw error;
+    return;
+  }
 
   await db
     .prepare(
@@ -435,4 +573,38 @@ async function updatePassword(db, id, password, updatedAt, mustChangePassword) {
     )
     .bind(hash, salt, iterations, mustChangePassword ? 1 : 0, updatedAt, id)
     .run();
+}
+
+async function getUsersCountSupabase(env) {
+  const sb = getSupabaseAdmin(env);
+  const { count, error } = await sb.from('users').select('id', { count: 'exact', head: true });
+  if (error) return 0;
+  return Number(count) || 0;
+}
+
+async function getAdminActiveCountSupabase(env) {
+  const sb = getSupabaseAdmin(env);
+  const { count, error } = await sb.from('users').select('id', { count: 'exact', head: true }).eq('role', 'admin').eq('active', 1);
+  if (error) return 0;
+  return Number(count) || 0;
+}
+
+async function loadUserByIdSupabase(env, id) {
+  const sb = getSupabaseAdmin(env);
+  const { data, error } = await sb.from('users').select('id, matricula, role, active, requires_daily_cycle_inventory').eq('id', id).maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    matricula: data.matricula,
+    role: data.role,
+    active: data.active,
+    requiresDailyCycleInventory: data.requires_daily_cycle_inventory
+  };
+}
+
+async function loadUserByMatriculaSupabase(env, matricula) {
+  const sb = getSupabaseAdmin(env);
+  const { data, error } = await sb.from('users').select('id').eq('matricula', matricula).maybeSingle();
+  if (error || !data) return null;
+  return data;
 }

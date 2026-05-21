@@ -19,6 +19,7 @@ import {
   PackageCheck,
   Search,
   Send,
+  ShieldAlert,
   Trash2,
   Truck,
   X
@@ -34,7 +35,15 @@ import {
   startPreparedScanner,
   type DetectedScan
 } from '../barcodeUtils';
-import { InventoryItem, MaterialRequest, MaterialRequestAuditActor, MaterialRequestAuditEntry, VehicleRecord } from '../types';
+import {
+  InventoryItem,
+  InventoryLog,
+  InventorySettings,
+  MaterialRequest,
+  MaterialRequestAuditActor,
+  MaterialRequestAuditEntry,
+  VehicleRecord
+} from '../types';
 import {
   createEmptyRequest,
   createRequestItem,
@@ -47,14 +56,24 @@ import {
 import { ProductImage } from '../productVisuals';
 import { getVehicleTypeFromModel, listVehicleCatalogByType, normalizeOperationalVehicleType } from '../vehicleCatalog';
 import { findVehicleByPlate, normalizePlate } from '../vehicleBase';
-import { preventiveKitCatalog } from '../preventiveKitCatalog';
+import { resolvePreventiveKitCatalog } from '../preventiveKitCatalog';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { getOpenDivergenceMap } from '../divergenceRules';
+import {
+  findActiveBatteryWarrantyAlert,
+  formatBatteryWarrantyDate,
+  isBatteryInventoryItem,
+  isBatteryRequestItem
+} from '../batteryWarrantyRules';
 
 interface RequestManagerProps {
   items: InventoryItem[];
+  logs: InventoryLog[];
   requests: MaterialRequest[];
   vehicles: VehicleRecord[];
+  settings: InventorySettings;
   setRequests: React.Dispatch<React.SetStateAction<MaterialRequest[]>>;
+  authToken?: string;
   externalRequestId?: string | null;
   onClearExternalRequest?: () => void;
   canCreateRequests: boolean;
@@ -69,11 +88,22 @@ interface RequestManagerProps {
   onOpenVehicleParts: (type?: string) => void;
 }
 
+type RequestLockPayload = {
+  requestId: string;
+  holder: { userId: string; matricula: string; name: string; role: string };
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+};
+
 export default function RequestManager({
   items,
+  logs,
   requests,
   vehicles,
+  settings,
   setRequests,
+  authToken,
   externalRequestId = null,
   onClearExternalRequest,
   canCreateRequests,
@@ -103,6 +133,11 @@ export default function RequestManager({
   const [pickerKitId, setPickerKitId] = useState('');
   const [openRequestMenuId, setOpenRequestMenuId] = useState<string | null>(null);
   const [isPlateSuggestionOpen, setIsPlateSuggestionOpen] = useState(false);
+  const [editingLock, setEditingLock] = useState<RequestLockPayload | null>(null);
+  const [editingLockStatus, setEditingLockStatus] = useState<'idle' | 'loading' | 'holding' | 'blocked' | 'error'>(
+    'idle'
+  );
+  const editingLockHeldRef = useRef(false);
   const ignoredExternalIdRef = useRef<string | null>(null);
   const [isSkuScannerOpen, setIsSkuScannerOpen] = useState(false);
   const [isSkuScannerBusy, setIsSkuScannerBusy] = useState(false);
@@ -210,7 +245,14 @@ export default function RequestManager({
         aliasRef.current[candidate] = detected.matchedSku as string;
       });
 
-      addItemToDraft(item);
+      const wasAdded = addItemToDraft(item);
+      if (!wasAdded) {
+        setSkuScannerStatus(`Inclusão do SKU ${detected.matchedSku} não realizada.`);
+        if (shouldCloseScanner) {
+          closeSkuScanner();
+        }
+        return;
+      }
       setSkuScannerStatus(`Código ${detected.matchedSku} confirmado.`);
       void playConfirmTone(skuAudioContextRef);
       if ('vibrate' in navigator) {
@@ -407,6 +449,7 @@ export default function RequestManager({
   }, [draft.vehiclePlate, isPlateSuggestionOpen, normalizedVehicles]);
 
   const stockBySku = useMemo(() => new Map(items.map(item => [item.sku, item.quantity])), [items]);
+  const openDivergenceBySku = useMemo(() => getOpenDivergenceMap(logs), [logs]);
   const vehicleTypeCards = useMemo(() => {
     const catalogGroups = listVehicleCatalogByType();
     const itemTypes = Array.from(new Set(items.map(item => getEffectiveVehicleType(item)).filter(Boolean)));
@@ -542,14 +585,252 @@ export default function RequestManager({
   const persistedEditingRequest = editingRequestId
     ? requests.find(request => request.id === editingRequestId) || null
     : null;
+  const currentUserId = auditActor.id || '';
+  const isEditingLockHeldByOther = Boolean(
+    persistedEditingRequest &&
+      editingLock &&
+      editingLock.holder?.userId &&
+      editingLock.holder.userId !== currentUserId
+  );
+  const isEditingLockHeldByMe = Boolean(
+    persistedEditingRequest &&
+      editingLock &&
+      editingLock.holder?.userId &&
+      editingLock.holder.userId === currentUserId
+  );
+  const isPersistedStatusLocked = persistedEditingRequest ? isRequestLocked(persistedEditingRequest.status) : false;
   const isDraftReadOnly = persistedEditingRequest
-    ? isRequestLocked(persistedEditingRequest.status) || !canEditExistingRequests
+    ? isPersistedStatusLocked || isEditingLockHeldByOther || !canEditExistingRequests
     : false;
   const canMutateDraft = persistedEditingRequest
-    ? canEditExistingRequests && canEditRequest(persistedEditingRequest.status)
+    ? canEditExistingRequests && canEditRequest(persistedEditingRequest.status) && !isEditingLockHeldByOther
     : canCreateRequests;
   const draftSkuSet = useMemo(() => new Set(draft.items.map(item => item.sku)), [draft.items]);
   const pickerSelectedSet = useMemo(() => new Set(pickerSelectedSkus), [pickerSelectedSkus]);
+  const batteryWarrantyAlert = useMemo(() => {
+    if (!draft.items.some(isBatteryRequestItem)) return null;
+    return findActiveBatteryWarrantyAlert(requests, draft.vehiclePlate, draft.id || editingRequestId || undefined);
+  }, [draft.id, draft.items, draft.vehiclePlate, editingRequestId, requests]);
+
+  const describeEditingLockHolder = () => {
+    const holderName = normalizeUserFacingText(editingLock?.holder?.name || '');
+    const holderMatricula = normalizeUserFacingText(editingLock?.holder?.matricula || '');
+    if (holderName && holderMatricula) return `${holderName} (${holderMatricula})`;
+    if (holderName) return holderName;
+    if (holderMatricula) return holderMatricula;
+    return 'outro usuário';
+  };
+
+  useEffect(() => {
+    editingLockHeldRef.current = false;
+    setEditingLock(null);
+    setEditingLockStatus('idle');
+    const requestId = editingRequestId || '';
+    if (!requestId) return;
+
+    let cancelled = false;
+    let heartbeatTimer: number | null = null;
+    let pollTimer: number | null = null;
+
+    const makeAuthHeaders = () => {
+      const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' };
+      if (authToken) headers.authorization = `Bearer ${authToken}`;
+      return headers;
+    };
+
+    const readLock = async () => {
+      const response = await fetch(`/api/request-lock?requestId=${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return data.lock;
+    };
+
+    const postLock = async (action: 'acquire' | 'heartbeat' | 'release', keepalive = false) => {
+      const response = await fetch(`/api/request-lock?action=${action}`, {
+        method: 'POST',
+        headers: makeAuthHeaders(),
+        body: JSON.stringify({ requestId }),
+        keepalive
+      });
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('AUTH');
+      }
+      if (response.status === 409) {
+        const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+        return { ok: false as const, lock: data.lock };
+      }
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+      const data = (await response.json()) as { ok: boolean; lock: RequestLockPayload | null };
+      return { ok: true as const, lock: data.lock };
+    };
+
+    const heartbeat = async () => {
+      if (!canEditExistingRequests || !authToken) return;
+      try {
+        const result = await postLock('heartbeat');
+        if (cancelled) return;
+        if (result.ok) {
+          setEditingLock(result.lock);
+          setEditingLockStatus('holding');
+          editingLockHeldRef.current =
+            Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+        } else {
+          setEditingLock(result.lock);
+          setEditingLockStatus('blocked');
+          editingLockHeldRef.current = false;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          setEditingLockStatus('error');
+          setEditingLock(null);
+          editingLockHeldRef.current = false;
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+      }
+    };
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      pollTimer = window.setInterval(async () => {
+        try {
+          const latest = await readLock();
+          if (cancelled) return;
+          if (!latest) {
+            setEditingLock(null);
+            if (canEditExistingRequests && authToken) {
+              const acquired = await postLock('acquire');
+              if (cancelled) return;
+              if (acquired.ok) {
+                setEditingLock(acquired.lock);
+                setEditingLockStatus('holding');
+                editingLockHeldRef.current =
+                  Boolean(acquired.lock?.holder?.userId) && acquired.lock?.holder.userId === (auditActor.id || '');
+                if (pollTimer) {
+                  window.clearInterval(pollTimer);
+                  pollTimer = null;
+                }
+                if (!heartbeatTimer) {
+                  heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+                }
+              } else {
+                setEditingLock(acquired.lock);
+                setEditingLockStatus('blocked');
+              }
+            }
+          } else {
+            setEditingLock(latest);
+          }
+        } catch {
+          return;
+        }
+      }, 4000);
+    };
+
+    const acquireOrLoad = async () => {
+      try {
+        if (canEditExistingRequests && authToken) {
+          setEditingLockStatus('loading');
+          const result = await postLock('acquire');
+          if (cancelled) return;
+          if (result.ok) {
+            setEditingLock(result.lock);
+            setEditingLockStatus('holding');
+            editingLockHeldRef.current =
+              Boolean(result.lock?.holder?.userId) && result.lock?.holder.userId === (auditActor.id || '');
+            if (!heartbeatTimer) {
+              heartbeatTimer = window.setInterval(() => void heartbeat(), 15_000);
+            }
+            return;
+          }
+          setEditingLock(result.lock);
+          setEditingLockStatus('blocked');
+          startPolling();
+          return;
+        }
+
+        const lock = await readLock();
+        if (cancelled) return;
+        setEditingLock(lock);
+        setEditingLockStatus(lock ? 'blocked' : 'idle');
+        if (lock) startPolling();
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : '';
+        if (message === 'AUTH') {
+          showToast('Sessão expirada. Saia e entre novamente para editar.', 'info');
+        }
+        setEditingLockStatus('error');
+        setEditingLock(null);
+        editingLockHeldRef.current = false;
+      }
+    };
+
+    void acquireOrLoad();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void acquireOrLoad();
+        if (editingLockHeldRef.current) {
+          void heartbeat();
+        }
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      if (!editingLockHeldRef.current) return;
+      if (!canEditExistingRequests || !authToken) return;
+      void postLock('release', true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (pollTimer) window.clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (editingLockHeldRef.current && canEditExistingRequests && authToken) {
+        void postLock('release', true);
+      }
+      editingLockHeldRef.current = false;
+    };
+  }, [auditActor.id, authToken, canEditExistingRequests, editingRequestId, showToast]);
+
+  const confirmBatteryWarrantyBeforeAdd = (candidateItems: InventoryItem[]) => {
+    if (!candidateItems.some(isBatteryInventoryItem)) return true;
+
+    const alert = findActiveBatteryWarrantyAlert(requests, draft.vehiclePlate, draft.id || editingRequestId || undefined);
+    if (!alert) return true;
+
+    const batteryNames = candidateItems
+      .filter(isBatteryInventoryItem)
+      .map(item => `${normalizeUserFacingText(item.name)} (SKU ${item.sku})`)
+      .join(', ');
+
+    return window.confirm(
+      [
+        'Atenção: bateria ainda dentro da validade.',
+        '',
+        `Placa: ${normalizePlate(draft.vehiclePlate) || 'sem placa'}`,
+        `Bateria anterior: ${alert.itemName} (SKU ${alert.sku})`,
+        `Atendida em: ${formatBatteryWarrantyDate(alert.fulfilledAt)}`,
+        `Validade: ${alert.validityMonths} meses, até ${formatBatteryWarrantyDate(alert.validUntil)}`,
+        `Faltam ${alert.daysRemaining} dias para vencer.`,
+        '',
+        `Item que você está incluindo: ${batteryNames || 'bateria'}`,
+        '',
+        'Clique em OK para confirmar a inclusão mesmo assim.'
+      ].join('\n')
+    );
+  };
 
   const appendAuditEntry = (request: MaterialRequest, entry: Omit<MaterialRequestAuditEntry, 'id'>) => {
     const trail = Array.isArray(request.auditTrail) ? request.auditTrail : [];
@@ -618,12 +899,14 @@ export default function RequestManager({
     [items]
   );
 
+  const preventiveKitCatalog = useMemo(() => resolvePreventiveKitCatalog(settings), [settings]);
+
   const pickerKitCards = useMemo(() => {
     return preventiveKitCatalog.map(kit => {
       const supported = kit.items.map(component => {
         const item = stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
         const availableQuantity = item?.quantity ?? 0;
-        return item ? Math.floor(availableQuantity / component.requiredQuantity) : 0;
+        return item && !openDivergenceBySku.has(item.sku) ? Math.floor(availableQuantity / component.requiredQuantity) : 0;
       });
       const availableKits = supported.length > 0 ? Math.min(...supported) : 0;
       return {
@@ -632,7 +915,7 @@ export default function RequestManager({
         availableKits
       };
     });
-  }, [stockItemByNormalizedSku]);
+  }, [openDivergenceBySku, preventiveKitCatalog, stockItemByNormalizedSku]);
 
   type PickerKitEntry = {
     sku: string;
@@ -677,7 +960,7 @@ export default function RequestManager({
       : entries;
 
     return filtered.slice(0, 80);
-  }, [pickerItemQuery, pickerKitId, stockItemByNormalizedSku]);
+  }, [pickerItemQuery, pickerKitId, preventiveKitCatalog, stockItemByNormalizedSku]);
 
   const openTypeModelPicker = (presetType?: string) => {
     if (!canMutateDraft) {
@@ -728,8 +1011,19 @@ export default function RequestManager({
       return;
     }
 
+    const currentSelectedSkuSet = new Set(draft.items.map(entry => entry.sku));
+    const addableSelectedItems = selectedItems.filter(
+      item => !currentSelectedSkuSet.has(item.sku) && item.quantity > 0 && !openDivergenceBySku.has(item.sku)
+    );
+
+    if (!confirmBatteryWarrantyBeforeAdd(addableSelectedItems)) {
+      showToast('Inclusão da bateria cancelada.', 'info');
+      return;
+    }
+
     let added = 0;
     let withoutStock = 0;
+    let withDivergence = 0;
     let alreadyInRequest = 0;
 
     setDraft(current => {
@@ -743,6 +1037,10 @@ export default function RequestManager({
         }
         if (item.quantity <= 0) {
           withoutStock += 1;
+          return;
+        }
+        if (openDivergenceBySku.has(item.sku)) {
+          withDivergence += 1;
           return;
         }
         nextItems.push(createRequestItem(item));
@@ -759,6 +1057,7 @@ export default function RequestManager({
 
     const parts: string[] = [];
     if (added > 0) parts.push(`${added} adicionados`);
+    if (withDivergence > 0) parts.push(`${withDivergence} com divergencia`);
     if (alreadyInRequest > 0) parts.push(`${alreadyInRequest} já estavam`);
     if (withoutStock > 0) parts.push(`${withoutStock} sem saldo`);
     showToast(parts.length ? parts.join(' • ') : 'Nenhum item adicionado.', added > 0 ? 'success' : 'info');
@@ -782,10 +1081,26 @@ export default function RequestManager({
       return;
     }
 
+    const currentKitSkuSet = new Set(draft.items.map(entry => entry.sku));
+    const kitItems = kit.items
+      .map(component => {
+        const item = stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
+        if (!item || currentKitSkuSet.has(item.sku)) return null;
+        if (item.quantity < component.requiredQuantity || openDivergenceBySku.has(item.sku)) return null;
+        return item;
+      })
+      .filter((value): value is InventoryItem => Boolean(value));
+
+    if (!confirmBatteryWarrantyBeforeAdd(kitItems)) {
+      showToast('Inclusão da bateria cancelada.', 'info');
+      return;
+    }
+
     let added = 0;
     let alreadyInRequest = 0;
     let missing = 0;
     let insufficientStock = 0;
+    let withDivergence = 0;
 
     setDraft(current => {
       const currentSkuSet = new Set(current.items.map(entry => entry.sku));
@@ -808,6 +1123,11 @@ export default function RequestManager({
           return;
         }
 
+        if (openDivergenceBySku.has(item.sku)) {
+          withDivergence += 1;
+          return;
+        }
+
         nextItems.push({
           ...createRequestItem(item),
           requestedQuantity: component.requiredQuantity,
@@ -826,6 +1146,7 @@ export default function RequestManager({
 
     const parts: string[] = [];
     if (added > 0) parts.push(`${added} itens do kit adicionados`);
+    if (withDivergence > 0) parts.push(`${withDivergence} com divergencia`);
     if (alreadyInRequest > 0) parts.push(`${alreadyInRequest} já estavam`);
     if (insufficientStock > 0) parts.push(`${insufficientStock} sem saldo`);
     if (missing > 0) parts.push(`${missing} não encontrados`);
@@ -906,6 +1227,28 @@ export default function RequestManager({
       return null;
     }
 
+    const blockedItem = draft.items.find(requestItem => {
+      const stockItem = items.find(item => item.sku === requestItem.sku) || null;
+      if (!stockItem) return true;
+      if (stockItem.quantity <= 0) return true;
+      if (openDivergenceBySku.has(stockItem.sku)) return true;
+      return requestItem.requestedQuantity > stockItem.quantity;
+    });
+
+    if (blockedItem) {
+      const stockItem = items.find(item => item.sku === blockedItem.sku) || null;
+      if (stockItem && openDivergenceBySku.has(stockItem.sku)) {
+        showToast(`SKU ${blockedItem.sku} tem divergencia aberta. Reconte antes de solicitar.`, 'info');
+        return null;
+      }
+      if (!stockItem || stockItem.quantity <= 0) {
+        showToast(`SKU ${blockedItem.sku} esta sem saldo disponivel.`, 'info');
+        return null;
+      }
+      showToast(`SKU ${blockedItem.sku} tem saldo ${stockItem.quantity}. Ajuste a quantidade solicitada.`, 'info');
+      return null;
+    }
+
     const now = new Date().toISOString();
     const vehicleModel = (matchedVehicleModel || draft.vehicleDescription || '').trim();
     const auditEvent: MaterialRequestAuditEntry['event'] = draft.id ? 'request_updated' : 'request_created';
@@ -959,18 +1302,28 @@ export default function RequestManager({
   const addItemToDraft = (item: InventoryItem) => {
     if (!canMutateDraft) {
       showToast('Esta solicitação está bloqueada para edição.', 'info');
-      return;
+      return false;
     }
 
     if (item.quantity <= 0) {
       showToast(`O item ${item.sku} está sem saldo e não pode entrar na solicitação.`, 'info');
-      return;
+      return false;
+    }
+
+    if (openDivergenceBySku.has(item.sku)) {
+      showToast(`SKU ${item.sku} tem divergencia aberta. Reconte antes de solicitar.`, 'info');
+      return false;
     }
 
     const alreadyAdded = draft.items.some(requestItem => requestItem.sku === item.sku);
     if (alreadyAdded) {
       showToast(`O item ${item.sku} já está nesta solicitação.`, 'info');
-      return;
+      return false;
+    }
+
+    if (!confirmBatteryWarrantyBeforeAdd([item])) {
+      showToast('Inclusão da bateria cancelada.', 'info');
+      return false;
     }
 
     setDraft(current => ({
@@ -979,6 +1332,7 @@ export default function RequestManager({
       updatedAt: new Date().toISOString()
     }));
     setItemQuery('');
+    return true;
   };
 
   const removeItemFromDraft = (itemId: string) => {
@@ -1092,7 +1446,7 @@ export default function RequestManager({
           </div>
         </div>
 
-        {persistedEditingRequest && isDraftReadOnly && (
+        {persistedEditingRequest && isPersistedStatusLocked && (
           <div className="mb-5 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
             <Lock size={18} className="text-primary shrink-0 mt-0.5" />
             <div>
@@ -1103,6 +1457,35 @@ export default function RequestManager({
             </div>
           </div>
         )}
+
+        {persistedEditingRequest && !isPersistedStatusLocked && isEditingLockHeldByOther && (
+          <div className="mb-5 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-4 flex items-start gap-3">
+            <ShieldAlert size={18} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-on-surface">Solicitação em modificação</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Em processo de modificação por {describeEditingLockHolder()}. Esta tela fica somente para consulta até liberar.
+              </p>
+              {canEditExistingRequests ? (
+                <p className="text-sm text-on-surface-variant mt-2">
+                  Assim que a pessoa sair, o sistema libera automaticamente e você poderá editar.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {persistedEditingRequest && !isPersistedStatusLocked && isEditingLockHeldByMe && editingLockStatus === 'holding' ? (
+          <div className="mb-5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-on-surface">Você está com prioridade nesta solicitação</p>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Enquanto esta tela estiver aberta, outros usuários verão um aviso de “em modificação” e não conseguirão editar.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-xl bg-surface-container-low border border-outline-variant/15 p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -1233,6 +1616,24 @@ export default function RequestManager({
             </div>
           )}
 
+          {batteryWarrantyAlert ? (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 flex items-start gap-3">
+              <ShieldAlert size={20} className="text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-950">Atenção: bateria ainda dentro da validade</p>
+                <p className="text-sm text-amber-950/85 mt-1">
+                  Esta placa recebeu {normalizeUserFacingText(batteryWarrantyAlert.itemName)} em{' '}
+                  {formatBatteryWarrantyDate(batteryWarrantyAlert.fulfilledAt)} na solicitação{' '}
+                  {batteryWarrantyAlert.requestCode}. A validade operacional é de {batteryWarrantyAlert.validityMonths} meses e vai até{' '}
+                  {formatBatteryWarrantyDate(batteryWarrantyAlert.validUntil)}.
+                </p>
+                <p className="text-xs font-semibold text-amber-900 mt-2">
+                  Faltam {batteryWarrantyAlert.daysRemaining} dias para vencer. Revise antes de liberar outra bateria.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-4">
             <button
               type="button"
@@ -1329,6 +1730,7 @@ export default function RequestManager({
                                       stockItemByNormalizedSku.get(normalizeSkuForKit(component.sku)) || null;
                                     if (!item) return;
                                     if (item.quantity <= 0) return;
+                                    if (openDivergenceBySku.has(item.sku)) return;
                                     if (draftSkuSet.has(item.sku)) return;
                                     selectedSkus.push(item.sku);
                                   });
@@ -1427,8 +1829,9 @@ export default function RequestManager({
                           pickerVisibleKitEntries.map(entry => {
                             const item = entry.item;
                             const hasStock = (item?.quantity ?? 0) > 0;
+                            const hasOpenDivergence = item ? openDivergenceBySku.has(item.sku) : false;
                             const alreadyAdded = item ? draftSkuSet.has(item.sku) : false;
-                            const selectable = Boolean(item) && hasStock && !alreadyAdded;
+                            const selectable = Boolean(item) && hasStock && !hasOpenDivergence && !alreadyAdded;
                             const checked = item ? pickerSelectedSet.has(item.sku) : false;
 
                             return (
@@ -1437,7 +1840,7 @@ export default function RequestManager({
                                 className={`block rounded-xl border px-4 py-3 transition-colors ${
                                   selectable
                                     ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/10'
-                                    : !item || !hasStock
+                                    : !item || !hasStock || hasOpenDivergence
                                       ? 'bg-error-container/15 border-error/25 text-on-surface-variant'
                                       : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
                                 }`}
@@ -1472,6 +1875,11 @@ export default function RequestManager({
                                         Sem saldo: item bloqueado para solicitação
                                       </p>
                                     )}
+                                    {hasOpenDivergence && (
+                                      <p className="text-[11px] font-semibold text-error mt-1">
+                                        Divergencia aberta: recontar antes de solicitar
+                                      </p>
+                                    )}
                                     {alreadyAdded && (
                                       <p className="text-[11px] font-semibold text-on-surface-variant mt-1">
                                         Já está nesta solicitação
@@ -1490,8 +1898,9 @@ export default function RequestManager({
                       ) : pickerVisibleItems.length > 0 ? (
                         pickerVisibleItems.map(item => {
                           const hasStock = item.quantity > 0;
+                          const hasOpenDivergence = openDivergenceBySku.has(item.sku);
                           const alreadyAdded = draftSkuSet.has(item.sku);
-                          const selectable = hasStock && !alreadyAdded;
+                          const selectable = hasStock && !hasOpenDivergence && !alreadyAdded;
                           const checked = pickerSelectedSet.has(item.sku);
 
                           return (
@@ -1500,7 +1909,7 @@ export default function RequestManager({
                               className={`block rounded-xl border px-4 py-3 transition-colors ${
                                 selectable
                                   ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/10'
-                                  : !hasStock
+                                  : !hasStock || hasOpenDivergence
                                     ? 'bg-error-container/15 border-error/25 text-on-surface-variant'
                                     : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
                               }`}
@@ -1527,6 +1936,11 @@ export default function RequestManager({
                                   {!hasStock && (
                                     <p className="text-[11px] font-semibold text-error mt-1">
                                       Sem saldo: item bloqueado para solicitação
+                                    </p>
+                                  )}
+                                  {hasOpenDivergence && (
+                                    <p className="text-[11px] font-semibold text-error mt-1">
+                                      Divergencia aberta: recontar antes de solicitar
                                     </p>
                                   )}
                                   {alreadyAdded && (
@@ -1724,15 +2138,17 @@ export default function RequestManager({
             <div className="mt-3 grid gap-2">
               {filteredItems.map(item => {
                 const hasStock = item.quantity > 0;
+                const hasOpenDivergence = openDivergenceBySku.has(item.sku);
+                const canAddItem = hasStock && !hasOpenDivergence;
 
                 return (
                   <button
                     key={item.sku}
                     type="button"
                     onClick={() => addItemToDraft(item)}
-                    disabled={!hasStock}
+                    disabled={!canAddItem}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                      hasStock
+                      canAddItem
                         ? 'bg-surface-container-lowest border-outline-variant/15 hover:border-primary/25 hover:bg-primary-container/15'
                         : 'bg-error-container/15 border-error/25 text-on-surface-variant cursor-not-allowed opacity-90'
                     }`}
@@ -1749,11 +2165,11 @@ export default function RequestManager({
                       </div>
                       <span
                         className={`shrink-0 inline-flex items-center gap-1 font-semibold text-sm ${
-                          hasStock ? 'text-primary' : 'text-error'
+                          canAddItem ? 'text-primary' : 'text-error'
                         }`}
                       >
                         <Plus size={16} />
-                        {hasStock ? 'Adicionar' : 'Sem saldo'}
+                        {canAddItem ? 'Adicionar' : hasOpenDivergence ? 'Divergencia' : 'Sem saldo'}
                       </span>
                     </div>
                   </button>
@@ -1782,11 +2198,16 @@ export default function RequestManager({
             <div className="space-y-3">
               {draft.items.map(requestItem => {
                 const availableQuantity = stockBySku.get(requestItem.sku) ?? 0;
+                const openDivergence = openDivergenceBySku.get(requestItem.sku);
 
                 return (
                   <div
                     key={requestItem.id}
-                    className="rounded-xl border border-outline-variant/15 bg-surface-container-low p-4"
+                    className={`rounded-xl border p-4 ${
+                      openDivergence
+                        ? 'border-error/30 bg-error-container/15'
+                        : 'border-outline-variant/15 bg-surface-container-low'
+                    }`}
                   >
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1803,6 +2224,11 @@ export default function RequestManager({
                         <p className={`text-[11px] font-semibold mt-2 ${availableQuantity > 0 ? 'text-on-surface-variant' : 'text-error'}`}>
                           Saldo disponível: {availableQuantity}
                         </p>
+                        {openDivergence ? (
+                          <p className="text-[11px] font-semibold mt-1 text-error">
+                            Divergencia aberta: recontar antes de salvar esta solicitacao
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-3">

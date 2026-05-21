@@ -1,6 +1,893 @@
 # HANDOFF.md
 
-Ultima atualizacao: 2026-05-02
+Ultima atualizacao: 2026-05-21
+
+## Hotfix: Sincronizar limpa pendencia local segura no Supabase em 2026-05-21
+
+- Problema:
+  - usuario relatou que, mesmo tocando em `Sincronizar`, o banner `Salvamento pendente neste aparelho` continuava aparecendo
+  - tela mostrava `Ponte local: 10`, `Sistema: Salvando` e eventos recentes de Supabase ativo
+  - havia duvida se o app estava realmente apontado para Supabase ou se ainda gravava no D1
+- Confirmado em producao antes/depois:
+  - `https://precision-inventory.pages.dev/api/state` respondeu `200`
+  - `backend=supabase`, sem cabecalho de fallback `x-precision-supabase-fallback`
+  - estado manteve `1710` itens, `3401` logs e `384` solicitacoes
+  - Cloudflare Pages/Functions continua hospedando o app/API; Supabase e o banco principal
+  - D1 permanece no codigo apenas como fallback historico enquanto a arquitetura dual existir
+- Causa encontrada:
+  - a fila local da ponte podia ficar presa no navegador quando a operacao ja constava no estado online, mas o aparelho nao recebia confirmacao para limpar o `localStorage`
+  - erros 401/403 da ponte (`/api/operation-journal`) eram tratados como falha generica em alguns caminhos, em vez de `Sessao expirada`
+  - no replay Supabase, se ainda nao existisse State V2, o codigo podia partir de estado vazio em vez do estado V1 migrado (`inventory`)
+- Implementado:
+  - `src/operationJournal.ts` ganhou reconciliacao segura: remove IDs locais somente quando o patch local ja aparece igual no estado online
+  - `src/App.tsx` passou a tentar essa reconciliacao ao clicar `Sincronizar agora` quando o envio da ponte falha
+  - erros 401/403 da ponte agora viram `AUTH`, permitindo mensagem clara de sessao expirada
+  - `functions/api/operation-journal.js` agora usa State V2 quando existir e, se nao existir, usa o State V1 migrado como base do replay Supabase
+  - textos de UI/log foram atualizados de `D1` para `servidor`, para nao confundir a operacao
+- Validado local:
+  - `scripts/test-operation-journal-local-reconcile.mjs` passou
+  - `scripts/test-operation-journal-supabase-replay-base.mjs` passou
+  - `scripts/test-operation-journal-auth-errors.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-supabase-migration.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `node node_modules/typescript/bin/tsc --noEmit` passou com Node portatil
+  - `node node_modules/vite/bin/vite.js build` passou com Node portatil
+  - `npm run lint` foi tentado, mas `npm` nao esta no PATH desta sessao; usado equivalente direto com Node portatil
+- Deploy:
+  - primeiro deploy sem `--branch main` subiu preview `https://e9658612.precision-inventory.pages.dev`; esse preview nao tinha secrets Supabase e caiu para fallback D1
+  - deploy correto em producao foi feito com `--branch main --commit-dirty=true`
+  - producao passou a servir `assets/index-BxFZurQS.js`
+  - producao validada: `/api/state` respondeu `backend=supabase`, sem fallback, e `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina nos aparelhos
+  - tocar em `Sincronizar agora`
+  - se a pendencia ja estiver no Supabase, o banner deve sumir
+  - se aparecer `Sessao expirada`, sair e entrar novamente antes de sincronizar
+
+## Migracao D1 para Supabase concluida em 2026-05-20
+
+- Contexto:
+  - usuario informou que o espaco da Cloudflare acabou e que outra IDE iniciou a transferencia do D1 para Supabase, mas nao finalizou
+  - projeto Supabase confirmado pelo plugin: `Armazem28`, ref `wpvagfjiqifvitdlzjue`, status `ACTIVE_HEALTHY`
+- Implementado/confirmado nesta etapa:
+  - schema principal do Supabase ja existe para `app_state`, `users`, `sessions`, `operation_journal` e `request_locks`
+  - Pages production possui secrets criptografadas `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_URL` foi regravada com `https://wpvagfjiqifvitdlzjue.supabase.co`
+  - a secret `SUPABASE_SERVICE_ROLE_KEY` foi regravada com a chave `service_role` correta do projeto
+  - primeiro deploy apos corrigir URL: `https://be792d99.precision-inventory.pages.dev`
+  - deploy final apos corrigir a chave: `https://e26cebcf.precision-inventory.pages.dev`
+- Resultado:
+  - producao `https://precision-inventory.pages.dev/api/state` respondeu `200` com `backend=supabase` em 6 repeticoes seguidas
+  - estado retornado pelo Supabase manteve `1710` itens, `3401` logs e `384` solicitacoes
+  - marcador `__migrated_from_d1_v1` foi gravado em `app_state`
+  - marcador registrou: `appStateRows=1`, `usersRows=6`, `sessionsRows=17`, `journalRows=29`, `lockRows=98`, `lockReadSkipped=false`
+  - contagem direta no Supabase apos migracao: `app_state=2`, `users=6`, `sessions=17`, `operation_journal=29`, `request_locks=98`
+  - `/api/users?meta=1` respondeu `200`
+  - `/api/auth?action=login` com senha invalida respondeu `401` em 3 repeticoes, sem `500/503`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Fonte de verdade atual:
+  - Supabase `Armazem28` passou a ser a persistencia online principal
+  - Cloudflare D1 `precision-inventory-db` fica como origem historica migrada/fallback de seguranca enquanto o codigo dual existir
+- Cuidado de seguranca:
+  - a chave `service_role` nao deve ir para Git, frontend, logs ou memoria textual
+  - como a chave foi compartilhada durante a operacao, considerar rotacionar a chave do Supabase depois que a operacao estiver estabilizada e regravar a nova secret no Cloudflare
+
+## Hotfix de producao: front ficava em Local/Conectando sem feedback em 2026-05-20
+
+- Problema:
+  - usuario relatou que o menu ficava alternando entre `Sistema Conectando` e `Sistema Local`
+  - a suspeita operacional era que os dados podiam estar no servidor, mas o front nao dava feedback correto
+- Causa encontrada:
+  - producao estava servindo o rollback final antigo (`/assets/index-C72JfE5o.js`)
+  - em validacao direta, `/api/state` chegou a retornar erro Cloudflare `1102` em uma chamada com o estado grande
+  - quando isso acontecia, o front antigo caia para `Local` sem mostrar o motivo HTTP/Cloudflare para o usuario
+- Implementado:
+  - `src/cloudState.ts` agora inclui status HTTP e trecho da resposta quando `GET /api/state` falha
+  - `src/App.tsx` guarda `cloudStatusDetail` e limpa o detalhe quando a conexao volta
+  - `src/components/Layout.tsx` mostra `Falha online` e o detalhe curto no menu da conta quando o sistema nao consegue falar com o servidor
+  - mantido o hotfix atual de State V2/ponte por patch para reduzir risco de estouro com estado grande
+  - ajuste final em `functions/api/state.js`: quando existe State V2, `GET /api/state` responde em streaming, sem montar uma string gigante de ~2,2 MB antes de enviar
+- Validado local:
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-auth-login-async-hash.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com Node portatil, mas os shims retornaram `Acesso negado`
+  - equivalentes diretos passaram: `node node_modules/typescript/bin/tsc --noEmit` e `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview inicial do feedback de front: `https://289d774a.precision-inventory.pages.dev`
+  - preview final com streaming da API: `https://07b2471a.precision-inventory.pages.dev`
+  - producao `https://precision-inventory.pages.dev/` passou a servir `/assets/index-BnaSF83I.js`
+  - antes do ajuste de streaming, uma validacao final ainda capturou `1102` em `/api/state`; por isso a API foi alterada para streaming
+  - depois do streaming, `/api/state` respondeu `200` em 20 repeticoes seguidas, sem `1102`, com `1710` itens, `3401` logs e `384` solicitacoes
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina; se o navegador insistir no asset antigo, usar Ctrl+F5
+  - se aparecer `Falha online`, abrir o menu da conta e ler o detalhe exibido abaixo de `Sistema`
+  - nao limpar cache/dados do navegador enquanto houver banner de salvamento pendente; primeiro sincronizar ou exportar backup
+
+## Rollback operacional para o ponto anterior a conversa em 2026-05-20
+
+- Pedido do usuario:
+  - voltar o sistema para o ponto mostrado na conversa de 2026-05-19, antes do pacote grande de alteracoes iniciado depois da analise de processos nao salvos
+  - testar se a sincronizacao continua funcionando
+- Decisao:
+  - primeiro foi testado e publicado o rollback intermediario `1b98fa4`, anterior a ponte/backup/State V2
+  - depois, ao revisar o ponto exato da imagem, o rollback final foi feito para `06c5c98` (`Stop tracking local Claude settings e ignorar arquivos .claude`), anterior ao commit grande `9a71899` (`Melhora painel e operacao do armazem`)
+  - o rollback foi feito por deploy de codigo/Functions, sem limpar nem recriar o banco D1
+  - as versoes antigas `5bbd7b06` (`1b98fa4`) e `e3f85370` (`06c5c98`) foram testadas antes e conseguiram ler o estado atual do D1 com payload de `2183449` caracteres
+- Validado antes do deploy:
+  - worktree isolado criado em `C:\Users\dmitry.santos\Desktop\Sistema inventario rollback-06c5c98`
+  - `06c5c98` nao tinha a pasta `scripts`, entao a validacao automatizada disponivel foi compilacao/build
+  - `node node_modules/typescript/bin/tsc --noEmit` passou no rollback final
+  - `node node_modules/vite/bin/vite.js build` passou no rollback final
+  - no rollback intermediario `1b98fa4`, tambem passaram `scripts/test-sync-outbox.mjs`, `scripts/test-state-consulta-save.mjs`, `scripts/test-users-primary-admin-access.mjs`, `scripts/test-user-cycle-requirement.mjs` e `scripts/test-cyclic-inventory.mjs`
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - rollback intermediario publicado: `https://60830a8a.precision-inventory.pages.dev`
+  - rollback final publicado: `https://18d5841f.precision-inventory.pages.dev`
+  - producao `https://precision-inventory.pages.dev/` passou a servir `assets/index-C72JfE5o.js` e `assets/index-TxhciXQH.css`, gerados no rollback final
+- Validado em producao apos rollback:
+  - pagina principal respondeu `200`
+  - `/api/users?meta=1` respondeu `200 {"ok":true,"hasUsers":true}`
+  - `/api/state` respondeu `200` com `2183449` caracteres
+  - login invalido para matricula `24000` respondeu `401` JSON em 10 repeticoes seguidas, sem `503`
+  - `PUT /api/state` sem token respondeu `401`, confirmando que a gravacao continua exigindo sessao valida
+- Teste de sincronizacao com estado real:
+  - usando o estado atual de producao, o `PUT /api/state` da versao rollback final foi exercitado localmente com sessao admin fake para nao alterar o D1 real
+  - resultado: `ok`, preservando `1710` itens, `3399` logs, `384` solicitacoes e gravando payload de `2183400` caracteres
+- Observacao importante:
+  - teste autenticado real em producao exige usuario/senha ou token de sessao valido; nao foi criado usuario temporario nem mexido diretamente na tabela `users/sessions`, porque o `wrangler d1 execute --remote` falhou com autorizacao Cloudflare `7403`
+  - para validar na operacao, entrar no sistema, fazer uma pequena alteracao controlada em um SKU de teste e confirmar em outro aparelho/aba apos atualizar
+
+## Hotfix de producao: login voltando 503 em 2026-05-20
+
+- Problema:
+  - apos sair do sistema, o login mostrava `Falha de conexao` mesmo com internet funcionando
+  - chamadas reais para `/api/auth?action=login` alternavam entre `401` correto e `503` HTML do Cloudflare
+- Causa encontrada:
+  - o login calculava o hash da senha com SHA-256 em JavaScript puro, sincronamente, por 50.000 rodadas
+  - em Cloudflare Pages Functions isso podia estourar limite de CPU do Worker e cair como `503`
+- Implementado:
+  - `functions/api/auth.js` agora calcula o mesmo hash de forma assincrona usando `crypto.subtle.digest` quando disponivel, preservando as senhas ja existentes
+  - `functions/api/users.js` recebeu o mesmo ajuste para criacao/reset de senha
+  - criado `scripts/test-auth-login-async-hash.mjs` para garantir que o hash e assincrono e que o login aguarda o hash antes de aceitar a senha
+- Validado local:
+  - `scripts/test-auth-login-async-hash.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - hash real com 50.000 rodadas levou cerca de 1,3s local usando Web Crypto
+  - `npm.cmd run lint` e `npm.cmd run build` foram tentados, mas `npm.cmd` nao esta no PATH desta sessao
+  - equivalentes diretos passaram: `node node_modules/typescript/bin/tsc --noEmit` e `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview: `https://e402cdd5.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/auth?action=login` com senha invalida respondeu `401` JSON em 12 repeticoes seguidas, sem `503`
+  - `/api/state` respondeu `200` com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - usuario deve recarregar a pagina e tentar entrar novamente
+  - se navegador estiver preso em cache antigo, usar Ctrl+F5 antes de entrar
+
+## Hotfix definitivo: sincronizacao por patch sem PUT completo em 2026-05-20
+
+- Problema:
+  - mesmo apos State V2, aparelhos ainda mostravam `Servidor com instabilidade` em `Sincronizar agora`
+  - `Enviar backup ao servidor` tambem falhava com mensagem generica
+- Causa encontrada:
+  - o front ainda tentava `PUT /api/state` com snapshot completo antes de usar a ponte segura
+  - ao chamar `flushJournalBridge`, a fila local da ponte era enviada ao D1 e removida do navegador; se o PUT completo falhava depois, o replay procurava localmente uma operacao que ja tinha sido removida
+  - o replay do backup no servidor ainda carregava e regravava o estado inteiro para aplicar um patch pequeno
+- Implementado:
+  - `src/App.tsx` agora prioriza replay da ponte para estado grande, operacao manual ou outbox com `journalIds`
+  - fallback por replay tambem roda para HTTP 5xx, nao apenas 413
+  - replay por `journalIds` consegue usar operacoes ja recebidas pelo servidor, mesmo que a fila local tenha sido removida apos o POST
+  - `functions/api/operation-journal.js?action=replay` aplica patches diretamente no State V2, carregando/regravando somente colecoes alteradas (`items`, `logs`, `requests`, etc.)
+  - `src/syncOutbox.ts` ganhou regra testavel para preferir replay em estado grande
+  - criado `scripts/test-operation-journal-replay-patches-v2-direct.mjs`
+- Validado:
+  - `scripts/test-operation-journal-replay-patches-v2-direct.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com o Node portatil, mas os shims `tsc`/`vite` retornaram `Acesso negado`
+  - `node node_modules/typescript/bin/tsc --noEmit` passou
+  - `node node_modules/vite/bin/vite.js build` passou
+  - `graphify update .` passou
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview: `https://05618778.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - asset principal em producao: `/assets/index-CF98BVrj.js`
+  - `/api/state` respondeu `200` em 10 repeticoes seguidas com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+- Instrucao operacional:
+  - recarregar a pagina antes de tocar em `Sincronizar agora`
+  - se houver banner vermelho, tocar em `Sincronizar agora`; o caminho esperado agora e replay por patch, sem depender de PUT completo
+
+## Ajuste do hotfix de sincronizacao grande em 2026-05-20
+
+- Problema:
+  - apos alteracoes externas, `Sincronizar agora` ainda podia mostrar `dados muito grandes` ou `Servidor com instabilidade`
+  - causa provavel: o State V2 ja dividia o estado em linhas menores, mas gravava todos os blocos em um `db.batch`; com estado acima de 2MB, o D1/Pages podia recusar o pacote inteiro ou responder erro generico
+- Implementado:
+  - `functions/api/state.js` continua salvando em State V2, mas agora executa cada upsert/delete de bloco separadamente
+  - `functions/api/state.js` tambem passou a responder o GET grande sem parsear/serializar o estado inteiro de novo, reduzindo uso de CPU do Worker
+  - manifests V2 com contagem anormal de chunks sao ignorados e o sistema cai para o estado V1, evitando loop de leitura que estoura limite do Worker
+  - `functions/api/operation-journal.js?action=replay` recebeu o mesmo ajuste para aplicar patches da ponte sem empacotar estado grande em batch unico
+  - `functions/api/operation-journal.js` tambem valida a contagem de chunks do manifest antes de carregar V2
+  - criado `scripts/test-operation-journal-replay-save.mjs` para garantir que o replay salva estado V2
+  - criado `scripts/test-state-get-large-response.mjs` para garantir GET grande em V2 e fallback quando manifest V2 estiver inseguro
+  - atualizado o fake DB de `scripts/test-state-consulta-save.mjs` para cobrir a leitura V1 usada pelo State V2
+- Validado:
+  - `scripts/test-state-get-large-response.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-operation-journal-replay-save.mjs` passou
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `npm run lint` e `npm run build` foram tentados com o Node portatil, mas os shims `tsc`/`vite` retornaram `Acesso negado`
+  - equivalente direto passou: `node node_modules/typescript/bin/tsc --noEmit`
+  - equivalente direto passou: `node node_modules/vite/bin/vite.js build`
+  - `graphify update .` passou apos os ajustes finais
+- Deploy:
+  - publicado com Wrangler 4.83.0
+  - preview final: `https://dcc2429a.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200` em 10 repeticoes seguidas com payload de `2183449` caracteres
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-Df4nPS-V.js`
+- Instrucao operacional:
+  - pedir para o usuario recarregar a pagina em cada aparelho antes de tocar em `Sincronizar agora`
+  - se o banner vermelho continuar, tocar em `Sincronizar agora`; nao limpar dados do navegador antes de exportar backup
+
+## Hotfix: sincronizacao 413 por estado grande (State V2 chunked) em 2026-05-20
+
+- Problema:
+  - sincronizar retornava `413 (dados muito grandes)` quando o estado passou de ~2MB
+  - backup exportado do aparelho pode passar de 3MB mesmo com mudanca pequena (estado total grande)
+- Implementado:
+  - `functions/api/state.js` salva o estado em formato V2 (chunked) no `app_state`, permitindo estado total > 2MB
+  - escrita V2 ficou mais segura: grava novos chunks + manifest e so depois remove chunks antigos (reduz risco de estado incompleto)
+  - `functions/api/operation-journal.js` (action=replay) agora tambem le/salva em V2, evitando 413 ao aplicar patches quando o online ja e grande
+- Hotfix extra (producao) em 2026-05-20:
+  - `/api/state` passou a responder `503 error code: 1102` (crash do Worker) em alguns cenarios
+  - `functions/api/state.js` foi endurecido no GET:
+    - garante `ensureSchema` antes de ler
+    - valida JSON salvo (settings/aliases/chunks) para nao quebrar a resposta
+    - streaming ficou tolerante a falhas do D1/chunks: em erro, devolve arrays vazios em vez de derrubar o Worker
+    - retorna `503` em JSON quando o D1 estiver instavel, em vez de travar o Worker
+- Validado:
+  - `npm run lint` passou
+  - `npm run build` passou
+  - `node scripts/test-operation-journal-api.mjs` passou
+  - `node scripts/test-operation-journal-patch.mjs` passou
+  - `node scripts/test-state-consulta-save.mjs` passou
+- Producao:
+  - `/api/state` respondeu `200` com payload > 2MB (confirmando State V2 ativo)
+
+## Hotfix: salvamento pendente travado em aparelhos em 2026-05-20
+
+- Pedido do usuario:
+  - colegas que trabalharam no dia anterior ficaram presos no aviso vermelho `SALVAMENTO PENDENTE NESTE APARELHO`
+  - ao tocar em `Sincronizar agora` ou confirmar prompts, a tela parecia nao sair do lugar
+  - screenshots mostravam tambem o prompt do navegador ao recarregar e o prompt antigo de `Atualizar` que poderia descartar alteracao local
+- Causa encontrada:
+  - o botao superior de refresh continuava sendo `Atualizar do online`, mesmo quando existia pendencia local; em celular isso confundia sincronizacao com sobrescrever pelo estado online
+  - aparelhos com flag local antiga de alteracao (`dirty`) mas sem `outbox` nao tinham estado reconstruido para enviar no clique manual
+  - ao aplicar o estado online por escolha do usuario, a fila local da ponte podia continuar existindo e manter o banner vermelho
+- Implementado:
+  - `src/App.tsx` ganhou `queueCurrentStateForSync` para reconstruir a outbox a partir do estado atual quando houver `dirty` antigo sem outbox
+  - `handleForcePendingSync` agora tenta salvar a outbox reconstruida com `force: true` e mostra toast claro se salvou ou se falhou por internet/sessao
+  - `flushOutbox` agora retorna booleano de sucesso/falha e aceita `force` para clique manual mesmo antes do carregamento completo do cloud
+  - `forceApplyCloudState` agora limpa tambem a fila local da ponte quando o usuario escolhe descartar local e aplicar online
+  - `src/components/Layout.tsx` transforma o botao superior em `Sincronizar` quando existe pendencia local, chamando `onForcePendingSync` em vez de `Atualizar do online`
+  - `src/components/Layout.tsx` ganhou botao `Continuar (descartar local)` para destravar operacao quando a sincronizacao falhar, com confirmacao dupla e orientacao para exportar backup antes
+  - `src/components/Layout.tsx` ganhou botao `Enviar backup ao servidor` que aceita o arquivo exportado e reprocessa por patches no D1, aplicando no estado online e destravando o aparelho
+  - `functions/api/operation-journal.js` ganhou `action=replay` para aplicar patches recebidos no `app_state`, marcando como `applied` e respeitando limite de tamanho do estado
+  - `functions/api/state.js` passou a responder `413` quando o estado for grande demais (limite dobrado para reduzir falso-positivo), evitando erro generico de instabilidade
+  - `src/operationLog.ts` registra `Ponte local descartada`
+- Validado:
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://b82de478.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-DcQR5AXj.js`
+- GitHub:
+  - commit principal da correcao: `e654f50` (`Corrige sincronizacao pendente travada`)
+  - branch local/remota: `codex-active-button-confirmation`
+- Instrucao operacional imediata:
+  - pedir para os usuarios atualizarem a pagina uma vez para carregar o asset novo
+  - se aparecer aviso vermelho, tocar em `Sincronizar agora`
+  - se o navegador perguntar se deseja recarregar antes de sincronizar, escolher `Cancelar`
+  - se ainda nao sincronizar, tocar em `Exportar backup` e guardar o JSON antes de limpar dados do navegador
+
+## Opcao: migrar D1 para Supabase (backend dual + migracao automatica) em 2026-05-20
+
+- Motivacao:
+  - reduzir risco de limite/instabilidade do D1 em estados grandes
+- Implementado:
+  - Pages Functions passam a usar Supabase quando variaveis estiverem configuradas:
+    - `SUPABASE_URL`
+    - `SUPABASE_SERVICE_ROLE_KEY` (secret)
+  - fallback para D1 continua ativo quando Supabase nao estiver configurado
+  - primeira requisicao com Supabase habilitado tenta migrar automaticamente tabelas do D1:
+    - `app_state`, `users`, `sessions`, `operation_journal`, `request_locks`
+
+## Ponte segura de operacoes com retencao de 7 dias em 2026-05-20
+
+- Pedido do usuario:
+  - deixar a memoria operacional mais robusta para reduzir risco de perda antes de alguem limpar dados do navegador, trocar de celular, formatar ou apagar cache
+  - usar retencao curta de 7 dias no D1, porque a memoria e somente transicao/confirmacao de seguranca
+- Implementado:
+  - nova API `functions/api/operation-journal.js`
+  - nova tabela D1 `operation_journal`
+  - retencao automatica de 7 dias por `created_at`
+  - novo cliente `src/operationJournal.ts`
+  - ao escrever outbox, o front cria um patch compacto da mudanca e guarda em fila local `precisionInventory.operationJournal.queue.v1`
+  - antes do `PUT /api/state`, o sistema tenta enviar a ponte para `/api/operation-journal`
+  - depois que o estado principal salva, a ponte e marcada como `applied`
+  - aviso forte no topo quando existir pendencia local: nao limpar dados, nao trocar aparelho, nao formatar antes de sincronizar
+  - `beforeunload` alerta ao tentar fechar/recarregar com pendencia
+  - logout pede confirmacao se ainda existir operacao sem confirmacao completa
+  - `Log do sistema` ganhou botoes `Sincronizar agora` e `Exportar backup`
+  - backup exportado gera JSON local com outbox, fila da ponte e eventos de sync
+- Decisao tecnica:
+  - a ponte nao e historico longo
+  - payload e patch pequeno por SKU/id; payload grande demais nao e enviado para evitar pesar o D1
+  - se o aparelho estiver totalmente offline, nada chega ao servidor; nesse caso a protecao e aviso forte + backup exportavel
+  - importacao automatica de backup nao foi feita para evitar aplicar dados antigos sobre o estado online sem revisao administrativa
+- Testes criados:
+  - `scripts/test-operation-journal-api.mjs`
+  - `scripts/test-operation-journal-patch.mjs`
+- Validado:
+  - `scripts/test-operation-journal-api.mjs` passou
+  - `scripts/test-operation-journal-patch.mjs` passou
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://5bbd7b06.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `/api/operation-journal` respondeu `OPTIONS 200`
+  - asset principal em producao: `/assets/index-CPGcSEG_.js`
+- Pendencias:
+  - se o usuario quiser recuperacao por UI, criar fluxo admin separado para importar/revisar backup sem sobrescrever estado online por acidente
+
+## Painel mais objetivo e memoria operacional em 2026-05-20
+
+- Pedido do usuario:
+  - remover do `Painel` os destaques `5 itens do dia` e `Memoria operacional`, deixando a tela inicial mais objetiva para a operacao do armazem
+  - esclarecer se o modulo de log/memoria ocupa muito espaco no servidor D1
+  - atualizar memorias persistentes antes de passar para outro chat
+- Implementado:
+  - o `Painel` nao mostra mais card de `Memoria operacional`
+  - o card de inventario ciclico aparece no `Painel` somente quando o usuario tem contagem obrigatoria pendente
+  - o titulo do bloqueio no `Painel` virou `Contagem obrigatoria do dia`
+  - a tela `Log do sistema` continua disponivel no menu, mas com titulo operacional: `Log operacional do armazem`
+  - textos de `Usuarios` e `Inventario Operacional` foram ajustados para `contagem obrigatoria/diaria`, sem chamar o card de `5 itens do dia`
+- Impacto no D1:
+  - o modulo `Log do sistema` nao cria tabela nova no D1
+  - ele agrega dados que ja existem no estado compartilhado: `InventoryLog` e auditoria das solicitacoes
+  - eventos de sincronizacao do aparelho ficam no `localStorage` do navegador e sao limitados, nao aumentam o banco D1
+  - se no futuro quiser log historico longo no servidor, precisa aprovar antes uma politica de retencao/limpeza
+- Validado:
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://e3f85370.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-DBXfTrXI.js`
+- GitHub:
+  - commit principal da etapa: `9a71899` (`Melhora painel e operacao do armazem`)
+  - branch local/remota usada: `codex-active-button-confirmation`
+- Pendencias:
+  - sem pendencia funcional conhecida apos validacao e deploy
+
+## Restricao do modulo Usuarios em 2026-05-20
+
+- Pedido do usuario:
+  - o modulo `Usuarios` deve ser acessivel somente por `Dmitry Marcelo`, matricula `24000`, usuario `admin`
+  - outros administradores devem ficar bloqueados para essa opcao
+- Implementado:
+  - frontend calcula `canManageUsers` somente quando `role === 'admin'` e `matricula === '24000'`
+  - menu do perfil so mostra `Usuarios` para a matricula `24000`
+  - tentativa de abrir `?tab=users` ou navegar para `users` por outro admin volta para o Painel com aviso
+  - `functions/api/users.js` tambem bloqueia GET/POST/PUT para qualquer admin diferente da matricula `24000`
+  - bootstrap inicial continua permitido quando ainda nao existem usuarios cadastrados
+- Teste criado:
+  - `scripts/test-users-primary-admin-access.mjs`
+  - valida que `24000` acessa `/api/users` e outro admin recebe `403`
+- Validado:
+  - `scripts/test-users-primary-admin-access.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://7437a684.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-BEA709Ep.js`
+
+## Melhoria operacional: logs, sync, inventario ciclico obrigatorio e performance em 2026-05-20
+
+- Pedido do usuario:
+  - melhorar processo/memoria do projeto
+  - criar area de log operacional
+  - avaliar e melhorar velocidade/responsividade visual
+  - tornar a contagem diaria do inventario ciclico obrigatoria para usuarios selecionados em `Usuarios`
+- Design registrado:
+  - `docs/superpowers/specs/2026-05-20-operacao-logs-inventario-ciclico-design.md`
+  - `docs/superpowers/plans/2026-05-20-operacao-logs-inventario-ciclico.md`
+- Implementado:
+  - `flushOutbox` agora nao limpa nem aplica retorno antigo se existir outbox mais novo pendente
+  - novo teste `scripts/test-sync-outbox.mjs`
+  - regra ciclica extraida para `src/cyclicInventory.ts`
+  - novo teste `scripts/test-cyclic-inventory.mjs`
+  - `Usuarios` ganhou campo `Inventario ciclico diario obrigatorio`
+  - backend adiciona `requires_daily_cycle_inventory` em `users`
+  - `consulta` nao pode receber obrigatoriedade; backend força `0` para evitar bloqueio sem permissao de estoque
+  - login, sessao `me` e listagem de usuarios retornam a nova preferencia
+  - Painel mostra a contagem diaria somente quando o usuario tem obrigatoriedade pendente
+  - usuarios obrigados ficam bloqueados em `Painel`, `Estoque` e `Inventario Operacional` ate concluir a contagem diaria
+  - nova tela `Log do sistema` agrega eventos locais de sync, logs de estoque e auditorias de solicitacao
+  - modulos pesados passaram a carregar sob demanda com `React.lazy`
+- Performance medida:
+  - antes: asset principal `index-C72JfE5o.js` com cerca de `1.295 MB` minificado / `321.77 KB` gzip
+  - depois do code splitting: asset principal `index-BROzaJOH.js` com cerca de `518.85 KB` minificado / `124.42 KB` gzip
+  - modulos como Estoque, Compras, Usuarios, Separacao, Historico e Log viraram chunks separados
+- Validado localmente ate aqui:
+  - `scripts/test-sync-outbox.mjs` passou
+  - `scripts/test-cyclic-inventory.mjs` passou
+  - `scripts/test-user-cycle-requirement.mjs` passou
+  - `scripts/test-state-consulta-save.mjs` passou
+  - `tsc --noEmit` passou
+  - `vite build` passou
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://acc98d79.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-BROzaJOH.js`
+- Observacao:
+  - ainda existe chunk grande de PDF/worker, mas ele fica sob demanda em fluxo de PDF/etiqueta, nao na tela inicial
+
+## Incidente: processos/solicitacoes nao salvos em 2026-05-19
+
+- Pedido do usuario:
+  - analisar o projeto em andamento
+  - investigar reclamacao de que os processos do dia nao foram salvos
+- Evidencia online em `2026-05-19` no fuso `America/Manaus`:
+  - `/api/state` respondeu `200`
+  - `app_state.updatedAt` online estava em `2026-05-19T12:40:00.167Z`
+  - havia `0` solicitacoes criadas/atualizadas/atendidas no dia
+  - havia `0` compras/processos criados/atualizados no dia
+  - havia `1` log de estoque no dia: SKU `06020` as `2026-05-19T12:39:41.549Z`
+- Causa encontrada:
+  - a tela permitia usuario `consulta` criar solicitacao
+  - a API `PUT /api/state` aceitava somente `admin` e `operacao`
+  - resultado: a tela podia mostrar `Solicitacao salva com sucesso` localmente, mas a API recusava o envio online com `403`
+- Correcao aplicada:
+  - `functions/api/state.js` agora permite usuario `consulta` enviar somente novas solicitacoes `Aberta`
+  - para `consulta`, o backend preserva estoque, logs, configuracoes, veiculos, compras e aliases do estado online
+  - `consulta` nao consegue alterar estoque pelo envio geral do estado
+- Teste criado:
+  - `scripts/test-state-consulta-save.mjs`
+  - reproduziu a falha antiga: `403 Sem permissao`
+  - depois da correcao, passou garantindo que nova solicitacao entra e estoque nao muda
+- Validado:
+  - `node scripts/test-state-consulta-save.mjs` passou
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Deploy:
+  - preview: `https://eeba0249.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - asset principal em producao: `/assets/index-C72JfE5o.js`
+- Limitacao da investigacao:
+  - consulta direta ao D1 via Wrangler falhou por permissao da conta local Cloudflare (`code 7403`)
+  - se algum processo foi salvo somente em um celular, ele pode ainda estar no `localStorage`/outbox desse aparelho; nao clicar em `Atualizar` antes de tentar sincronizar/exportar
+- Risco tecnico tratado em 2026-05-20:
+  - `flushOutbox` nao limpa uma alteracao mais nova se uma gravacao antiga terminar enquanto outra alteracao ja entrou na fila
+  - teste de regressao: `scripts/test-sync-outbox.mjs`
+
+## Solicitacao: prioridade por lock (evitar conflitos) em 2026-05-05
+
+- Pedido do usuario:
+  - quem abrir primeiro a solicitacao tem prioridade enquanto estiver nela
+  - outras pessoas podem abrir para ver, mas devem receber aviso "em processo de modificacao" e ficar em modo consulta
+  - ao sair, liberar automaticamente para o proximo editar (sem precisar combinar manualmente)
+- Implementado:
+  - lock/lease por solicitacao via `functions/api/request-lock.js` (TTL 45s, acquire/heartbeat/release)
+  - `Separacao`:
+    - ao abrir uma solicitacao, tenta adquirir lock; se outra pessoa estiver editando, mostra aviso e bloqueia leitura/separacao/concluir
+    - heartbeat enquanto a solicitacao estiver aberta; ao sair/fechar, libera
+  - `Solicitacao de pecas` (editar solicitacao existente):
+    - ao entrar em edicao, tenta adquirir lock; se bloqueado, mostra aviso e desabilita edicao/salvar
+- Arquivos:
+  - `functions/api/request-lock.js`
+  - `src/components/MaterialSeparation.tsx`
+  - `src/components/RequestManager.tsx`
+  - `src/App.tsx`
+
+## Kit Preventivas: editar/remover itens (admin) em 2026-05-05
+
+- Pedido do usuario:
+  - em `Kit Preventivas`, adicionar botoes para `Editar` e `Remover` itens do kit
+  - somente `Admin`
+- Implementado:
+  - a tela `Kit Preventivas` permite editar SKU/descricao/quantidade por kit e remover itens (apenas admin)
+  - ao salvar edicao ou remover item, agora pede confirmacao com botoes `Sim` / `Cancelar` (evita clique acidental)
+  - a edicao cria um catalogo customizado em `settings.preventiveKits` e passa a usar esse catalogo como fonte de verdade
+  - `Solicitacao de pecas` (adicionar kit no pedido) passou a respeitar o catalogo customizado do `settings`
+- Arquivos:
+  - `src/components/PreventiveKits.tsx`
+  - `src/components/RequestManager.tsx`
+  - `src/preventiveKitCatalog.ts`
+  - `src/types.ts`
+  - `src/App.tsx`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BLj0w3P0.js`
+
+## Sync: botao Atualizar e merge robusto de solicitacoes em 2026-05-05
+
+- Problema reportado:
+  - botao do modo manual nao aparecia (porque producao estava em bundle antigo)
+  - separacao concluida no celular nao refletia no computador mesmo apos atualizar
+- Ajustes feitos:
+  - UI: botao `Atualizar` (sync do online) agora fica sempre disponivel no topo para `admin`/`operacao`
+  - UI: ao clicar em `Atualizar`, se existir alteracao local pendente, o sistema pede confirmacao antes de sobrescrever
+  - API: merge de `requests` agora preserva avancos de status e quantidades (evita perder `Atendida/Estornada` por conflito de `updatedAt` entre aparelhos)
+- Arquivos:
+  - `src/components/Layout.tsx`
+  - `src/App.tsx`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-vgOrvBzS.js`
+
+## Sync: espelho quase-instantaneo e sem sobrescrever offline em 2026-05-05
+
+- Pedido do usuario:
+  - o que for feito no celular deve refletir no web praticamente na hora
+  - evitar repetir o erro antigo de manter dado local e depois sobrescrever automaticamente ao voltar a internet
+- Ajustes feitos:
+  - refresh online mais rapido quando estiver na aba `Separacao` (1s)
+  - se existir atualizacao online pendente, bloqueia novas edicoes e pede para tocar em `Atualizar` (evita confusao com duas telas abertas)
+  - `updatedAt` local nao concorre mais com o `updatedAt` do cloud (dirty separado), para nao "travar" o auto-sync em outra tela
+  - evitar "ping-pong" (aplicar estado do cloud e salvar de volta sem alteracao): agora o autosave so dispara quando existe alteracao local (dirty/outbox)
+  - PUT /api/state agora retorna o estado mesclado, e o cliente aplica esse retorno para ficar alinhado com o canonical
+  - se o token expirar (401/403), exibe aviso de sessao expirada em vez de ficar preso em local
+- Arquivos:
+  - `src/App.tsx`
+  - `src/cloudState.ts`
+  - `functions/api/state.js`
+- Deploy:
+  - producao atualizada: `https://precision-inventory.pages.dev/`
+  - asset principal em producao: `/assets/index-BoKsXDxd.js`
+
+## Separacao: modo manual admin (Itens para separar) em 2026-05-04
+
+- Pedido do usuario:
+  - em `Separacao` > `Solicitacao ativa`, voltar com um botao `Itens para separar` para adicionar (+1) ou retirar (-1) item manualmente
+  - somente administradores
+- Implementado:
+  - `src/components/MaterialSeparation.tsx` ganhou `Modo manual de separacao` com toggle `Itens para separar` (visivel apenas para `admin`)
+  - quando o modo manual esta ligado, aparecem botoes `+` e `-` por item para ajustar `separatedQuantity`
+  - solicitacoes `Atendida`/`Estornada` continuam travadas (consulta)
+- Deploy:
+  - `npm run deploy` falhou nesta maquina por policy (bloqueio do `npm.ps1`)
+  - deploy feito via `npm.cmd run build` + `npx.cmd wrangler pages deploy dist --project-name precision-inventory`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+
+## Popup de confirmacao para bateria e validade de moto em 2026-05-04
+
+- Ajuste pedido pelo usuario:
+  - a mensagem anterior era pequena
+  - agora deve abrir popup com `OK` confirmando a inclusao do item
+  - `12047 - BATERIA 5A 12V`, bateria de moto, deve valer 6 meses
+- Implementado:
+  - `src/batteryWarrantyRules.ts` agora calcula validade por meses
+  - bateria geral vale 12 meses
+  - SKU `12047` vale 6 meses
+  - `src/components/RequestManager.tsx` agora abre popup de confirmacao antes de incluir bateria quando a placa ainda tem bateria dentro da validade
+- Comportamento:
+  - `OK` confirma a inclusao mesmo com bateria ainda valida
+  - `Cancelar` aborta a inclusao da bateria
+  - o aviso fixo do formulario fala em `dentro da validade`, nao mais `dentro de 1 ano`
+  - funciona para busca, leitor de etiqueta, seletor por modelo e kit
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-Dwlcyw7V.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://d5fd3961.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-Dwlcyw7V.js`
+
+## Aviso automatico de bateria dentro da validade em 2026-05-04
+
+- Pedido do usuario:
+  - quando um veiculo pegar uma bateria, considerar a bateria valida por prazo operacional
+  - se a mesma placa solicitar outra bateria antes do vencimento, mostrar aviso automatico
+- Implementado:
+  - nova regra em `src/batteryWarrantyRules.ts`
+  - integracao no formulario `Solicitacao de pecas` em `src/components/RequestManager.tsx`
+- Regra aplicada:
+  - compara por placa normalizada
+  - considera apenas solicitacoes `Atendida`
+  - usa `fulfilledAt` como data da bateria; fallback para `updatedAt`/`createdAt` em registros antigos
+  - validade operacional padrao = 12 meses
+  - SKU `12047 - BATERIA 5A 12V` (moto) = 6 meses
+  - ignora solicitacoes excluidas, estornadas e o proprio pedido em edicao
+  - identifica bateria por descricao/categoria contendo `BATERIA`
+  - evita falso positivo em acessorios como terminal/cabo/suporte/tampa/carregador e bateria pequena/litio tipo `CR2032`
+- UX:
+  - popup confirmavel antes da inclusao quando existir bateria ainda valida para a placa
+  - `OK` inclui o item; `Cancelar` aborta a inclusao
+  - alerta aparece tambem se a bateria foi adicionada antes de informar a placa e a placa for preenchida depois
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-CJytAlaw.js`
+  - `/assets/index-BjxLhcOq.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://803c495e.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-CJytAlaw.js`
+
+## Superpowers instalado no Codex em 2026-05-04
+
+- Pedido do usuario:
+  - instalar no projeto `https://github.com/obra/superpowers.git`
+- Instalacao feita:
+  - clone principal em `C:\Users\dmitry.santos\.codex\superpowers`
+  - junction de descoberta em `C:\Users\dmitry.santos\.agents\skills\superpowers`
+  - clone de referencia local em `.codex-tools/superpowers`
+- Skills disponiveis apos reiniciar o Codex:
+  - `brainstorming`
+  - `dispatching-parallel-agents`
+  - `executing-plans`
+  - `finishing-a-development-branch`
+  - `receiving-code-review`
+  - `requesting-code-review`
+  - `subagent-driven-development`
+  - `systematic-debugging`
+  - `test-driven-development`
+  - `using-git-worktrees`
+  - `using-superpowers`
+  - `verification-before-completion`
+  - `writing-plans`
+  - `writing-skills`
+- Regra registrada:
+  - `CODEX.md` continua sendo a primeira consulta obrigatoria
+  - Superpowers entra como metodologia complementar quando a tarefa pedir brainstorming, plano, TDD, debug, revisao, execucao ou verificacao final
+  - regras de negocio do inventario continuam acima das skills externas
+- Validado:
+  - todas as 14 skills passaram no `quick_validate.py` com `PYTHONUTF8=1`
+- Observacao:
+  - e necessario reiniciar o Codex para a descoberta nativa listar as novas skills nesta interface
+- Nao houve alteracao funcional no app e nao houve deploy.
+
+## Kit preventiva MOTO atualizado para filtro 18002 em 2026-05-04
+
+- Pedido do usuario:
+  - trocar o filtro antigo do kit `MOTO` pelo SKU `18002`
+  - manter o SKU `17902` como oleo do kit
+- Kit `MOTO` agora fica com:
+  - `18002` - `FILTRO COMBUSTIVEL GI80 HONDA NXR BROS`
+  - `17902` - `OLEO 20W50 MOTO - LITRO`
+- Arquivo alterado:
+  - `src/preventiveKitCatalog.ts`
+- Impacto:
+  - a tela `Kit Preventivas` passa a calcular MOTO com `18002`
+  - o seletor de kits em `Solicitacao de pecas` usa o mesmo catalogo e tambem passa a puxar `18002`
+- Validado localmente:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `graphify update .` passou
+- Build gerou:
+  - `/assets/index-sV0C0iw-.js`
+  - `/assets/index-BJ7-PtxX.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://801cf3a8.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-sV0C0iw-.js`
+
+## Protocolo Karpathy integrado ao Codex em 2026-05-04
+
+- Repositorio clonado para referencia local:
+  - `.codex-tools/andrej-karpathy-skills`
+- Observacao:
+  - `gh` nao estava instalado nesta maquina, entao foi usado `git clone https://github.com/forrestchang/andrej-karpathy-skills.git`
+  - `.codex-tools/` ja esta ignorado pelo Git do projeto
+- Criado `CODEX.md` no projeto como protocolo obrigatorio de primeira consulta.
+- `AGENTS.md` passou a exigir leitura de `CODEX.md` antes de `HANDOFF.md` e `SKILLS.md`.
+- Criada skill global do Codex:
+  - `C:\Users\dmitry.santos\.codex\skills\karpathy-guidelines\SKILL.md`
+  - referencias originais copiadas para `references/protocol.md` e `references/examples.md`
+- `SKILLS.md` ganhou a `Skill 17 - Protocolo Karpathy para Codex`.
+- Validado:
+  - skill validada com `quick_validate.py` via `uv run --with pyyaml`
+- Nao houve alteracao funcional no app e nao houve deploy.
+
+## Divergencias como bloqueio operacional + inventario ciclico (5 por dia) em 2026-05-04
+
+- `Admin` e `Operacao` passam a ser bloqueados por divergencias abertas:
+  - ao abrir o sistema, se existir divergencia pendente, aparece um popup obrigatorio
+  - o popup continua voltando ate que nao exista nenhuma pendencia
+  - a navegacao para outras abas fica bloqueada enquanto existir divergencia
+  - ao entrar em `Estoque` / `Inventario Operacional`, aparece um aviso fixo com atalho para abrir o proximo SKU com divergencia
+- `Inventario Operacional` ganhou `Inventario ciclico`:
+  - sorteia 5 itens por dia usando seed por data (mesmo dia = mesma lista)
+  - pondera o sorteio pela Curva ABC (Classe A tem mais chance)
+  - mostra a contagem diaria e permite abrir o SKU com 1 toque
+- Arquivos alterados:
+  - `src/App.tsx`
+  - `src/components/InventoryOperation.tsx`
+  - `src/divergenceRules.ts`
+  - `src/components/Layout.tsx`
+- Ajuste de permissao:
+  - `Operacao` agora tambem enxerga a aba `Inventario Operacional` e pode fazer `Ajuste de contagem` para encerrar divergencias
+- Regra de alertas por item (Admin):
+  - itens com politica automatica (Curva ABC/adaptativa) voltam a permitir ajuste manual, mas por 90 dias a regra manual tem prioridade
+  - depois de 90 dias, a politica automatica volta a ser usada
+  - edicao manual da regra de alertas foi restrita ao usuario `Admin`
+- Validado localmente:
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou
+  - `node .\node_modules\vite\bin\vite.js build` passou
+  - `graphify update .` passou
+
+## Endurecimento de divergencias sem mexer em Compras/Pagamentos em 2026-05-02
+
+- Foi criado `src/divergenceRules.ts` como regra compartilhada para divergencia em aberto.
+- Uma divergencia fica aberta ate existir um log posterior de `ajuste` para o mesmo SKU, tratado como recontagem administrativa.
+- `Inventario Operacional` passou a mostrar divergencias abertas de qualquer dia, nao apenas divergencias do dia atual.
+- `Buscar e Atualizar` passou a destacar SKU com divergencia aberta:
+  - ajuste de contagem pede confirmacao e encerra a pendencia como recontagem
+  - recebimento avisa que nao encerra divergencia
+- `Solicitacao de pecas` passou a bloquear SKU com divergencia aberta:
+  - busca direta
+  - leitor de etiqueta
+  - selecao por tipo/modelo
+  - kits preventivos
+  - validacao final ao salvar
+- `Solicitacao de pecas` tambem valida no salvamento:
+  - item precisa existir
+  - item precisa ter saldo
+  - quantidade solicitada nao pode passar do saldo atual
+  - item com divergencia aberta nao pode seguir na solicitacao
+- `Separacao de material` foi reforcada:
+  - divergencia exige motivo curto antes de registrar
+  - divergencia fica visivel no pedido e no item
+  - baixa final com divergencia exige usuario admin
+  - se a baixa for concluida em outro aparelho, o sistema reconstroi o saldo real a partir dos logs de divergencia da solicitacao
+  - operador nao admin fica bloqueado ao tentar separar SKU com divergencia aberta de outra solicitacao
+- `Historico` passou a mostrar uma secao propria de divergencias registradas por solicitacao, com sistema/real/diferenca/motivo.
+- `Compras` e pagamentos nao foram alterados nesta etapa, conforme pedido do usuario.
+- Validado localmente:
+  - `npm run lint` nao rodou porque `npm` nao esta disponivel nesta sessao
+  - `node .\node_modules\typescript\bin\tsc --noEmit` passou usando Node portatil
+  - `node .\node_modules\vite\bin\vite.js build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-r0ptwBYy.js`
+  - `/assets/index-Cx-z1rj1.css`
+  - chunks PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - primeiro preview: `https://8c2b1b49.precision-inventory.pages.dev`
+  - producao/main: `https://87ddfc3f.precision-inventory.pages.dev`
+  - producao final: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+  - asset principal em producao: `/assets/index-r0ptwBYy.js`
+- Observacao:
+  - Vite manteve o aviso conhecido de chunks grandes
+  - `graphify update .` passou e atualizou `graphify-out/`
+
+## Instalacao Caveman e Graphify em 2026-05-02
+
+- `caveman` foi instalado como skill global/copied para Codex em:
+  - `C:\Users\dmitry.santos\.agents\skills\caveman\SKILL.md`
+- A instalacao foi feita em modo minimo:
+  - sem hooks automaticos do caveman
+  - sem MCP automatico do caveman
+  - sem alteracao de Windows, inicializacao ou sistema
+- `uv` portatil foi baixado para:
+  - `C:\Users\dmitry.santos\Desktop\Sistema inventario\.codex-tools\uv-0.11.8\uv.exe`
+- `graphifyy` foi instalado com `uv tool install graphifyy --python 3.12 --managed-python`.
+- CLI do Graphify:
+  - `C:\Users\dmitry.santos\.local\bin\graphify.exe`
+- Integracao Graphify/Codex:
+  - `AGENTS.md` recebeu a secao `graphify`
+  - `.codex/hooks.json` foi criado com hook usando caminho absoluto do `graphify.exe`
+- Memoria procedural Hermes:
+  - `C:\Users\dmitry.santos\.hermes\skills\graphify\SKILL.md`
+  - `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-graphify\SKILL.md`
+- O grafo inicial foi gerado localmente:
+  - `graphify-out/GRAPH_REPORT.md`
+  - `graphify-out/graph.json`
+  - `graphify-out/graph.html`
+  - resultado inicial: 402 nos, 900 arestas, 12 comunidades
+  - custo de API informado pelo Graphify: 0 input / 0 output
+- Foi criado `.graphifyignore` para evitar varrer cache, build, instrucoes de agente e o proprio `graphify-out`.
+- Observacao:
+  - esta etapa foi de ferramentas/memoria do projeto; nao houve mudanca funcional no app e nao houve deploy.
 
 ## Resumo executivo
 
@@ -15,6 +902,78 @@ O sistema ja tem os modulos principais funcionando:
 - Impressao de etiquetas
 - Compras Automaticas
 - Persistencia online via Cloudflare D1
+
+## Pedido manual de Compras com varios SKUs em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora permite montar uma lista com varios SKUs antes de salvar.
+- Cada SKU adicionado ao pedido manual pode ter a quantidade editada ou ser removido ainda dentro do formulario.
+- Ao salvar varios SKUs juntos, as linhas ficam ligadas por `manualBatchId`, preservando o pedido manual como um lote operacional.
+- Pedidos manuais em status `Manual` ou `Em analise` ganharam acoes:
+  - `Editar`: reabre o lote com placa, centro de custo, motivo e todos os SKUs vinculados.
+  - `Remover`: remove o lote manual inteiro, com confirmacao no navegador.
+- Ao editar um pedido manual, o sistema permite acrescentar novos SKUs, alterar quantidades e remover linhas do lote.
+- O sistema bloqueia salvar SKU que ja exista em uma compra ativa persistida, exceto quando o SKU pertence ao proprio lote em edicao.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+  - `npm run lint` foi tentado, mas o npm desta maquina retornou `Acesso negado` ao chamar o shim de `tsc`; o mesmo TypeScript passou pelo comando portatil direto
+- Build gerou:
+  - `/assets/index-9UhVHBkA.js`
+  - `/assets/index-CQVUaZT9.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://045ce448.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
+## Pedido manual de Compras com placa/centro em 2026-05-02
+
+- O formulario `Novo Pedido Manual` em `Compras` agora exige e salva:
+  - placa
+  - centro de custo
+  - modelo/descricao do veiculo
+  - SKU
+  - quantidade
+  - motivo
+- A placa e o centro de custo continuam editaveis.
+- Ao digitar a placa, o formulario consulta a base de veiculos e preenche centro de custo/modelo quando encontra correspondencia.
+- Ao digitar SKU, nome, tipo ou localizacao, o formulario mostra sugestoes de itens automaticamente.
+- O card do pedido manual passa a exibir placa e centro de custo.
+- A busca da aba `Compras` tambem considera placa, centro de custo e modelo do pedido manual.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DARTOjoM.js`
+  - `/assets/index-BZBUqCex.css`
+- Deploy publicado via Wrangler:
+  - preview: `https://c66545a2.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
+
+## Correcao de Compras vinculadas em 2026-05-02
+
+- Corrigido o print do mapa de cotacao quando um item e vinculado manualmente a outro SKU ja cotado.
+- Agora, se o item vinculado ja tem cotacoes salvas no proprio SKU, a linha do mapa reaproveita:
+  - quantidade sugerida do SKU vinculado
+  - valor unitario da cotacao correspondente/selecionada
+  - total calculado da linha
+- O agrupamento continua como um unico orcamento com varias linhas de item.
+- O mapa impresso passou a usar rotulos seguros e `<meta charset="utf-8">` para evitar texto quebrado como ocorria em `Mapa de cotacao`, `Criterio` e `Aprovacao`.
+- Validado nesta etapa:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Build gerou:
+  - `/assets/index-DSaH-M0u.js`
+  - `/assets/index-BH_JqPai.css`
+  - chunks de PDF/browser mantidos sob demanda
+- Deploy publicado via Wrangler:
+  - preview: `https://99639141.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+  - `Cache-Control` do HTML em producao: `no-store`
 
 ## Estado atual por modulo
 
@@ -162,15 +1121,45 @@ O sistema ja tem os modulos principais funcionando:
 
 ## O que acabou de ser feito
 
+- Painel:
+  - o card grande `Nivel global de estoque (SKUs)` continua removido
+  - os numeros `Total` e `Ativos` voltaram em um bloco compacto no topo
+- Compras:
+  - impressao de cotacao vinculada agora monta `Itens deste orcamento`
+  - o mapa inclui o item atual e os itens vinculados como linhas de um unico orcamento
+  - deixou de depender da tabela de `Item detectado` como representacao principal do print
+- Validado nesta correcao:
+  - `tsc --noEmit` passou usando Node portatil
+  - `vite build` passou usando Node portatil
+- Deploy publicado nesta correcao:
+  - preview: `https://f3032d3c.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/` respondeu `200`
+  - `/api/state` respondeu `200`
+- O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
+  - aplicado no Estoque
+  - aplicado no detalhe de `Atualizar Estoque`
+  - objetivo: evitar toque acidental no celular
+- Esta etapa foi validada com:
+  - `tsc --noEmit`
+  - `vite build`
+- Deploy publicado em:
+  - preview: `https://5c24af63.precision-inventory.pages.dev`
+  - producao: `https://precision-inventory.pages.dev/`
+- Branch GitHub enviada:
+  - `codex/active-button-confirmation`
+- O botao `Ativo` agora pede confirmacao antes de marcar ou desmarcar o SKU:
+  - aplicado no Estoque
+  - aplicado no detalhe de `Atualizar Estoque`
+  - objetivo: evitar toque acidental no celular
 - Barra superior simplificada novamente:
-  - removido texto visual `Precision Inventory` do canto esquerdo, mantendo apenas o icone
+  - removido texto visual `Armazem 28` do canto esquerdo, mantendo apenas o icone
   - removidos `Admin` e `Sair` da barra
   - foto do usuario virou menu de conta
   - menu da foto mostra permissao, status do sistema, `Usuarios` para admin e `Sair`
   - aba `Usuarios` saiu da navegacao principal e fica acessivel pela foto
 - Proposta de `Compras Automaticas` ficou pronta para implementacao futura:
   - documento tecnico criado em `docs/COMPRAS_AUTOMATICAS.md`
-  - nota Obsidian `Precision Inventory/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
+  - nota Obsidian `Armazem 28/07 - Proposta Compras Automaticas` atualizada com referencia ao documento tecnico
   - regra reforcada: compra aprovada/comprada nao altera estoque; entrada continua so por `Recebimento`
 - Validado localmente:
   - `tsc --noEmit` passou usando Node portatil
@@ -186,7 +1175,7 @@ O sistema ja tem os modulos principais funcionando:
   - removido dropdown duplicado de alertas no `Layout`
   - `Layout` deixou de receber `items`, `settings` e `onSelectSku` apenas para alimentar o sino
 - Registrada proposta de modulo futuro `Compras Automaticas`:
-  - nota criada no Obsidian: `Precision Inventory/07 - Proposta Compras Automaticas`
+  - nota criada no Obsidian: `Armazem 28/07 - Proposta Compras Automaticas`
   - proposta usa alertas criticos, reposicao, Curva ABC, saidas recentes e pedidos manuais
   - regra de seguranca: aprovar compra nao aumenta estoque; entrada real continua somente pelo fluxo `Recebimento`
 - Validado localmente:
@@ -200,8 +1189,8 @@ O sistema ja tem os modulos principais funcionando:
   - asset principal publicado: `assets/index-OfDveYJZ.js`
 - Configurado Obsidian como memoria ampla do projeto:
   - cofre localizado em `C:\Users\dmitry.santos\Downloads\Lembranças`
-  - criada pasta `Precision Inventory` dentro do cofre
-  - criado mapa principal `Precision Inventory/00 - Mapa do Projeto`
+  - criada pasta `Armazem 28` dentro do cofre
+  - criado mapa principal `Armazem 28/00 - Mapa do Projeto`
   - criadas notas para regras de negocio, modulos/fluxos, deploy/GitHub, Curva ABC, decisoes recentes, riscos/cuidados e diario de handoff
   - criados templates de `Registro de Decisao` e `Handoff Rapido`
   - nota `Bem-vindo.md` do cofre passou a apontar para o mapa do projeto
@@ -1649,7 +2638,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - A aba `Historico` ganhou o botao `Imprimir comprovante` no detalhe da solicitacao selecionada
 - A impressao abre uma janela propria, sem menus/filtros da tela, para gerar um comprovante limpo em A4
 - O layout impresso inclui:
-  - cabecalho com `Precision Inventory`, codigo e status da solicitacao
+  - cabecalho com `Armazem 28`, codigo e status da solicitacao
   - placa, centro de custo, datas, progresso e fechamento
   - tabela de itens solicitados e separados
   - auditoria da solicitacao
@@ -1777,7 +2766,7 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Cotacoes profissionais em Compras em 2026-05-02
@@ -1830,8 +2819,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`
 
 ## Prompt de Contexto para novo chat em 2026-05-02
@@ -1848,8 +2837,8 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
   - regras de importacao de PDF em cotacoes
   - memorias que devem ser lidas antes de trabalhar
 - Obsidian atualizado:
-  - `Precision Inventory/08 - Prompt de Contexto`
-  - `Precision Inventory/00 - Mapa do Projeto`
+  - `Armazem 28/08 - Prompt de Contexto`
+  - `Armazem 28/00 - Mapa do Projeto`
 - Hermes atualizado:
   - `C:\Users\dmitry.santos\.hermes\MEMORY.md`
   - `C:\Users\dmitry.santos\.hermes\USER.md`
@@ -1916,6 +2905,6 @@ Nesta etapa, os tres ficaram verdadeiros ao mesmo tempo.
 - Memoria atualizada:
   - `SKILLS.md`
   - `docs/COMPRAS_AUTOMATICAS.md`
-  - Obsidian `Precision Inventory/07 - Proposta Compras Automaticas`
-  - Obsidian `Precision Inventory/05 - Decisoes Recentes`
+  - Obsidian `Armazem 28/07 - Proposta Compras Automaticas`
+  - Obsidian `Armazem 28/05 - Decisoes Recentes`
   - skill Hermes `C:\Users\dmitry.santos\.hermes\skills\precision-inventory-compras\SKILL.md`

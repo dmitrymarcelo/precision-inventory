@@ -15,6 +15,7 @@ import { InventoryItem, InventoryLog, InventorySettings, MaterialRequest, Materi
 import { calculateItemStatus } from '../inventoryRules';
 import { getRequestProgress, recalculateRequestStatus } from '../requestUtils';
 import { normalizeLocationText, normalizeUserFacingText } from '../textUtils';
+import { formatDivergenceDelta, getRequestDivergenceLogs } from '../divergenceRules';
 
 interface RequestHistoryProps {
   requests: MaterialRequest[];
@@ -540,6 +541,11 @@ export default function RequestHistory({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [logs, selectedRequest]);
 
+  const selectedDivergenceLogs = useMemo(
+    () => getRequestDivergenceLogs(selectedRequest, logs),
+    [logs, selectedRequest]
+  );
+
   const formatTimestamp = (iso: string) => {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return iso;
@@ -819,7 +825,7 @@ export default function RequestHistory({
 
     <section class="hero">
       <div>
-        <div class="brand">Precision Inventory</div>
+        <div class="brand">Armazem 28</div>
         <h1>Comprovante de solicitação de peças</h1>
         <p class="subtitle">Documento operacional gerado a partir do Histórico para conferência, assinatura e arquivamento.</p>
       </div>
@@ -880,7 +886,7 @@ export default function RequestHistory({
     </section>
 
     <footer>
-      <span>Documento gerado pelo Precision Inventory.</span>
+      <span>Documento gerado pelo Armazem 28.</span>
       <span>${escapeHtml(selectedRequest.code)} - ${escapeHtml(formatTimestamp(now))}</span>
     </footer>
   </main>
@@ -1165,6 +1171,44 @@ export default function RequestHistory({
                 )}
               </div>
             </section>
+
+            {selectedDivergenceLogs.length > 0 ? (
+              <section className="bg-error-container/15 rounded-xl border border-error/25 shadow-sm p-5">
+                <h3 className="font-headline font-bold text-xl text-on-surface">Divergencias registradas</h3>
+                <div className="mt-3 space-y-2">
+                  {selectedDivergenceLogs.map(log => (
+                    <div key={log.id} className="rounded-xl border border-error/20 bg-surface-container-lowest p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => onSelectSku(log.sku)}
+                            className="text-left font-semibold text-on-surface hover:text-primary transition-colors"
+                          >
+                            {normalizeUserFacingText(log.itemName)}
+                          </button>
+                          <p className="text-xs text-on-surface-variant mt-1">
+                            {formatTimestamp(log.date)} - SKU {log.sku} - {normalizeLocationText(log.location)}
+                          </p>
+                          {log.note ? (
+                            <p className="text-[11px] font-semibold text-on-surface-variant mt-2">
+                              Motivo: {normalizeUserFacingText(log.note)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-bold uppercase text-outline">Diferenca</p>
+                          <p className="text-sm font-extrabold text-error">{formatDivergenceDelta(log.delta)}</p>
+                          <p className="text-[11px] text-on-surface-variant font-semibold">
+                            {log.expectedQuantityAfter ?? '--'} / {log.reportedQuantityAfter ?? log.quantityAfter}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-sm p-5">
               <h3 className="font-headline font-bold text-xl text-on-surface">Itens</h3>
